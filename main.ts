@@ -13,7 +13,10 @@ class StaticFileHandler {
   }
 
   handler(request: Request): Response {
-    const path = join(Deno.cwd(), this.#basePath, new URL(request.url).pathname)
+    const pathname = new URL(request.url).pathname;
+    const resolvedPathname = (pathname == "") ? pathname = "index.html" : pathname;
+    const path = join(Deno.cwd(), this.#basePath, resolvedPathname)
+    
     try {
       const file = Deno.readFile(path);
       return file.then(data => new Response(data));
