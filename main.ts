@@ -48,6 +48,8 @@ serve((req: Request) => {
 
   for (const [pattern, handler] of routes) {
     if (pattern.test(url)) {
+
+      console.log("passed test", url, handler)
       response = handler(req);
       break;
     }
