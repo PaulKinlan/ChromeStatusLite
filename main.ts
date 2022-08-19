@@ -23,7 +23,7 @@ class StaticFileHandler {
       const file = Deno.readFile(path);
       return file.then(data => new Response(data));
     } catch (fileErr) {
-      console.log(fileErr);
+      console.log("HALP", fileErr);
       return null;
     }
   }
