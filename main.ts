@@ -13,10 +13,13 @@ class StaticFileHandler {
   }
 
   handler(request: Request): Response {
-    console.log(this)
-    console.log("handler", this.#basePath)
     const path = join(Deno.cwd(), this.#basePath, new URL(request.url).pathname)
-    const file = Deno.readFile(path);
+    try {
+      const file = Deno.readFile(path);
+    } catch (fileErr) {
+      console.log(fileErr);
+      return null;
+    }
     return file.then(data => new Response(data));
   }
 
@@ -49,9 +52,14 @@ serve((req: Request) => {
 
   for (const [pattern, handler] of routes) {
     if (pattern.test(url)) {
+      const responseFromHandler = handler(req);
 
-      console.log("passed test", pattern, url, handler)
-      response = handler(req);
+      if (responseFromHandler == null) {
+        continue;
+      }
+
+      response = responseFromHandler;
+
       break;
     }
   }
