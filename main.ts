@@ -16,11 +16,11 @@ class StaticFileHandler {
     const path = join(Deno.cwd(), this.#basePath, new URL(request.url).pathname)
     try {
       const file = Deno.readFile(path);
+      return file.then(data => new Response(data));
     } catch (fileErr) {
       console.log(fileErr);
       return null;
     }
-    return file.then(data => new Response(data));
   }
 
   get pattern(): URLPattern {
