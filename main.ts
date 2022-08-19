@@ -18,7 +18,7 @@ class StaticFileHandler {
     const path = join(Deno.cwd(), this.#basePath, resolvedPathname)
     const file = Deno.readFile(path)
                       .then(data => new Response(data))
-                      .catch(_ => new Response(new Response("Not found", { status: 404 })));
+                      .catch(_ => new Response("Not found", { status: 404 }));
 
     return file;
   }
