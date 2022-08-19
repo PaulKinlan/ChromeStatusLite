@@ -14,7 +14,7 @@ class StaticFileHandler {
 
   handler(request: Request): Response {
     const pathname = new URL(request.url).pathname;
-    const resolvedPathname = (pathname == "" || pathname == "/") ? pathname = "/index.html" : pathname;
+    const resolvedPathname = (pathname == "" || pathname == "/") ? "/index.html" : pathname;
 
     console.log(pathname, resolvedPathname);
     const path = join(Deno.cwd(), this.#basePath, resolvedPathname)
