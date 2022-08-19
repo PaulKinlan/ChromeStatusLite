@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.152.0/http/server.ts";
 import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
 
-import { Route } from "src/types.ts";
+import { Route } from "src/typasdes.ts";
 import { StripStream } from "src/stream-utils2.ts";
 
 class StaticFileHandler {
