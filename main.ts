@@ -4,7 +4,7 @@ import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
 import { Route } from "./src/types.ts";
 import { StripStream } from "./src/stream-utils.ts";
 
-const Response404 = new Response(new Response(null, { status: 404 }));
+const Response404 = new Response(new Response([], { status: 404 }));
 
 class StaticFileHandler {
 
@@ -21,7 +21,7 @@ class StaticFileHandler {
     const file = Deno.readFile(path)
                       .then(data => new Response(data))
                       .catch(_ => Response404);
-    
+
     return file;
   }
 
@@ -56,12 +56,7 @@ serve((req: Request) => {
     if (pattern.test(url)) {
       const responseFromHandler = handler(req);
 
-      if (responseFromHandler == null) {
-        continue;
-      }
-
       response = responseFromHandler;
-
       break;
     }
   }
