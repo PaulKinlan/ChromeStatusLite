@@ -4,7 +4,7 @@ import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
 import { Route } from "./src/types.ts";
 import { StripStream } from "./src/stream-utils.ts";
 
-const Response404 = new Response(new Response("", { status: 404 }));
+const Response404 = new Response(new Response("Not Found", { status: 404 }));
 
 class StaticFileHandler {
 
