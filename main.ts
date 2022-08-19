@@ -10,6 +10,7 @@ class StaticFileHandler {
 
   constructor(base: string) {
     this.#basePath = base;
+    console.log("constructor", base, this.#basePath)
   }
 
   handler(request: Request): Response {
