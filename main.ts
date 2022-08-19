@@ -4,7 +4,6 @@ import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
 import { Route } from "./src/types";
 import { StripStream } from "./src/stream-utils";
 
-
 class StaticFileHandler {
 
   #basePath: string = "";
