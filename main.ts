@@ -15,7 +15,7 @@ class StaticFileHandler {
   handler(request: Request): Response {
     console.log(this)
     console.log("handler", this.#basePath)
-    const path = join(Deno.cwd(), this.#basePath, request.url.pathname)
+    const path = join(Deno.cwd(), this.#basePath, new URL(request.url).pathname)
     const file = Deno.readFile(path);
     return new Response(file);
   }
