@@ -43,7 +43,7 @@ serve((req: Request) => {
     // Fall through.
     [
       staticFiles.pattern,
-      staticFiles.handler
+      staticFiles.handler.bind(staticFiles)
     ]
   ];
 
