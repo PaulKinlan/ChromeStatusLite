@@ -4,8 +4,6 @@ import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
 import { Route } from "./src/types.ts";
 import { StripStream } from "./src/stream-utils.ts";
 
-const Response404 = new Response(new Response("Not Found", { status: 404 }));
-
 class StaticFileHandler {
 
   #basePath: string = "";
@@ -20,7 +18,7 @@ class StaticFileHandler {
     const path = join(Deno.cwd(), this.#basePath, resolvedPathname)
     const file = Deno.readFile(path)
                       .then(data => new Response(data))
-                      .catch(_ => Response404);
+                      .catch(_ => new Response(new Response("Not found", { status: 404 })));
 
     return file;
   }
@@ -34,7 +32,7 @@ serve((req: Request) => {
   const url = req.url;
   console.log(url)
   const staticFiles = new StaticFileHandler('static');
-  let response: Response = Response404;
+  let response: Response = new Response(new Response("Not found", { status: 404 }));
 
   const routes: Array<Route> = [
     [
