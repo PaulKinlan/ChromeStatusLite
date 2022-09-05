@@ -26,18 +26,18 @@ onload = () => {
     render(html`
     <h1>Chrome ${version}</h1>
     <a href="#enabled">Enabled</a> | <a href="#origin-trial">Origin Trial</a> | <a href="#flagged">Flagged</a> | <a href="#deprecated">Deprecated</a> | <a href="#removed">Removed</a>
-    ${renderEnabled(enabled, version, versionData)}
-    ${renderOriginTrials(originTrials, version, versionData)}
-    ${renderFlaggedFeatures(flaggedFeatures, version, versionData)}
-    ${renderDeprecatedFeatures(deprecated, version, versionData)}
-    ${renderRemovedFeatures(removed, version, versionData)}
+    ${renderEnabled(enabled, version)}
+    ${renderOriginTrials(originTrials, version)}
+    ${renderFlaggedFeatures(flaggedFeatures, version)}
+    ${renderDeprecatedFeatures(deprecated, version)}
+    ${renderRemovedFeatures(removed, version)}
     `, outputEl);
   };
 };
 
-const renderEnabled = (enabled, version, versionData) => html`
+const renderEnabled = (enabled, version) => html`
     <h2 id="enabled">Enabled by default in ${version}</h2>
-    <p>This realease of Chrome had ${versionData.total_count} new features.</p>
+    <p>This realease of Chrome had ${enabled.length} new features.</p>
     ${enabled.map(item =>
   html`<h3>${item.name}</h3>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
@@ -49,10 +49,10 @@ const renderEnabled = (enabled, version, versionData) => html`
       ${('samples' in item.resources) ? html`<p>Samples: ${item.resources.samples.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked samples`}</p>`
 )}`;
 
-const renderOriginTrials = (enabled, version, versionData) => html`
+const renderOriginTrials = (ot, version) => html`
     <h2 id="origin-trial">Origin Trials in-progress in ${version}</h2>
-    <p>This realease of Chrome had ${versionData.total_count} new origin trials.</p>
-    ${enabled.map(item =>
+    <p>This realease of Chrome had ${ot.length} new origin trials.</p>
+    ${ot.map(item =>
   html`<h3>${item.name}</h3>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
@@ -63,10 +63,10 @@ const renderOriginTrials = (enabled, version, versionData) => html`
       ${('samples' in item.resources) ? html`<p>Samples: ${item.resources.samples.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked samples`}</p>`
 )}`;
 
-const renderFlaggedFeatures = (enabled, version, versionData) => html`
+const renderFlaggedFeatures = (flagged, version) => html`
     <h2 id="flagged">Flagged features in ${version}</h2>
-    <p>This realease of Chrome had ${versionData.total_count} are available behind a flag.</p>
-    ${enabled.map(item =>
+    <p>This realease of Chrome had ${flagged.length} are available behind a flag.</p>
+    ${flagged.map(item =>
   html`<h3>${item.name}</h3>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
@@ -77,10 +77,10 @@ const renderFlaggedFeatures = (enabled, version, versionData) => html`
       ${('samples' in item.resources) ? html`<p>Samples: ${item.resources.samples.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked samples`}</p>`
 )}`;
 
-const renderDeprecatedFeatures = (enabled, version, versionData) => html`
+const renderDeprecatedFeatures = (deprecated, version) => html`
     <h2 id="deprecated">Deprecated features in ${version}</h2>
-    <p>This realease of Chrome had ${versionData.total_count} are available behind a flag.</p>
-    ${enabled.map(item =>
+    <p>This realease of Chrome had ${deprecated.length} are available behind a flag.</p>
+    ${deprecated.map(item =>
   html`<h3>${item.name}</h3>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
@@ -91,10 +91,10 @@ const renderDeprecatedFeatures = (enabled, version, versionData) => html`
       ${('samples' in item.resources) ? html`<p>Samples: ${item.resources.samples.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked samples`}</p>`
 )}`;
 
-const renderRemovedFeatures = (enabled, version, versionData) => html`
+const renderRemovedFeatures = (removed, version) => html`
     <h2 id="removed">Removed features in ${version}</h2>
-    <p>This realease of Chrome had ${versionData.total_count} are available behind a flag.</p>
-    ${enabled.map(item =>
+    <p>This realease of Chrome had ${removed.length} are available behind a flag.</p>
+    ${removed.map(item =>
   html`<h3>${item.name}</h3>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
