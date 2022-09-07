@@ -31,7 +31,7 @@ window.addEventListener('popstate', (event) => {
   const url = new URL(location);
   const version = url.searchParams.get("version");
 
-  updateUI(version)
+  updateUI(version);
 });
 
 onload = () => {
@@ -48,7 +48,7 @@ onload = () => {
   versionEl.onchange = async (e) => {
     const changedVersion = e.target.value;
 
-    navigator.history.pushState({}, undefined, `/?version=${changedVersion}`);
+    history.pushState({}, undefined, `/?version=${changedVersion}`);
 
     updateUI(version);
   };
