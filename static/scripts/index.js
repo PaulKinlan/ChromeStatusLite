@@ -78,7 +78,7 @@ window.addEventListener('popstate', (event) => {
 
 onload = async () => {
   const url = new URL(location);
-  const loadedVersion = url.searchParams.get("version");
+  let loadedVersion = url.searchParams.get("version");
 
   const versionEl = document.getElementById("version");
   const versions = await getVersions();
