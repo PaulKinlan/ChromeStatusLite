@@ -83,10 +83,9 @@ onload = async () => {
   const versionEl = document.getElementById("version");
   const versions = await getVersions();
 
-  latestVersion = versions[0];
-
   if (version == null) {
-    history.pushState({}, undefined, `/?version=${latestVersion}`);
+    loadedVersion = versions[0];
+    history.pushState({}, undefined, `/?version=${loadedVersion}`);
   }
 
   render(html`${versions.map((item) => html`<option value=${item}>${item}</option>`)}`, versionEl);
