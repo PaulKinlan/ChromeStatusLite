@@ -121,7 +121,7 @@ const renderOriginTrials = (ot, version) => html`
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${item.standards.status.text}</a>"
-      ${renderResources(item.resources)}``
+      ${renderResources(item.resources)}`
 )}`;
 
 const renderFlaggedFeatures = (flagged, version) => html`
@@ -145,7 +145,7 @@ const renderDeprecatedFeatures = (deprecated, version) => html`
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${item.standards.status.text}</a>"
-      ${renderResources(item.resources)}``
+      ${renderResources(item.resources)}`
 )}`;
 
 const renderRemovedFeatures = (removed, version) => html`
@@ -157,5 +157,5 @@ const renderRemovedFeatures = (removed, version) => html`
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${item.standards.status.text}</a>"
-      ${renderResources(item.resources)}``
+      ${renderResources(item.resources)}`
 )}`;
