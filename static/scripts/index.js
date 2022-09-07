@@ -79,7 +79,7 @@ const renderFlaggedFeatures = (flagged, version) => html`
 
 const renderDeprecatedFeatures = (deprecated, version) => html`
     <h2 id="deprecated">Deprecated features in ${version}</h2>
-    <p>This realease of Chrome had ${deprecated.length} are available behind a flag.</p>
+    <p>This realease of Chrome had ${deprecated.length} features deprecated.</p>
     ${deprecated.map(item =>
   html`<h3>${item.name}</h3>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
@@ -93,7 +93,7 @@ const renderDeprecatedFeatures = (deprecated, version) => html`
 
 const renderRemovedFeatures = (removed, version) => html`
     <h2 id="removed">Removed features in ${version}</h2>
-    <p>This realease of Chrome had ${removed.length} are available behind a flag.</p>
+    <p>This realease of Chrome had ${removed.length} features removed.</p>
     ${removed.map(item =>
   html`<h3>${item.name}</h3>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
