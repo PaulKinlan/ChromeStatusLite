@@ -92,6 +92,14 @@ onload = async () => {
   };
 };
 
+const renderResources = (resources) => {
+  return (resources.length > 0)
+    ? html`<h4>Resources</h4>
+      ${('docs' in resources) ? html`<p>Docs: ${resources.docs.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked docs`}</p>
+      ${('samples' in resources) ? html`<p>Samples: ${resources.samples.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked samples`}</p>`
+    : html``;
+};
+
 const renderEnabled = (enabled, version) => html`
     <h2 id="enabled">Enabled by default in ${version}</h2>
     <p>This realease of Chrome had ${enabled.length} new features.</p>
@@ -101,9 +109,7 @@ const renderEnabled = (enabled, version) => html`
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${item.standards.status.text}</a>"
-      <h4>Resources</h4>
-      ${('docs' in item.resources) ? html`<p>Docs: ${item.resources.docs.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked docs`}</p>
-      ${('samples' in item.resources) ? html`<p>Samples: ${item.resources.samples.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked samples`}</p>`
+      ${renderResources(item.resources)}`
 )}`;
 
 const renderOriginTrials = (ot, version) => html`
@@ -115,9 +121,7 @@ const renderOriginTrials = (ot, version) => html`
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${item.standards.status.text}</a>"
-      <h4>Resources</h4>
-      ${('docs' in item.resources) ? html`<p>Docs: ${item.resources.docs.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked docs`}</p>
-      ${('samples' in item.resources) ? html`<p>Samples: ${item.resources.samples.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked samples`}</p>`
+      ${renderResources(item.resources)}``
 )}`;
 
 const renderFlaggedFeatures = (flagged, version) => html`
@@ -129,9 +133,7 @@ const renderFlaggedFeatures = (flagged, version) => html`
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${item.standards.status.text}</a>"
-      <h4>Resources</h4>
-      ${('docs' in item.resources) ? html`<p>Docs: ${item.resources.docs.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked docs`}</p>
-      ${('samples' in item.resources) ? html`<p>Samples: ${item.resources.samples.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked samples`}</p>`
+      ${renderResources(item.resources)}`
 )}`;
 
 const renderDeprecatedFeatures = (deprecated, version) => html`
@@ -143,9 +145,7 @@ const renderDeprecatedFeatures = (deprecated, version) => html`
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${item.standards.status.text}</a>"
-      <h5>Resources</h5>
-      ${('docs' in item.resources) ? html`<p>Docs: ${item.resources.docs.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked docs`}</p>
-      ${('samples' in item.resources) ? html`<p>Samples: ${item.resources.samples.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked samples`}</p>`
+      ${renderResources(item.resources)}``
 )}`;
 
 const renderRemovedFeatures = (removed, version) => html`
@@ -157,7 +157,5 @@ const renderRemovedFeatures = (removed, version) => html`
       ${('motivation' in item) ? html`<p>${item.creator} created this feature because: <blockquote>${item.motivation}</blockquote></p>` : html``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${item.standards.status.text}</a>"
-      <h5>Resources</h5>
-      ${('docs' in item.resources) ? html`<p>Docs: ${item.resources.docs.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked docs`}</p>
-      ${('samples' in item.resources) ? html`<p>Samples: ${item.resources.samples.map(resource => html`<a href=${resource}>${resource}</a>`)}</p>` : html`No linked samples`}</p>`
+      ${renderResources(item.resources)}``
 )}`;
