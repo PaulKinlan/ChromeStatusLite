@@ -69,7 +69,7 @@ window.addEventListener('popstate', (event) => {
   const url = new URL(location);
   const version = url.searchParams.get("version");
 
-  if (version == undefined) {
+  if (version == null) {
     version = latestVersion;
   }
 
@@ -85,7 +85,7 @@ onload = async () => {
 
   latestVersion = versions[0];
 
-  if (version == undefined) {
+  if (version == null) {
     history.pushState({}, undefined, `/?version=${latestVersion}`);
   }
 
