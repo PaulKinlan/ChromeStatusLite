@@ -102,7 +102,7 @@ const renderResources = (resources) => {
 
 const renderEnabled = (enabled, version) => html`
     <h2 id="enabled">Enabled by default in ${version}</h2>
-    <p>This realease of Chrome had ${enabled.length} new features.</p>
+    <p>This release of Chrome had ${enabled.length} new features.</p>
     ${enabled.map(item =>
   html`<h3>${item.name}</h3>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
@@ -114,7 +114,7 @@ const renderEnabled = (enabled, version) => html`
 
 const renderOriginTrials = (ot, version) => html`
     <h2 id="origin-trial">Origin Trials in-progress in ${version}</h2>
-    <p>This realease of Chrome had ${ot.length} new origin trials.</p>
+    <p>This release of Chrome had ${ot.length} new origin trials.</p>
     ${ot.map(item =>
   html`<h3>${item.name}</h3>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
@@ -126,7 +126,7 @@ const renderOriginTrials = (ot, version) => html`
 
 const renderFlaggedFeatures = (flagged, version) => html`
     <h2 id="flagged">Flagged features in ${version}</h2>
-    <p>This realease of Chrome had ${flagged.length} are available behind a flag.</p>
+    <p>This release of Chrome had ${flagged.length} are available behind a flag.</p>
     ${flagged.map(item =>
   html`<h3>${item.name}</h3>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
@@ -138,7 +138,7 @@ const renderFlaggedFeatures = (flagged, version) => html`
 
 const renderDeprecatedFeatures = (deprecated, version) => html`
     <h3 id="deprecated">Deprecated features in ${version}</h3>
-    <p>This realease of Chrome had ${deprecated.length} features deprecated.</p>
+    <p>This release of Chrome had ${deprecated.length} features deprecated.</p>
     ${deprecated.map(item =>
   html`<h4>${item.name}</h4>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
@@ -150,7 +150,7 @@ const renderDeprecatedFeatures = (deprecated, version) => html`
 
 const renderRemovedFeatures = (removed, version) => html`
     <h3 id="removed">Removed features in ${version}</h3>
-    <p>This realease of Chrome had ${removed.length} features removed.</p>
+    <p>This release of Chrome had ${removed.length} features removed.</p>
     ${removed.map(item =>
   html`<h4>${item.name}</h4>
       <p>${item.summary} <a href=${item.launch_bug_url}>#</a></p>
