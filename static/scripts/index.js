@@ -1,5 +1,12 @@
 import { html, render } from 'https://unpkg.com/lit-html?module';
 
+const getVersions = async () => {
+  const versionResponse = await fetch(`/api/channels`);
+
+
+
+};
+
 const updateUI = async (version) => {
   if (version == undefined) version = 100;
 

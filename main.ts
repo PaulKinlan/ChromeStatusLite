@@ -21,7 +21,7 @@ class StaticFileHandler {
     const resolvedPathname = (pathname == "" || pathname == "/") ? "/index.html" : pathname;
     const path = join(Deno.cwd(), this.#basePath, resolvedPathname)
     const file = Deno.readFile(path)
-      .then(data => new Response(data, {status: 200, headers: { 'content-type': contentType(extension)}})) // Need to think about content tyoes.
+      .then(data => new Response(data, { status: 200, headers: { 'content-type': contentType(extension) } })) // Need to think about content tyoes.
       .catch(_ => new Response("Not found", { status: 404 }));
 
     return file;
@@ -51,6 +51,17 @@ serve((req: Request) => {
         }));
       }
     ],
+    [
+      new URLPattern({ pathname: "/api/channels" }),
+      (request) => {
+        const channelsResponse = fetch(`https://chromestatus.com/api/v0/channels`);
+        return channelsResponse.then(response => new Response(response.body.pipeThrough(new StripStream()), {
+          status: 200, headers: {
+            'content-type': 'application/json'
+          }
+        }));
+      }
+    ],
     // Fall through.
     [
       staticFiles.pattern,
@@ -59,13 +70,13 @@ serve((req: Request) => {
   ];
 
   for (const [pattern, handler] of routes) {
-		const patternResult = pattern.exec(url);
-		if (patternResult != null) {
-			// Find the first matching route.
-			response = handler(req, patternResult);
-			break;
-		}
-	}
+    const patternResult = pattern.exec(url);
+    if (patternResult != null) {
+      // Find the first matching route.
+      response = handler(req, patternResult);
+      break;
+    }
+  }
 
   return response;
 });
