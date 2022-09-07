@@ -1,6 +1,6 @@
 import { html, render } from 'https://unpkg.com/lit-html?module';
 
-const updateUI = (version) => {
+const updateUI = async (version) => {
   if (version == undefined) version = 100;
 
   const versionResponse = await fetch(`/api/features?version=${version}`);
