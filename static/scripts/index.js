@@ -50,7 +50,7 @@ onload = () => {
 
     history.pushState({}, undefined, `/?version=${changedVersion}`);
 
-    updateUI(version);
+    updateUI(changedVersion);
   };
 };
 
