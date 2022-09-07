@@ -9,9 +9,7 @@ const getVersions = async () => {
   return [...Array(lastVersion).keys()].reverse();
 };
 
-const updateUI = async (version) => {
-  if (version == undefined) version = 100;
-
+const updateUI = async (version = 106) => {
   const outputEl = document.getElementById("output");
 
   const versionResponse = await fetch(`/api/features?version=${version}`);
@@ -65,21 +63,33 @@ const updateUI = async (version) => {
   `, outputEl);
 }
 
+let latestVersion;
+
 window.addEventListener('popstate', (event) => {
   const url = new URL(location);
   const version = url.searchParams.get("version");
+
+  if (version == undefined) {
+    version = latestVersion;
+  }
 
   updateUI(version);
 });
 
 onload = async () => {
+  const url = new URL(location);
+  const loadedVersion = url.searchParams.get("version");
+
   const versionEl = document.getElementById("version");
   const versions = await getVersions();
 
-  render(html`${versions.map((item) => html`<option value=${item}>${item}</option>`)}`, versionEl);
+  latestVersion = versions[0];
 
-  const url = new URL(location);
-  const loadedVersion = url.searchParams.get("version");
+  if (version == undefined) {
+    history.pushState({}, undefined, `/?version=${latestVersion}`);
+  }
+
+  render(html`${versions.map((item) => html`<option value=${item}>${item}</option>`)}`, versionEl);
 
   updateUI(loadedVersion);
 
