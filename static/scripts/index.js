@@ -2,9 +2,11 @@ import { html, render } from 'https://unpkg.com/lit-html?module';
 
 const getVersions = async () => {
   const versionResponse = await fetch(`/api/channels`);
+  const versionData = await versionResponse.json();
 
+  const lastVersion = Number.parseInt(versionData.canary.milestone);
 
-
+  return [...Array(lastVersion).keys()].reverse();
 };
 
 const updateUI = async (version) => {
@@ -43,7 +45,7 @@ window.addEventListener('popstate', (event) => {
 
 onload = () => {
   const versionEl = document.getElementById("version");
-  const versions = [...Array(107).keys()].reverse();
+  const versions = await getVersions();
 
   render(html`${versions.map((item) => html`<option value=${item}>${item}</option>`)}`, versionEl);
 
