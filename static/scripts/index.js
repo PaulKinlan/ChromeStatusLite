@@ -83,8 +83,8 @@ onload = async () => {
   const versionEl = document.getElementById("version");
   const versions = await getVersions();
 
-  if (version == null) {
-    loadedVersion = versions[0];
+  if (loadedVersion == null) {
+    loadedVersion = versions[0]; // default to the latest
     history.pushState({}, undefined, `/?version=${loadedVersion}`);
   }
 
