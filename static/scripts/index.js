@@ -3,6 +3,8 @@ import { html, render } from 'https://unpkg.com/lit-html?module';
 const updateUI = async (version) => {
   if (version == undefined) version = 100;
 
+  const outputEl = document.getElementById("output");
+
   const versionResponse = await fetch(`/api/features?version=${version}`);
   const versionData = await versionResponse.json();
 
@@ -34,7 +36,6 @@ window.addEventListener('popstate', (event) => {
 
 onload = () => {
   const versionEl = document.getElementById("version");
-  const outputEl = document.getElementById("output");
   const versions = [...Array(107).keys()].reverse();
 
   render(html`${versions.map((item) => html`<option value=${item}>${item}</option>`)}`, versionEl);
