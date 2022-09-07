@@ -43,7 +43,7 @@ window.addEventListener('popstate', (event) => {
   updateUI(version);
 });
 
-onload = () => {
+onload = async () => {
   const versionEl = document.getElementById("version");
   const versions = await getVersions();
 
