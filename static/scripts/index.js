@@ -27,7 +27,11 @@ const updateUI = async (version) => {
 
   render(html`
   <h1>Chrome ${version}</h1>
-  <a href="#enabled">Enabled</a> | <a href="#origin-trial">Origin Trial</a> | <a href="#flagged">Flagged</a> | <a href="#deprecated">Deprecated</a> | <a href="#removed">Removed</a>
+  <a href="#enabled">Enabled (${enabled.length})</a> |
+  <a href="#origin-trial">Origin Trial (${originTrials.length})</a> |
+  <a href="#flagged">Flagged (${flaggedFeatures.length})</a> |
+  <a href="#deprecated">Deprecated (${deprecated.length})</a> |
+  <a href="#removed">Removed (${removed.length})</a>
   ${renderEnabled(enabled, version)}
   ${renderOriginTrials(originTrials, version)}
   ${renderFlaggedFeatures(flaggedFeatures, version)}
