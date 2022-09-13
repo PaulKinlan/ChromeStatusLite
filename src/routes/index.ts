@@ -124,7 +124,7 @@ const getChannels = () => {
     status: 200, headers: {
       'content-type': 'application/json'
     }
-  }));
+  })).then(data => data.json());
 };
 
 const getVersions = async () => {
