@@ -4,6 +4,6 @@ onload = async () => {
 
   const versionEl = document.getElementById("version");
   versionEl.onchange = async (event) => {
-    event.form.submit();
+    event.target.form.submit();
   };
 };
