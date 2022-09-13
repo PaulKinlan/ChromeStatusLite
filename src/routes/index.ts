@@ -119,12 +119,13 @@ const renderRemovedFeatures = (removed, version) => template`
 )}`;
 
 const getChannels = () => {
-  const channelsResponse = fetch(`https://chromestatus.com/api/v0/channels`);
-  return channelsResponse.then(response => new Response(response.body.pipeThrough(new StripStream()), {
-    status: 200, headers: {
-      'content-type': 'application/json'
-    }
-  })).then(data => data.json());
+  return fetch(`https://chromestatus.com/api/v0/channels`)
+    .then(resposnse => new Response(resposnse.body.pipeThrough(new StripStream()), {
+      status: 200, headers: {
+        'content-type': 'application/json'
+      }
+    }))
+    .then(response => response.json());
 };
 
 const getVersions = async () => {
@@ -135,12 +136,13 @@ const getVersions = async () => {
 };
 
 const getFeaturesForVersion = (version) => {
-  const featuresResponse = await fetch(`https://chromestatus.com/api/v0/features?milestone=${version}`);
-  return (new Response(featuresResponse.body.pipeThrough(new StripStream()), {
-    status: 200, headers: {
-      'content-type': 'application/json'
-    }
-  })).json();
+  return fetch(`https://chromestatus.com/api/v0/features?milestone=${version}`)
+    .then(resposnse => new Response(resposnse.body.pipeThrough(new StripStream()), {
+      status: 200, headers: {
+        'content-type': 'application/json'
+      }
+    }))
+    .then(response => response.json());
 };
 
 export default async function render(request: Request): Response {
@@ -148,7 +150,7 @@ export default async function render(request: Request): Response {
   const version = url.searchParams.get("version") || 106;
   const versions = await getVersions();
   const features = await getFeaturesForVersion(version);
- 
+
   return template`
   <!doctype html>
 <html>
