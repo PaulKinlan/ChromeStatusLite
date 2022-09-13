@@ -168,7 +168,8 @@ export default async function render(request: Request): Response {
     <select name="version" id="version">
       <option>Pick a version</option>
       ${template`${versions.map((item) => template`<option value=${item}>${item}</option>`)}`};
-    </select>
+      <noscript><input type=submit></noscript>
+      </select>
   </form>
   <div id="output">
   ${renderData(version, features)}
