@@ -117,9 +117,9 @@ const renderRemovedFeatures = (removed, version) => template`
       ${renderResources(item.resources)}`
 )}`;
 
-const getVersions = async () => {
-  console.log(location)
-  const versionResponse = await fetch(`http://localhost:80/api/channels`);
+const getVersions = async (baseUrl: URL) => {
+  const { hostname, protocol, port } = baseUrl
+  const versionResponse = await fetch(`${protocol}://${hostname}:${port}/api/channels`);
   const versionData = await versionResponse.json();
 
   const lastVersion = Number.parseInt(versionData.canary.version);
@@ -131,7 +131,7 @@ export default async function render(request: Request): Response {
   const url = new URL(request.url);
   const version = url.searchParams.get("version") || 106;
 
-  const versions = await getVersions();
+  const versions = await getVersions(url);
   const featuresResponse = await fetch(`https://chromestatus.com/api/v0/features?milestone=${version}`);
   const features = await (new Response(featuresResponse.body.pipeThrough(new StripStream()), {
     status: 200, headers: {
