@@ -127,27 +127,28 @@ const getChannels = () => {
   }));
 };
 
-const getVersions = async (baseUrl: URL) => {
+const getVersions = async () => {
   const versionData = await getChannels();
   const lastVersion = Number.parseInt(versionData.canary.version);
 
   return [...Array(lastVersion).keys()].reverse();
 };
 
-export default async function render(request: Request): Response {
-  const url = new URL(request.url);
-  const version = url.searchParams.get("version") || 106;
-
-  const versions = await getVersions(url);
+const getFeaturesForVersion = (version) => {
   const featuresResponse = await fetch(`https://chromestatus.com/api/v0/features?milestone=${version}`);
-  const featuresText = await (new Response(featuresResponse.body.pipeThrough(new StripStream()), {
+  return (new Response(featuresResponse.body.pipeThrough(new StripStream()), {
     status: 200, headers: {
       'content-type': 'application/json'
     }
-  })).text();
+  })).json();
+};
 
-  const features = JSON.parse(featuresText);
-
+export default async function render(request: Request): Response {
+  const url = new URL(request.url);
+  const version = url.searchParams.get("version") || 106;
+  const versions = await getVersions();
+  const features = await getFeaturesForVersion(version);
+ 
   return template`
   <!doctype html>
 <html>
