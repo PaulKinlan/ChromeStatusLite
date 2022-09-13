@@ -39,28 +39,6 @@ serve((req: Request) => {
 
   const routes: Array<Route> = [
     [
-      new URLPattern({ pathname: "/api/features" }),
-      (request) => {
-        const featuresResponse = fetch(`https://chromestatus.com/api/v0/features?milestone=${version}`);
-        return featuresResponse.then(response => new Response(response.body.pipeThrough(new StripStream()), {
-          status: 200, headers: {
-            'content-type': 'application/json'
-          }
-        }));
-      }
-    ],
-    [
-      new URLPattern({ pathname: "/api/channels" }),
-      (request) => {
-        const channelsResponse = fetch(`https://chromestatus.com/api/v0/channels`);
-        return channelsResponse.then(response => new Response(response.body.pipeThrough(new StripStream()), {
-          status: 200, headers: {
-            'content-type': 'application/json'
-          }
-        }));
-      }
-    ],
-    [
       new URLPattern({ pathname: "/" }),
       (request) => {
         return index(request);
