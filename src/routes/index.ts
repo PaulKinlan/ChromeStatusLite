@@ -118,6 +118,7 @@ const renderRemovedFeatures = (removed, version) => template`
 )}`;
 
 const getVersions = async () => {
+  console.log(location)
   const versionResponse = await fetch(`http://localhost:80/api/channels`);
   const versionData = await versionResponse.json();
 
