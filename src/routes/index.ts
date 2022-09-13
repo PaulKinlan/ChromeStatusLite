@@ -1,15 +1,5 @@
 import template from "../flora.ts";
 
-
-const getVersions = async () => {
-  const versionResponse = await fetch(`/api/channels`);
-  const versionData = await versionResponse.json();
-
-  const lastVersion = Number.parseInt(versionData.canary.version);
-
-  return [...Array(lastVersion).keys()].reverse();
-};
-
 const renderData = async (versionData) => {
   const featuresByType = versionData.features_by_type;
 
@@ -127,12 +117,22 @@ const renderRemovedFeatures = (removed, version) => template`
       ${renderResources(item.resources)}`
 )}`;
 
+const getVersions = async () => {
+  const versionResponse = await fetch(`/api/channels`);
+  const versionData = await versionResponse.json();
+
+  const lastVersion = Number.parseInt(versionData.canary.version);
+
+  return [...Array(lastVersion).keys()].reverse();
+};
+
 export default async function render(request: Request): Response {
   const url = new URL(request.url);
   const version = url.searchParams.get("version") || 106;
 
+  const versions = await getVersions();
   const featuresResponse = await fetch(`https://chromestatus.com/api/v0/features?milestone=${version}`);
-  const features = await (new Response(response.body.pipeThrough(new StripStream()), {
+  const features = await (new Response(featuresResponse.body.pipeThrough(new StripStream()), {
     status: 200, headers: {
       'content-type': 'application/json'
     }
