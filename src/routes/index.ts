@@ -123,6 +123,7 @@ const getVersions = async (baseUrl: URL) => {
   console.log(versionsUrl)
   const versionResponse = await fetch(versionsUrl);
   const versionDataText = await versionResponse.text();
+  console.log(versionDataText)
   const versionData = JSON.parse(versionDataText);
 
   const lastVersion = Number.parseInt(versionData.canary.version);
