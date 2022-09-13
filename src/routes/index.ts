@@ -119,7 +119,7 @@ const renderRemovedFeatures = (removed, version) => template`
 
 const getVersions = async (baseUrl: URL) => {
   const { hostname, protocol, port = 80 } = baseUrl;
-  const versionsUrl = `${protocol}://${hostname}:${port}/api/channels`;
+  const versionsUrl = `${protocol}//${hostname}:${port}/api/channels`;
   console.log(versionsUrl)
   const versionResponse = await fetch(versionsUrl);
   const versionData = await versionResponse.json();
