@@ -2,8 +2,8 @@ onload = async () => {
   const url = new URL(location);
   let version = url.searchParams.get("version");
 
-  if (version == undefined) {
-    location.search = `?version=${version}`;
+  if (version == null || version == undefined) {
+    location.search = `?version=106`;
   }
 
   const versionEl = document.getElementById("version");
