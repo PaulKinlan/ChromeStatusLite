@@ -63,7 +63,7 @@ serve((req: Request) => {
     [
       new URLPattern({ pathname: "/" }),
       (request) => {
-        return index(request, version);
+        return index(request);
       }
     ],
     // Fall through.
