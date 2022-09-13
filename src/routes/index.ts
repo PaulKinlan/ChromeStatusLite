@@ -1,7 +1,6 @@
 import template from "../flora.ts";
 
-export default function render(request: Request, version): Response {
-
+export default function render(request: Request): Response {
   const url = new URL(request.url);
   const version = url.searchParams.get("version") || 106;
   return template`
