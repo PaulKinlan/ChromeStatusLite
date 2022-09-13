@@ -33,7 +33,7 @@ class StaticFileHandler {
 
 serve((req: Request) => {
   const url = req.url;
-  console.log(url)
+  const version = new URL(url).searchParams.get("version") || 106;
   const staticFiles = new StaticFileHandler('static');
   let response: Response = new Response(new Response("Not found", { status: 404 }));
 
@@ -41,7 +41,6 @@ serve((req: Request) => {
     [
       new URLPattern({ pathname: "/api/features" }),
       (request) => {
-        const version = new URL(req.url).searchParams.get("version") || 106;
         const featuresResponse = fetch(`https://chromestatus.com/api/v0/features?milestone=${version}`);
         return featuresResponse.then(response => new Response(response.body.pipeThrough(new StripStream()), {
           status: 200, headers: {
@@ -64,7 +63,6 @@ serve((req: Request) => {
     [
       new URLPattern({ pathname: "/" }),
       (request) => {
-        const version = new URL(req.url).searchParams.get("version") || 106;
         return index(request, version);
       }
     ],
