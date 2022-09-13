@@ -1,5 +1,5 @@
 import template from "../flora.ts";
-import { StripStream } from "./src/stream-utils.ts";
+import { StripStream } from "../stream-utils.ts";
 
 const renderData = async (versionData) => {
   const featuresByType = versionData.features_by_type;
