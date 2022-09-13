@@ -118,7 +118,7 @@ const renderRemovedFeatures = (removed, version) => template`
 )}`;
 
 const getVersions = async () => {
-  const versionResponse = await fetch(`http://localhost:8080/api/channels`);
+  const versionResponse = await fetch(`./api/channels`);
   const versionData = await versionResponse.json();
 
   const lastVersion = Number.parseInt(versionData.canary.version);
