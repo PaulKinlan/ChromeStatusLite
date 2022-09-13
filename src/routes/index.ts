@@ -1,4 +1,5 @@
 import template from "../flora.ts";
+import { StripStream } from "./src/stream-utils.ts";
 
 const renderData = async (versionData) => {
   const featuresByType = versionData.features_by_type;
@@ -124,13 +125,10 @@ const getChannels = () => {
       'content-type': 'application/json'
     }
   }));
-}
+};
 
 const getVersions = async (baseUrl: URL) => {
-  
-
-  const versionData = await getChannels()
-  
+  const versionData = await getChannels();
   const lastVersion = Number.parseInt(versionData.canary.version);
 
   return [...Array(lastVersion).keys()].reverse();
