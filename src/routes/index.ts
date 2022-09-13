@@ -122,7 +122,8 @@ const getVersions = async (baseUrl: URL) => {
   const versionsUrl = `${protocol}//${hostname}:${port}/api/channels`;
   console.log(versionsUrl)
   const versionResponse = await fetch(versionsUrl);
-  const versionData = await versionResponse.json();
+  const versionDataText = await versionResponse.text();
+  const versionData = JSON.parse(versionDataText);
 
   const lastVersion = Number.parseInt(versionData.canary.version);
 
