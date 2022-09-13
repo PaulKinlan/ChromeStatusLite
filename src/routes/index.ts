@@ -1,7 +1,7 @@
 import template from "../flora.ts";
 import { StripStream } from "../stream-utils.ts";
 
-const renderData = async (versionData) => {
+const renderData = async (version, versionData) => {
   const featuresByType = versionData.features_by_type;
 
   const enabled = featuresByType["Enabled by default"];
@@ -171,7 +171,7 @@ export default async function render(request: Request): Response {
     </select>
   </form>
   <div id="output">
-  ${renderData(features)}
+  ${renderData(version, features)}
   </div>
 </body>
 
