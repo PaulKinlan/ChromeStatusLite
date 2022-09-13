@@ -135,11 +135,13 @@ export default async function render(request: Request): Response {
 
   const versions = await getVersions(url);
   const featuresResponse = await fetch(`https://chromestatus.com/api/v0/features?milestone=${version}`);
-  const features = await (new Response(featuresResponse.body.pipeThrough(new StripStream()), {
+  const featuresText = await (new Response(featuresResponse.body.pipeThrough(new StripStream()), {
     status: 200, headers: {
       'content-type': 'application/json'
     }
-  })).json();
+  })).text();
+
+  const features = JSON.parse(featuresText);
 
   return template`
   <!doctype html>
