@@ -1,6 +1,10 @@
 onload = async () => {
   const url = new URL(location);
-  let loadedVersion = url.searchParams.get("version");
+  let version = url.searchParams.get("version");
+
+  if (version == undefined) {
+    location.search = `?version=${version}`;
+  }
 
   const versionEl = document.getElementById("version");
   versionEl.onchange = async (event) => {
