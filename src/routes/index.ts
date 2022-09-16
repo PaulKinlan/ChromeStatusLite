@@ -128,6 +128,8 @@ export default async function render(request: Request): Response {
   const versions = await getVersions();
   const features = await getFeaturesForVersion(version);
 
+  console.log(features)
+
   return template`
   <!doctype html>
 <html>
