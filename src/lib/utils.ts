@@ -1,3 +1,5 @@
+import { StripStream } from "../stream-utils.ts";
+
 export const getChannels = () => {
   return fetch(`https://chromestatus.com/api/v0/channels`)
     .then(resposnse => new Response(resposnse.body.pipeThrough(new StripStream()), {
