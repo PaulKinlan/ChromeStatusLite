@@ -1,7 +1,7 @@
 import { StripStream } from "../stream-utils.ts";
 
 export const getChannels = (start?: number, end?: number) => {
-  let queryString;
+  let queryString = "";
   if (start != undefined && end != undefined) {
     queryString = `?start=${start}&end=${end}`;
   }
