@@ -29,12 +29,10 @@ export const getFeatures = () => {
 export const getFeaturesForVersion = (version?: number) => {
   let queryString = ""
   if (version != undefined) {
-    queryString = `?milestone = ${version}`;
+    queryString = `?milestone=${version}`;
   }
 
   const url = `https://chromestatus.com/api/v0/features${queryString}`;
-
-  console.log(url)
 
   return fetch(url)
     .then(resposnse => new Response(resposnse.body.pipeThrough(new StripStream()), {
