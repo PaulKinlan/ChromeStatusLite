@@ -1,5 +1,5 @@
 import template from "../flora.ts";
-import { getVersions } from "../lib/utils.ts";
+import { getChannels, getVersions, getFeaturesForVersion } from "../lib/utils.ts";
 import { StripStream } from "../stream-utils.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
