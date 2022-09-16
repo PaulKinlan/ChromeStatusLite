@@ -1,6 +1,7 @@
 import template from "../flora.ts";
 import { StripStream } from "../stream-utils.ts";
 import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
+import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 export default async function render(request: Request): Response {
     return template`
@@ -33,6 +34,7 @@ const renderDeprecations = async () => {
         <tr>
             <th>Date</th>
             <th>Name</th>
+            <th>Intent Stage</th>
             <th>Chrome Version</th>
         </tr>
         ${deprecations.map(deprecation => renderDeprecation(deprecation, channels))}
@@ -43,11 +45,13 @@ const renderDeprecations = async () => {
 const renderDeprecation = async (deprecation, channels) => {
     let channel = channels[deprecation.browsers.chrome.desktop];
     let date = new Date(channel.stable_date);
+    let name = escapeHtml(deprecation.name);
     return template `
         <tr>
             <td>${format(date, 'yyyy-MM-dd')}</td>
-            <td>${deprecation.name}</td>
-            <td>${deprecation.browsers.chrome.desktop}</td>
+            <td><a href="https://chromestatus.com/feature/${deprecation.id}">${name}</a></td>
+            <td>${escapeHtml(deprecation.intent_stage)}</td>
+            <td><a href="/?version=${deprecation.browsers.chrome.desktop}">${deprecation.browsers.chrome.desktop}</a></td>
         </tr>
     `;
 };
