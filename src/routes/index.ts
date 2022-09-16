@@ -1,4 +1,5 @@
 import template from "../flora.ts";
+import { getChannels, getVersions, getFeaturesForVersion } from "../lib/utils.ts";
 import { StripStream } from "../stream-utils.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
@@ -118,33 +119,6 @@ const renderRemovedFeatures = (removed, version) => template`
       <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards.status.text)}</a>"
       ${renderResources(item.resources)}`
 )}`;
-
-const getChannels = () => {
-  return fetch(`https://chromestatus.com/api/v0/channels`)
-    .then(resposnse => new Response(resposnse.body.pipeThrough(new StripStream()), {
-      status: 200, headers: {
-        'content-type': 'application/json'
-      }
-    }))
-    .then(response => response.json());
-};
-
-const getVersions = async () => {
-  const versionData = await getChannels();
-  const lastVersion = Number.parseInt(versionData.canary.version);
-
-  return [...Array(lastVersion).keys()].reverse();
-};
-
-const getFeaturesForVersion = (version) => {
-  return fetch(`https://chromestatus.com/api/v0/features?milestone=${version}`)
-    .then(resposnse => new Response(resposnse.body.pipeThrough(new StripStream()), {
-      status: 200, headers: {
-        'content-type': 'application/json'
-      }
-    }))
-    .then(response => response.json());
-};
 
 export default async function render(request: Request): Response {
   const url = new URL(request.url);
