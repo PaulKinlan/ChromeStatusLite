@@ -4,6 +4,8 @@ import { StripStream } from "../stream-utils.ts";
 import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
+import nav from "../ui-components/nav.ts";
+
 export default async function render(request: Request): Response {
   return template`
   <!doctype html>
@@ -16,6 +18,7 @@ export default async function render(request: Request): Response {
 </head>
 
 <body>
+  ${nav}
   <h1>Deprecation Calendar</h1>
   <div id="output">
     ${renderDeprecations()}

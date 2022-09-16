@@ -3,6 +3,8 @@ import { getChannels, getVersions, getFeaturesForVersion } from "../lib/utils.ts
 import { StripStream } from "../stream-utils.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
+import nav from "../ui-components/nav.ts";
+
 const renderData = async (version, versionData) => {
   const featuresByType = versionData.features_by_type;
 
@@ -137,6 +139,7 @@ export default async function render(request: Request): Response {
 </head>
 
 <body>
+  ${nav()}
   <h1>Create the release blog</h1>
   <form method="GET" action="">
     <label for="version">Chrome version</label>
