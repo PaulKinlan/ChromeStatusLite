@@ -1,10 +1,14 @@
 import template from "../flora.ts";
+import { getVersions, getChannels } from "../lib/utils.ts";
 import { StripStream } from "../stream-utils.ts";
 import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 export default async function render(request: Request): Response {
-    return template`
+
+  const versions = await getVersions();
+
+  return template`
   <!doctype html>
 <html>
 
@@ -16,6 +20,14 @@ export default async function render(request: Request): Response {
 
 <body>
   <h1>Deprecation Calendar</h1>
+  <form method="GET" action="/deprecations">
+    <label for="version">Chrome version</label>
+    <select name="version" id="version">
+      <option>Pick a version</option>
+      ${template`${versions.map((item) => template`<option value=${item}>${item}</option>`)}`};
+      </select>
+      <noscript><input type=submit></noscript>
+  </form>
   <div id="output">
     ${renderDeprecations()}
   </div>
@@ -57,26 +69,16 @@ const renderDeprecation = async (deprecation, channels) => {
 };
 
 const getFeatures = () => {
-    return fetch(`https://chromestatus.com/api/v0/features`)
-      .then(response => new Response(response.body.pipeThrough(new StripStream()), {
-        status: 200, headers: {
-          'content-type': 'application/json'
-        }
-      }))
-      .then(response => response.json());
-  };
-
-const getDeprecations = async () => {
-    let features = await getFeatures();
-    return features.features.filter(f => f['feature_type_int'] === 3)
-}
-
-const getChannels = (start, end) => {
-    return fetch(`https://chromestatus.com/api/v0/channels?start=${start}&end=${end}`)
+  return fetch(`https://chromestatus.com/api/v0/features`)
     .then(response => new Response(response.body.pipeThrough(new StripStream()), {
       status: 200, headers: {
         'content-type': 'application/json'
       }
     }))
-    .then(response => response.json());    
+    .then(response => response.json());
+};
+
+const getDeprecations = async () => {
+  let features = await getFeatures();
+  return features.features.filter(f => f['feature_type_int'] === 3)
 }
