@@ -22,8 +22,17 @@ export const getVersions = async () => {
   return [...Array(lastVersion).keys()].reverse();
 };
 
-export const getFeaturesForVersion = (version) => {
-  return fetch(`https://chromestatus.com/api/v0/features?milestone=${version}`)
+export const getFeatures = () => {
+  return getFeaturesForVersion();
+};
+
+export const getFeaturesForVersion = (version?: number) => {
+  let queryString = ""
+  if (version != undefined) {
+    queryString = `?milestone = ${version}`;
+  }
+
+  return fetch(`https://chromestatus.com/api/v0/features${querySting}`)
     .then(resposnse => new Response(resposnse.body.pipeThrough(new StripStream()), {
       status: 200, headers: {
         'content-type': 'application/json'
