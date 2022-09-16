@@ -32,7 +32,11 @@ export const getFeaturesForVersion = (version?: number) => {
     queryString = `?milestone = ${version}`;
   }
 
-  return fetch(`https://chromestatus.com/api/v0/features${queryString}`)
+  const url = `https://chromestatus.com/api/v0/features${queryString}`;
+
+  console.log(url)
+
+  return fetch(url)
     .then(resposnse => new Response(resposnse.body.pipeThrough(new StripStream()), {
       status: 200, headers: {
         'content-type': 'application/json'
