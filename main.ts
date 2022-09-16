@@ -5,6 +5,7 @@ import { contentType } from "https://deno.land/std@0.152.0/media_types/mod.ts";
 import { Route } from "./src/types.ts";
 import { StripStream } from "./src/stream-utils.ts";
 import index from "./src/routes/index.ts";
+import deprecations from "./src/routes/deprecations.ts";
 
 class StaticFileHandler {
 
@@ -42,6 +43,12 @@ serve((req: Request) => {
       new URLPattern({ pathname: "/" }),
       (request) => {
         return index(request);
+      }
+    ],
+    [
+      new URLPattern({ pathname: "/deprecations"}),
+      (request) => {
+        return deprecations(request);
       }
     ],
     // Fall through.
