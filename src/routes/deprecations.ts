@@ -1,33 +1,22 @@
 import template from "../flora.ts";
-import { getVersions, getChannels, getFeatures } from "../lib/utils.ts";
+import { getChannels, getFeatures } from "../lib/utils.ts";
 import { StripStream } from "../stream-utils.ts";
 import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 export default async function render(request: Request): Response {
-
-  const versions = await getVersions();
-
   return template`
   <!doctype html>
 <html>
 
 <head>
-  <script src="/scripts/index.js" type="module"></script>
+  <script src="/scripts/deprecations.js" type="module"></script>
   <title>Chrome Deprection Calendar</title>
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 
 <body>
   <h1>Deprecation Calendar</h1>
-  <form method="GET" action="/deprecations">
-    <label for="version">Chrome version</label>
-    <select name="version" id="version">
-      <option>Pick a version</option>
-      ${template`${versions.map((item) => template`<option value=${item}>${item}</option>`)}`};
-      </select>
-      <noscript><input type=submit></noscript>
-  </form>
   <div id="output">
     ${renderDeprecations()}
   </div>
