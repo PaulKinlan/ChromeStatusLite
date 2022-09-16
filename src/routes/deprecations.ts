@@ -18,7 +18,7 @@ export default async function render(request: Request): Response {
 </head>
 
 <body>
-  ${nav}
+  ${nav()}
   <h1>Deprecation Calendar</h1>
   <div id="output">
     ${renderDeprecations()}
