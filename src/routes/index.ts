@@ -1,5 +1,5 @@
 import template from "../flora.ts";
-import { getChannels, getVersions, getFeaturesForVersion } from "../lib/utils.ts";
+import { ChromeStatusAPI } from "../lib/utils.ts";
 import { StripStream } from "../stream-utils.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
@@ -125,10 +125,11 @@ const renderRemovedFeatures = (removed, version) => template`
 export default async function render(request: Request): Response {
   const url = new URL(request.url);
   const version = url.searchParams.get("version") || 106;
-  const versions = await getVersions();
-  const features = await getFeaturesForVersion(version);
+  const chromeStatusAPI = ChromeStatusAPI.getInstance();
+  const versions = await chromeStatusAPI.getVersions();
+  const features = await chromeStatusAPI.getFeaturesForVersion(version);
 
-  console.log(features)
+  // console.log(features)
 
   return template`
   <!doctype html>

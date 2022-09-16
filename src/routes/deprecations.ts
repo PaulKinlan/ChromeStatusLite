@@ -1,5 +1,5 @@
 import template from "../flora.ts";
-import { getChannels, getFeatures } from "../lib/utils.ts";
+import { ChromeStatusAPI } from "../lib/utils.ts";
 import { StripStream } from "../stream-utils.ts";
 import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
@@ -32,7 +32,8 @@ export default async function render(request: Request): Response {
 const renderDeprecations = async () => {
   const deprecations = (await getDeprecations()).sort((a, b) => a.browsers.chrome.desktop - b.browsers.chrome.desktop);
   const versions = deprecations.map((f) => { return f.browsers.chrome.desktop; }).sort();
-  const channels = await getChannels(versions.at(0), versions.at(-1));
+  const chromeStatusAPI = ChromeStatusAPI.getInstance();
+  const channels = await chromeStatusAPI.getChannels(versions.at(0), versions.at(-1));
   return template`
         <table>
         <tr>
@@ -61,6 +62,7 @@ const renderDeprecation = async (deprecation, channels) => {
 };
 
 const getDeprecations = async () => {
-  let features = await getFeatures();
+  const chromeStatusAPI = ChromeStatusAPI.getInstance();
+  let features = await chromeStatusAPI.getFeatures();
   return features.features.filter(f => f['feature_type_int'] === 3)
 }
