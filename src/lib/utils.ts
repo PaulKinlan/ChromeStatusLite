@@ -1,14 +1,19 @@
 import { StripStream } from "../stream-utils.ts";
 
-export const getChannels = () => {
-  return fetch(`https://chromestatus.com/api/v0/channels`)
-    .then(resposnse => new Response(resposnse.body.pipeThrough(new StripStream()), {
+const getChannels = (start?: number, end?: number) => {
+  let queryString;
+  if (start != undefined && end != undefined) {
+    queryString = `?start=${start}&end=${end}`;
+  }
+
+  return fetch(`https://chromestatus.com/api/v0/channels${queryString}`)
+    .then(response => new Response(response.body.pipeThrough(new StripStream()), {
       status: 200, headers: {
         'content-type': 'application/json'
       }
     }))
     .then(response => response.json());
-};
+}
 
 export const getVersions = async () => {
   const versionData = await getChannels();

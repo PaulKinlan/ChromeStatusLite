@@ -1,5 +1,5 @@
 import template from "../flora.ts";
-import { getVersions } from "../lib/utils.ts";
+import { getVersions, getChannels } from "../lib/utils.ts";
 import { StripStream } from "../stream-utils.ts";
 import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
 
@@ -77,14 +77,4 @@ const getFeatures = () => {
 const getDeprecations = async () => {
   let features = await getFeatures();
   return features.features.filter(f => f['feature_type_int'] === 3)
-}
-
-const getChannels = (start, end) => {
-  return fetch(`https://chromestatus.com/api/v0/channels?start=${start}&end=${end}`)
-    .then(response => new Response(response.body.pipeThrough(new StripStream()), {
-      status: 200, headers: {
-        'content-type': 'application/json'
-      }
-    }))
-    .then(response => response.json());
 }
