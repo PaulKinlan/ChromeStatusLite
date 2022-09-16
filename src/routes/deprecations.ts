@@ -2,6 +2,7 @@ import template from "../flora.ts";
 import { getVersions, getChannels } from "../lib/utils.ts";
 import { StripStream } from "../stream-utils.ts";
 import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
+import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 export default async function render(request: Request): Response {
 
@@ -37,31 +38,34 @@ export default async function render(request: Request): Response {
 }
 
 const renderDeprecations = async () => {
-  const deprecations = (await getDeprecations()).sort((a, b) => a.browsers.chrome.desktop - b.browsers.chrome.desktop);
-  const versions = deprecations.map((f) => { return f.browsers.chrome.desktop; }).sort();
-  const channels = await getChannels(versions.at(0), versions.at(-1));
-  return template`
-      <table>
-      <tr>
-          <th>Date</th>
-          <th>Name</th>
-          <th>Chrome Version</th>
-      </tr>
-      ${deprecations.map(deprecation => renderDeprecation(deprecation, channels))}
-      </table>
-  `;
+    const deprecations = (await getDeprecations()).sort((a, b) => a.browsers.chrome.desktop - b.browsers.chrome.desktop);
+    const versions = deprecations.map((f) => {return f.browsers.chrome.desktop;}).sort();
+    const channels = await getChannels(versions.at(0), versions.at(-1));
+    return template `
+        <table>
+        <tr>
+            <th>Date</th>
+            <th>Name</th>
+            <th>Intent Stage</th>
+            <th>Chrome Version</th>
+        </tr>
+        ${deprecations.map(deprecation => renderDeprecation(deprecation, channels))}
+        </table>
+    `;
 };
 
 const renderDeprecation = async (deprecation, channels) => {
-  let channel = channels[deprecation.browsers.chrome.desktop];
-  let date = new Date(channel.stable_date);
-  return template`
-      <tr>
-          <td>${format(date, 'yyyy-MM-dd')}</td>
-          <td>${deprecation.name}</td>
-          <td>${deprecation.browsers.chrome.desktop}</td>
-      </tr>
-  `;
+    let channel = channels[deprecation.browsers.chrome.desktop];
+    let date = new Date(channel.stable_date);
+    let name = escapeHtml(deprecation.name);
+    return template `
+        <tr>
+            <td>${format(date, 'yyyy-MM-dd')}</td>
+            <td><a href="https://chromestatus.com/feature/${deprecation.id}">${name}</a></td>
+            <td>${escapeHtml(deprecation.intent_stage)}</td>
+            <td><a href="/?version=${deprecation.browsers.chrome.desktop}">${deprecation.browsers.chrome.desktop}</a></td>
+        </tr>
+    `;
 };
 
 const getFeatures = () => {
