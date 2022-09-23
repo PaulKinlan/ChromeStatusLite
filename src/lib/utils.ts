@@ -43,6 +43,10 @@ export class ChromeStatusAPI {
     return [...Array(lastVersion).keys()].reverse();
   }
 
+  public async getFeaturesByType(type: number): Promise<any> {
+    return this.fetchJson(`/features?q=feature_type=${type}`);
+  }
+
   public async getFeatures(): Promise<any> {
     return this.getFeaturesForVersion();
   }

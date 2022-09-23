@@ -30,8 +30,28 @@ export default async function render(request: Request): Response {
 }
 
 const renderDeprecations = async () => {
-  const deprecations = (await getDeprecations()).sort((a, b) => a.browsers.chrome.desktop - b.browsers.chrome.desktop);
-  const versions = deprecations.map((f) => { return f.browsers.chrome.desktop; }).sort();
+  const deprecationsSort = (a, b) => {
+    // Move features without versions to end of list.
+    if (!b.browsers.chrome.desktop) {
+      return -1;
+    }
+
+    if (!a.browsers.chrome.desktop) {
+      return 1;
+    }
+
+    // Sort by most recent feature.
+    return parseInt(b.browsers.chrome.desktop) - parseInt(a.browsers.chrome.desktop);
+  };
+
+  const deprecations = (await getDeprecations()).sort(deprecationsSort);
+
+  // Map features to browser versions, removing features that don't have version.
+  const versions = deprecations
+      .map(f => f.browsers.chrome.desktop)
+      .filter(f => f !== undefined)
+      .sort((a, b) => parseInt(a) - parseInt(b));
+
   const chromeStatusAPI = ChromeStatusAPI.getInstance();
   const channels = await chromeStatusAPI.getChannels(versions.at(0), versions.at(-1));
   return template`
@@ -49,11 +69,15 @@ const renderDeprecations = async () => {
 
 const renderDeprecation = async (deprecation, channels) => {
   let channel = channels[deprecation.browsers.chrome.desktop];
-  let date = new Date(channel.stable_date);
+  let date = 'N/A';
+  if (channel && channel.stable_date) {
+    date = format(new Date(channel.stable_date), 'yyyy-MM-dd');
+  }
+
   let name = escapeHtml(deprecation.name);
   return template`
         <tr>
-            <td>${format(date, 'yyyy-MM-dd')}</td>
+            <td>${date}</td>
             <td><a href="https://chromestatus.com/feature/${deprecation.id}">${name}</a></td>
             <td>${escapeHtml(deprecation.intent_stage)}</td>
             <td><a href="/?version=${deprecation.browsers.chrome.desktop}">${deprecation.browsers.chrome.desktop}</a></td>
@@ -63,6 +87,5 @@ const renderDeprecation = async (deprecation, channels) => {
 
 const getDeprecations = async () => {
   const chromeStatusAPI = ChromeStatusAPI.getInstance();
-  let features = await chromeStatusAPI.getFeatures();
-  return features.features.filter(f => f['feature_type_int'] === 3)
+  return (await chromeStatusAPI.getFeaturesByType(3)).features;
 }
