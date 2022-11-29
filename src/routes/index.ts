@@ -67,7 +67,7 @@ const renderEnabled = (enabled, version) => template`
     <p>This release of Chrome had ${enabled.length} new features.</p>
     ${enabled.map(item =>
   template`<h3>${item.name}</h3>
-      <p>${escapeHtml(item.summary)} <a href=${item.launch_bug_url}>#</a></p>
+      <p>${escapeHtml(item.summary)} <a href=${item.browsers.chrome.bug}>#</a></p>
       ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards?.status?.text)}</a>"
@@ -79,7 +79,7 @@ const renderOriginTrials = (ot, version) => template`
     <p>This release of Chrome had ${ot.length} new origin trials.</p>
     ${ot.map(item =>
   template`<h3>${item.name}</h3>
-      <p>${escapeHtml(item.summary)} <a href=${item.launch_bug_url}>#</a></p>
+      <p>${escapeHtml(item.summary)} <a href=${item.browsers.chrome.bug}>#</a></p>
       ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards?.status?.text)}</a>"
@@ -91,7 +91,7 @@ const renderFlaggedFeatures = (flagged, version) => template`
     <p>This release of Chrome had ${flagged.length} are available behind a flag.</p>
     ${flagged.map(item =>
   template`<h3>${item.name}</h3>
-      <p>${escapeHtml(item.summary)} <a href=${item.launch_bug_url}>#</a></p>
+      <p>${escapeHtml(item.summary)} <a href=${item.browsers.chrome.bug}>#</a></p>
       ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards?.status?.text)}</a>"
@@ -103,7 +103,7 @@ const renderDeprecatedFeatures = (deprecated, version) => template`
     <p>This release of Chrome had ${deprecated.length} features deprecated.</p>
     ${deprecated.map(item =>
   template`<h4>${item.name}</h4>
-      <p>${escapeHtml(item.summary)} <a href=${item.launch_bug_url}>#</a></p>
+      <p>${escapeHtml(item.summary)} <a href=${item.browsers.chrome.bug}>#</a></p>
       ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards?.status?.text)}</a>"
@@ -115,7 +115,7 @@ const renderRemovedFeatures = (removed, version) => template`
     <p>This release of Chrome had ${removed.length} features removed.</p>
     ${removed.map(item =>
   template`<h4>${item.name}</h4>
-      <p>${escapeHtml(item.summary)} <a href=${item.launch_bug_url}>#</a></p>
+      <p>${escapeHtml(item.summary)} <a href=${item.browsers.chrome.bug}>#</a></p>
       ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
       <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards?.status?.text)}</a>"
