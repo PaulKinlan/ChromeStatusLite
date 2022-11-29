@@ -70,7 +70,7 @@ const renderEnabled = (enabled, version) => template`
       <p>${escapeHtml(item.summary)} <a href=${item.launch_bug_url}>#</a></p>
       ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards.status.text)}</a>"
+      <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards?.status?.text)}</a>"
       ${renderResources(item.resources)}`
 )}`;
 
@@ -82,7 +82,7 @@ const renderOriginTrials = (ot, version) => template`
       <p>${escapeHtml(item.summary)} <a href=${item.launch_bug_url}>#</a></p>
       ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards.status.text)}</a>"
+      <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards?.status?.text)}</a>"
       ${renderResources(item.resources)}`
 )}`;
 
@@ -94,7 +94,7 @@ const renderFlaggedFeatures = (flagged, version) => template`
       <p>${escapeHtml(item.summary)} <a href=${item.launch_bug_url}>#</a></p>
       ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards.status.text)}</a>"
+      <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards?.status?.text)}</a>"
       ${renderResources(item.resources)}`
 )}`;
 
@@ -106,7 +106,7 @@ const renderDeprecatedFeatures = (deprecated, version) => template`
       <p>${escapeHtml(item.summary)} <a href=${item.launch_bug_url}>#</a></p>
       ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards.status.text)}</a>"
+      <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards?.status?.text)}</a>"
       ${renderResources(item.resources)}`
 )}`;
 
@@ -118,7 +118,7 @@ const renderRemovedFeatures = (removed, version) => template`
       <p>${escapeHtml(item.summary)} <a href=${item.launch_bug_url}>#</a></p>
       ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
       <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards.status.text)}</a>"
+      <p>This feature specified in "<a href=${item.standards.spec}>${escapeHtml(item.standards?.status?.text)}</a>"
       ${renderResources(item.resources)}`
 )}`;
 
