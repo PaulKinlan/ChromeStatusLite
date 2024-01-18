@@ -6,9 +6,10 @@ import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import nav from "../ui-components/nav.ts";
 
 const renderData = async (version, versionData) => {
-  const enabled = versionData.filter(
-    (feature) => feature.browsers.chrome.status.text == "Enabled by default"
-  );
+  const enabled = versionData.filter((feature) => {
+    console.log(feature.browsers.chrome);
+    return feature.browsers.chrome.status.text == "Enabled by default";
+  });
   const originTrials = versionData.filter(
     (feature) => feature.browsers.chrome.origintrial
   );
