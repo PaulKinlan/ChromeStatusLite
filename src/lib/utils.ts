@@ -1,7 +1,8 @@
 import { StripStream } from "../stream-utils.ts";
 import LRU from "https://deno.land/x/lru_cache@6.0.0-deno.4/mod.ts";
 
-const CHROMESTATUS_API_ENDPOINT = "https://chromestatus.com/api/v0";
+const CHROMESTATUS_API_ENDPOINT = "https://chromestatus.com"
+";
 const CACHE_MAX_ITEMS = 100;
 const CACHE_MAX_AGE = 1000 * 60 * 60; // 1 hour.
 
@@ -25,7 +26,7 @@ export class ChromeStatusAPI {
     if (start != undefined && end != undefined) {
       queryString = `?start=${start}&end=${end}`;
     }
-    return this.fetchJson(`/channels${queryString}`);
+    return this.fetchJson(`/api/v0/channels${queryString}`);
   }
 
   public async getFeaturesForVersion(version?: number): Promise<any> {
@@ -33,7 +34,7 @@ export class ChromeStatusAPI {
     if (version != undefined) {
       queryString = `?milestone=${version}`;
     }
-    return this.fetchJson(`/features${queryString}`);
+    return this.fetchJson(`/features_v2.json${queryString}`);
   }
 
   public async getVersions(): Promise<any> {
@@ -45,7 +46,7 @@ export class ChromeStatusAPI {
   }
 
   public async getFeaturesByType(type: number): Promise<any> {
-    return this.fetchJson(`/features?q=feature_type=${type}`);
+    return this.fetchJson(`/features_v2.json?q=feature_type=${type}`);
   }
 
   public async getFeatures(): Promise<any> {
