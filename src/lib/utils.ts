@@ -33,7 +33,11 @@ export class ChromeStatusAPI {
     if (version != undefined) {
       queryString = `?milestone=${version}`;
     }
-    return this.fetchJson(`/features_v2.json${queryString}`);
+    return ((await this.fetchJson(`/features_v2.json`)) as any[]).filter(
+      (feature) => {
+        feature.milestone != version;
+      }
+    );
   }
 
   public async getVersions(): Promise<any> {
