@@ -38,8 +38,7 @@ export class ChromeStatusAPI {
 
   public async getVersions(): Promise<any> {
     const versionData = await this.getChannels();
-    console.log(versionData);
-    const lastVersion = Number.parseInt(versionData.canary.version);
+    const lastVersion = Number.parseInt(versionData.dev.version);
 
     return [...Array(lastVersion).keys()].reverse();
   }
