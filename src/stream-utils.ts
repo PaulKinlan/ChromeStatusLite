@@ -5,6 +5,7 @@ export class StripStream extends TransformStream {
       transform(chunk, controller) {
         if (parsedFirstChunk == false) {
           const firstChunk = chunk.slice(0, 5);
+          console.log(firstChunk.toString());
           if (firstChunk.toString() != ")]}'\n") {
             // 41,  93, 125,  39, 10 == ")]}'\n"
             controller.enqueue(chunk.slice(5));
