@@ -14,9 +14,7 @@ const renderData = async (version, versionData) => {
     (feature) => feature.browsers.chrome.origintrial
   );
   const flaggedFeatures = versionData.filter(
-    (feature) =>
-      feature.browsers.chrome.status.text ==
-      "In developer trial (Behind a flag)"
+    (feature) => feature.browsers.chrome.flag
   );
   const removed = versionData.filter(
     (feature) => feature.browsers.chrome.status.text == "Removed"
