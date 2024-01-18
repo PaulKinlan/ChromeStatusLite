@@ -70,7 +70,6 @@ export class ChromeStatusAPI {
         };
 
       const text = await response.text();
-      console.log(text);
       json = JSON.parse(text);
       this.cache.set(path, json);
     }

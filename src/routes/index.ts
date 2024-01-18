@@ -6,7 +6,6 @@ import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import nav from "../ui-components/nav.ts";
 
 const renderData = async (version, versionData) => {
-  console.log(versionData);
   const enabled = versionData.filter(
     (feature) => feature.browsers.chrome.status.text == "Enabled by default"
   );
@@ -24,6 +23,8 @@ const renderData = async (version, versionData) => {
   const deprecated = versionData.filter(
     (feature) => feature.browsers.chrome.status.text == "Deprecated"
   );
+
+  console.log(enabled);
 
   return template`
   <h1>Chrome ${version}</h1>
@@ -228,8 +229,6 @@ export default async function render(request: Request): Response {
   const chromeStatusAPI = ChromeStatusAPI.getInstance();
   const versions = await chromeStatusAPI.getVersions();
   const features = await chromeStatusAPI.getFeaturesForVersion(version);
-
-  // console.log(features)
 
   return template`
   <!doctype html>
