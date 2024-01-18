@@ -35,6 +35,7 @@ export class ChromeStatusAPI {
     }
     return ((await this.fetchJson(`/features_v2.json`)) as any[]).filter(
       (feature) => {
+        console.log(feature.milestone, version);
         feature.milestone != version;
       }
     );
