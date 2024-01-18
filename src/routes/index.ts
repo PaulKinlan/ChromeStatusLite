@@ -6,15 +6,23 @@ import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import nav from "../ui-components/nav.ts";
 
 const renderData = async (version, versionData) => {
-  const featuresByType = versionData.features_by_type;
-
-  console.log(versionData);
-
-  const enabled = featuresByType["Enabled by default"];
-  const originTrials = featuresByType["Origin trial"];
-  const flaggedFeatures = featuresByType["In developer trial (Behind a flag)"];
-  const removed = featuresByType["Removed"];
-  const deprecated = featuresByType["Deprecated"];
+  const enabled = versionData.filter(
+    (feature) => feature.browsers.chrome.status.text == "Enabled by default"
+  );
+  const originTrials = versionData.filter(
+    (feature) => feature.browsers.chrome.origintrial
+  );
+  const flaggedFeatures = versionData.filter(
+    (feature) =>
+      feature.browsers.chrome.status.text ==
+      "In developer trial (Behind a flag)"
+  );
+  const removed = versionData.filter(
+    (feature) => feature.browsers.chrome.status.text == "Removed"
+  );
+  const deprecated = versionData.filter(
+    (feature) => feature.browsers.chrome.status.text == "Deprecated"
+  );
 
   return template`
   <h1>Chrome ${version}</h1>
