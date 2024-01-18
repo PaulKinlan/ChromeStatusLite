@@ -1,8 +1,7 @@
 import { StripStream } from "../stream-utils.ts";
 import LRU from "https://deno.land/x/lru_cache@6.0.0-deno.4/mod.ts";
 
-const CHROMESTATUS_API_ENDPOINT = "https://chromestatus.com"
-";
+const CHROMESTATUS_API_ENDPOINT = "https://chromestatus.com";
 const CACHE_MAX_ITEMS = 100;
 const CACHE_MAX_AGE = 1000 * 60 * 60; // 1 hour.
 
