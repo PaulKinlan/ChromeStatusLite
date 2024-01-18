@@ -27,7 +27,7 @@ const renderData = async (version, versionData) => {
   <h1>Chrome ${version}</h1>
   <a href="#enabled">Enabled (${enabled.length})</a> |
   <a href="#origin-trial">Origin Trial (${originTrials.length})</a> |
-  <a href="#flagged">Flagged (${flaggedFeatures.length})</a> |
+  <a href="#flagged">Behind a flag (${flaggedFeatures.length})</a> |
   <a href="#deprecated">Deprecated (${deprecated.length})</a> |
   <a href="#removed">Removed (${removed.length})</a>
   ${renderEnabled(enabled, version)}
