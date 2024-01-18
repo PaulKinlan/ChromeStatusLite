@@ -229,7 +229,7 @@ export default async function render(request: Request): Response {
   const versions = await chromeStatusAPI.getVersions();
   const features = await chromeStatusAPI.getFeaturesForVersion(version);
 
-  console.log(features);
+  console.log("FEATURES", features);
   return template`
   <!doctype html>
 <html>
