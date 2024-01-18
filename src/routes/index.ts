@@ -23,6 +23,13 @@ const renderData = async (version, versionData) => {
       (feature) => feature.browsers.chrome.status.text == "Deprecated"
     ) || [];
 
+  console.log(
+    enabled.length,
+    originTrials.length,
+    flaggedFeatures.length,
+    removed.length,
+    deprecated.length
+  );
   return template`
   <h1>Chrome ${version}</h1>
   <a href="#enabled">Enabled (${enabled.length})</a> |
