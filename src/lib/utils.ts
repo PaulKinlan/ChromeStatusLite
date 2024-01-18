@@ -36,7 +36,8 @@ export class ChromeStatusAPI {
     return ((await this.fetchJson(`/features_v2.json`)) as any[]).filter(
       (feature) => {
         console.log(feature);
-        feature.milestone == null || feature.milestone.toString() == version;
+        feature.browsers.milestone == null ||
+          feature.browsers.milestone.toString() == version;
       }
     );
   }
