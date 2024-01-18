@@ -65,7 +65,9 @@ export class ChromeStatusAPI {
           },
         };
 
-      json = await response.json();
+      const text = await response.text();
+      console.log(text);
+      json = JSON.parse(text);
       this.cache.set(path, json);
     }
     return json;
