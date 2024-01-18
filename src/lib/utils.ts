@@ -55,6 +55,7 @@ export class ChromeStatusAPI {
     let json = this.cache.get(path);
 
     if (!json) {
+      console.log(CHROMESTATUS_API_ENDPOINT + path);
       let response = await fetch(CHROMESTATUS_API_ENDPOINT + path);
       (response = new Response(response.body?.pipeThrough(new StripStream()))),
         {
@@ -63,6 +64,7 @@ export class ChromeStatusAPI {
             "content-type": "application/json",
           },
         };
+
       json = await response.json();
       this.cache.set(path, json);
     }
