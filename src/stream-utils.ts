@@ -9,6 +9,8 @@ export class StripStream extends TransformStream {
           if (firstChunk.toString() == "41,93,125,39,10") {
             // 41,  93, 125,  39, 10 == ")]}'\n"
             controller.enqueue(chunk.slice(5));
+          } else {
+            controller.enqueue(chunk);
           }
           parsedFirstChunk = true;
         } else {
