@@ -8,6 +8,8 @@ import nav from "../ui-components/nav.ts";
 const renderData = async (version, versionData) => {
   const featuresByType = versionData.features_by_type;
 
+  console.log(versionData);
+
   const enabled = featuresByType["Enabled by default"];
   const originTrials = featuresByType["Origin trial"];
   const flaggedFeatures = featuresByType["In developer trial (Behind a flag)"];
@@ -52,75 +54,164 @@ const renderData = async (version, versionData) => {
   ${renderDeprecatedFeatures(deprecated, version)}
   ${renderRemovedFeatures(removed, version)}
   `;
-}
+};
 
 const renderResources = (resources) => {
-  return (resources.length > 0)
+  return resources.length > 0
     ? template`<h4>Resources</h4>
-      ${('docs' in resources) ? template`<p>Docs: ${resources.docs.map(resource => template`<a href=${resource}>${resource}</a>`)}</p>` : template`No linked docs`}</p>
-      ${('samples' in resources) ? template`<p>Samples: ${resources.samples.map(resource => template`<a href=${resource}>${resource}</a>`)}</p>` : template`No linked samples`}</p>`
+      ${
+        "docs" in resources
+          ? template`<p>Docs: ${resources.docs.map(
+              (resource) => template`<a href=${resource}>${resource}</a>`
+            )}</p>`
+          : template`No linked docs`
+      }</p>
+      ${
+        "samples" in resources
+          ? template`<p>Samples: ${resources.samples.map(
+              (resource) => template`<a href=${resource}>${resource}</a>`
+            )}</p>`
+          : template`No linked samples`
+      }</p>`
     : template``;
 };
 
 const renderEnabled = (enabled, version) => template`
     <h2 id="enabled">Enabled by default in ${version}</h2>
     <p>This release of Chrome had ${enabled.length} new features.</p>
-    ${enabled.map(item =>
-  template`<h3>${item.name}</h3>
-      <p>${escapeHtml(item.summary)} <a href=${item.browsers.chrome.bug}>#</a></p>
-      ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
-      <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${item.standards.spec}>in this Spec</a>"
+    ${enabled.map(
+      (item) =>
+        template`<h3>${item.name}</h3>
+      <p>${escapeHtml(item.summary)} <a href=${
+          item.browsers.chrome.bug
+        }>#</a></p>
+      ${
+        "motivation" in item
+          ? template`<p>${
+              item.creator
+            } created this feature because: <blockquote>${escapeHtml(
+              item.motivation
+            )}</blockquote></p>`
+          : template``
+      }
+      <p>This feature was initially proposed in <a href=${
+        item.initial_public_proposal_url
+      }>${item.initial_public_proposal_url}</a></p>
+      <p>This feature specified in "<a href=${
+        item.standards.spec
+      }>in this Spec</a>"
       ${renderResources(item.resources)}`
-)}`;
+    )}`;
 
 const renderOriginTrials = (ot, version) => template`
     <h2 id="origin-trial">Origin Trials in-progress in ${version}</h2>
     <p>This release of Chrome had ${ot.length} new origin trials.</p>
-    ${ot.map(item =>
-  template`<h3>${item.name}</h3>
-      <p>${escapeHtml(item.summary)} <a href=${item.browsers.chrome.bug}>#</a></p>
-      ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
-      <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${item.standards.spec}>in this Spec</a>"
+    ${ot.map(
+      (item) =>
+        template`<h3>${item.name}</h3>
+      <p>${escapeHtml(item.summary)} <a href=${
+          item.browsers.chrome.bug
+        }>#</a></p>
+      ${
+        "motivation" in item
+          ? template`<p>${
+              item.creator
+            } created this feature because: <blockquote>${escapeHtml(
+              item.motivation
+            )}</blockquote></p>`
+          : template``
+      }
+      <p>This feature was initially proposed in <a href=${
+        item.initial_public_proposal_url
+      }>${item.initial_public_proposal_url}</a></p>
+      <p>This feature specified in "<a href=${
+        item.standards.spec
+      }>in this Spec</a>"
       ${renderResources(item.resources)}`
-)}`;
+    )}`;
 
 const renderFlaggedFeatures = (flagged, version) => template`
     <h2 id="flagged">Flagged features in ${version}</h2>
-    <p>This release of Chrome had ${flagged.length} are available behind a flag.</p>
-    ${flagged.map(item =>
-  template`<h3>${item.name}</h3>
-      <p>${escapeHtml(item.summary)} <a href=${item.browsers.chrome.bug}>#</a></p>
-      ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
-      <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${item.standards.spec}>in this Spec</a>"
+    <p>This release of Chrome had ${
+      flagged.length
+    } are available behind a flag.</p>
+    ${flagged.map(
+      (item) =>
+        template`<h3>${item.name}</h3>
+      <p>${escapeHtml(item.summary)} <a href=${
+          item.browsers.chrome.bug
+        }>#</a></p>
+      ${
+        "motivation" in item
+          ? template`<p>${
+              item.creator
+            } created this feature because: <blockquote>${escapeHtml(
+              item.motivation
+            )}</blockquote></p>`
+          : template``
+      }
+      <p>This feature was initially proposed in <a href=${
+        item.initial_public_proposal_url
+      }>${item.initial_public_proposal_url}</a></p>
+      <p>This feature specified in "<a href=${
+        item.standards.spec
+      }>in this Spec</a>"
       ${renderResources(item.resources)}`
-)}`;
+    )}`;
 
 const renderDeprecatedFeatures = (deprecated, version) => template`
     <h3 id="deprecated">Deprecated features in ${version}</h3>
     <p>This release of Chrome had ${deprecated.length} features deprecated.</p>
-    ${deprecated.map(item =>
-  template`<h4>${item.name}</h4>
-      <p>${escapeHtml(item.summary)} <a href=${item.browsers.chrome.bug}>#</a></p>
-      ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
-      <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${item.standards.spec}>in this Spec</a>"
+    ${deprecated.map(
+      (item) =>
+        template`<h4>${item.name}</h4>
+      <p>${escapeHtml(item.summary)} <a href=${
+          item.browsers.chrome.bug
+        }>#</a></p>
+      ${
+        "motivation" in item
+          ? template`<p>${
+              item.creator
+            } created this feature because: <blockquote>${escapeHtml(
+              item.motivation
+            )}</blockquote></p>`
+          : template``
+      }
+      <p>This feature was initially proposed in <a href=${
+        item.initial_public_proposal_url
+      }>${item.initial_public_proposal_url}</a></p>
+      <p>This feature specified in "<a href=${
+        item.standards.spec
+      }>in this Spec</a>"
       ${renderResources(item.resources)}`
-)}`;
+    )}`;
 
 const renderRemovedFeatures = (removed, version) => template`
     <h3 id="removed">Removed features in ${version}</h3>
     <p>This release of Chrome had ${removed.length} features removed.</p>
-    ${removed.map(item =>
-  template`<h4>${item.name}</h4>
-      <p>${escapeHtml(item.summary)} <a href=${item.browsers.chrome.bug}>#</a></p>
-      ${('motivation' in item) ? template`<p>${item.creator} created this feature because: <blockquote>${escapeHtml(item.motivation)}</blockquote></p>` : template``}
-      <p>This feature was initially proposed in <a href=${item.initial_public_proposal_url}>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${item.standards.spec}>in this Spec</a>"
+    ${removed.map(
+      (item) =>
+        template`<h4>${item.name}</h4>
+      <p>${escapeHtml(item.summary)} <a href=${
+          item.browsers.chrome.bug
+        }>#</a></p>
+      ${
+        "motivation" in item
+          ? template`<p>${
+              item.creator
+            } created this feature because: <blockquote>${escapeHtml(
+              item.motivation
+            )}</blockquote></p>`
+          : template``
+      }
+      <p>This feature was initially proposed in <a href=${
+        item.initial_public_proposal_url
+      }>${item.initial_public_proposal_url}</a></p>
+      <p>This feature specified in "<a href=${
+        item.standards.spec
+      }>in this Spec</a>"
       ${renderResources(item.resources)}`
-)}`;
+    )}`;
 
 export default async function render(request: Request): Response {
   const url = new URL(request.url);
@@ -148,7 +239,9 @@ export default async function render(request: Request): Response {
     <label for="version">Chrome version</label>
     <select name="version" id="version">
       <option>Pick a version</option>
-      ${template`${versions.map((item) => template`<option value=${item}>${item}</option>`)}`};
+      ${template`${versions.map(
+        (item) => template`<option value=${item}>${item}</option>`
+      )}`};
       </select>
       <noscript><input type=submit></noscript>
   </form>
@@ -157,6 +250,11 @@ export default async function render(request: Request): Response {
   </div>
 </body>
 
-</html>`
-    .then(data => new Response(data, { status: 200, headers: { 'content-type': 'text/html' } }));
-};
+</html>`.then(
+    (data) =>
+      new Response(data, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      })
+  );
+}
