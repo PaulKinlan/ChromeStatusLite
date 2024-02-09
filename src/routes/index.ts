@@ -113,7 +113,7 @@ const renderEnabled = (enabled, version) => template`
       }>${item.initial_public_proposal_url}</a></p>
       <p>This feature was specified <a href=${
         item.standards.spec
-      }>in this Spec</a></p>.
+      }>in this Spec</a>.</p>
       ${renderResources(item.resources)}`
     )}`;
 
@@ -140,7 +140,7 @@ const renderOriginTrials = (ot, version) => template`
       }>${item.initial_public_proposal_url}</a></p>
       <p>This feature was specified <a href=${
         item.standards.spec
-      }>in this Spec</a></p>.
+      }>in this Spec</a>.</p>
       ${renderResources(item.resources)}`
     )}`;
 
@@ -169,7 +169,7 @@ const renderFlaggedFeatures = (flagged, version) => template`
       }>${item.initial_public_proposal_url}</a></p>
       <p>This feature was specified <a href=${
         item.standards.spec
-      }>in this Spec</a></p>.
+      }>in this Spec</a>.</p>
       ${renderResources(item.resources)}`
     )}`;
 
@@ -196,7 +196,7 @@ const renderDeprecatedFeatures = (deprecated, version) => template`
       }>${item.initial_public_proposal_url}</a></p>
       <p>This feature was specified <a href=${
         item.standards.spec
-      }>in this Spec</a></p>.
+      }>in this Spec</a>.</p>
       ${renderResources(item.resources)}`
     )}`;
 
@@ -223,7 +223,7 @@ const renderRemovedFeatures = (removed, version) => template`
       }>${item.initial_public_proposal_url}</a></p>
       <p>This feature was specified <a href=${
         item.standards.spec
-      }>in this Spec</a></p>.
+      }>in this Spec</a>.</p>
       ${renderResources(item.resources)}`
     )}`;
 
