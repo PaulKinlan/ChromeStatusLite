@@ -4,6 +4,7 @@ import { StripStream } from "../stream-utils.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
+import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
 
 const renderData = async (version, versionData) => {
   const enabled =
@@ -238,17 +239,12 @@ export default async function render(request: Request): Response {
 
 <body>
   ${nav()}
-  <h1>Create the release blog</h1>
-  <form method="GET" action="">
-    <label for="version">Chrome version</label>
-    <select name="version" id="version">
-      <option>Pick a version</option>
-      ${template`${versions.map(
-        (item) => template`<option value=${item}>${item}</option>`
-      )}`};
-      </select>
-      <noscript><input type=submit></noscript>
-  </form>
+  <h1>Chrome Release Summary</h1>
+  <p>Chrome vesion: ${template`${versions
+    .map((item) => template`<a href=${item}>${item}</a>`)
+    .join(", ")}`}
+  </p>;
+  
   <div id="output">
   ${renderData(version, features)}
   </div>
