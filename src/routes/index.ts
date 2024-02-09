@@ -111,9 +111,9 @@ const renderEnabled = (enabled, version) => template`
       <p>This feature was initially proposed in <a href=${
         item.initial_public_proposal_url
       }>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${
+      <p>This feature was specified <a href=${
         item.standards.spec
-      }>in this Spec</a>"
+      }>in this Spec</a></p>.
       ${renderResources(item.resources)}`
     )}`;
 
@@ -138,9 +138,9 @@ const renderOriginTrials = (ot, version) => template`
       <p>This feature was initially proposed in <a href=${
         item.initial_public_proposal_url
       }>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${
+      <p>This feature was specified <a href=${
         item.standards.spec
-      }>in this Spec</a>"
+      }>in this Spec</a></p>.
       ${renderResources(item.resources)}`
     )}`;
 
@@ -167,9 +167,9 @@ const renderFlaggedFeatures = (flagged, version) => template`
       <p>This feature was initially proposed in <a href=${
         item.initial_public_proposal_url
       }>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${
+      <p>This feature was specified <a href=${
         item.standards.spec
-      }>in this Spec</a>"
+      }>in this Spec</a></p>.
       ${renderResources(item.resources)}`
     )}`;
 
@@ -194,9 +194,9 @@ const renderDeprecatedFeatures = (deprecated, version) => template`
       <p>This feature was initially proposed in <a href=${
         item.initial_public_proposal_url
       }>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${
+      <p>This feature was specified <a href=${
         item.standards.spec
-      }>in this Spec</a>"
+      }>in this Spec</a></p>.
       ${renderResources(item.resources)}`
     )}`;
 
@@ -221,9 +221,9 @@ const renderRemovedFeatures = (removed, version) => template`
       <p>This feature was initially proposed in <a href=${
         item.initial_public_proposal_url
       }>${item.initial_public_proposal_url}</a></p>
-      <p>This feature specified in "<a href=${
+      <p>This feature was specified <a href=${
         item.standards.spec
-      }>in this Spec</a>"
+      }>in this Spec</a></p>.
       ${renderResources(item.resources)}`
     )}`;
 
