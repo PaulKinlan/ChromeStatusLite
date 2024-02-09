@@ -71,7 +71,12 @@ const renderData = async (version, versionData) => {
 };
 
 const renderResources = (resources) => {
-  if ("samples" in resources == false && "docs" in resources == false) {
+  if (
+    "samples" in resources &&
+    resources.samples.length == 0 &&
+    "docs" in resources &&
+    resources.docs.length == 0
+  ) {
     return template``;
   }
 
