@@ -8,7 +8,6 @@ import index from "./src/routes/index.ts";
 import deprecations from "./src/routes/deprecations.ts";
 
 class StaticFileHandler {
-
   #basePath: string = "";
 
   constructor(base: string) {
@@ -18,44 +17,50 @@ class StaticFileHandler {
   handler(request: Request): Response {
     const pathname = new URL(request.url).pathname;
     const extension = pathname.substr(pathname.lastIndexOf("."));
-    const resolvedPathname = (pathname == "" || pathname == "/") ? "/index.html" : pathname;
-    const path = join(Deno.cwd(), this.#basePath, resolvedPathname)
+    const resolvedPathname =
+      pathname == "" || pathname == "/" ? "/index.html" : pathname;
+    const path = join(Deno.cwd(), this.#basePath, resolvedPathname);
     const file = Deno.readFile(path)
-      .then(data => new Response(data, { status: 200, headers: { 'content-type': contentType(extension) } })) // Need to think about content tyoes.
-      .catch(_ => new Response("Not found", { status: 404 }));
+      .then(
+        (data) =>
+          new Response(data, {
+            status: 200,
+            headers: { "content-type": contentType(extension) },
+          })
+      ) // Need to think about content tyoes.
+      .catch((_) => new Response("Not found", { status: 404 }));
 
     return file;
   }
 
   get pattern(): URLPattern {
-    return new URLPattern({ pathname: "*" })
+    return new URLPattern({ pathname: "*" });
   }
 }
 
 serve((req: Request) => {
   const url = req.url;
   const version = new URL(url).searchParams.get("version") || 106;
-  const staticFiles = new StaticFileHandler('static');
-  let response: Response = new Response(new Response("Not found", { status: 404 }));
+  const staticFiles = new StaticFileHandler("static");
+  let response: Response = new Response(
+    new Response("Not found", { status: 404 })
+  );
 
   const routes: Array<Route> = [
     [
       new URLPattern({ pathname: "/" }),
       (request) => {
         return index(request);
-      }
+      },
     ],
     [
-      new URLPattern({ pathname: "/deprecations"}),
+      new URLPattern({ pathname: "/deprecations" }),
       (request) => {
         return deprecations(request);
-      }
+      },
     ],
     // Fall through.
-    [
-      staticFiles.pattern,
-      staticFiles.handler.bind(staticFiles)
-    ]
+    [staticFiles.pattern, staticFiles.handler.bind(staticFiles)],
   ];
 
   for (const [pattern, handler] of routes) {
