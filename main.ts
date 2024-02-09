@@ -40,7 +40,6 @@ class StaticFileHandler {
 
 serve((req: Request) => {
   const url = req.url;
-  const version = new URL(url).searchParams.get("version") || 106;
   const staticFiles = new StaticFileHandler("static");
   let response: Response = new Response(
     new Response("Not found", { status: 404 })
