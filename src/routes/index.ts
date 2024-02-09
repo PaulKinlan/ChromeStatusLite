@@ -240,8 +240,8 @@ export default async function render(request: Request): Response {
 <body>
   ${nav()}
   <h1>Chrome Release Summary</h1>
-  <p>Chrome vesion: ${template`${versions
-    .map((item) => template`<a href=${item}>${item}</a>`)
+  <p>Chrome version: ${template`${versions
+    .map((item) => `<a href=${item}>${item}</a>`)
     .join(", ")}`}
   </p>;
   
