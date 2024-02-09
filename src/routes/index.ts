@@ -71,7 +71,7 @@ const renderData = async (version, versionData) => {
 };
 
 const renderResources = (resources) => {
-  return resources.length > 0
+  return Object.keys(resources).length > 0
     ? template`<h4>Resources</h4>
       ${
         "docs" in resources
