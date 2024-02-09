@@ -242,7 +242,7 @@ export default async function render(request: Request): Response {
   ${nav()}
   <h1>Chrome Release Summary</h1>
   <p>Chrome version: ${template`${versions
-    .map((item) => `<a href=${item}>${item}</a>`)
+    .map((item) => `<a href="?version=${item}">${item}</a>`)
     .join(", ")}`}
   </p>
   <div id="output">
