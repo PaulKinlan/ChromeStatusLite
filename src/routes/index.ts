@@ -222,9 +222,10 @@ const renderRemovedFeatures = (removed, version) => template`
 
 export default async function render(request: Request): Response {
   const url = new URL(request.url);
-  const version = url.searchParams.get("version") || 106;
   const chromeStatusAPI = ChromeStatusAPI.getInstance();
   const versions = await chromeStatusAPI.getVersions();
+  const version = url.searchParams.get("version") || versions[0];
+
   const features = await chromeStatusAPI.getFeaturesForVersion(version);
 
   return template`
@@ -243,8 +244,7 @@ export default async function render(request: Request): Response {
   <p>Chrome version: ${template`${versions
     .map((item) => `<a href=${item}>${item}</a>`)
     .join(", ")}`}
-  </p>;
-  
+  </p>
   <div id="output">
   ${renderData(version, features)}
   </div>
