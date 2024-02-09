@@ -115,9 +115,6 @@ const renderEnabled = (enabled, version) => template`
             )}</blockquote></p>`
           : template``
       }
-      <p>This feature was initially proposed in <a href=${
-        item.initial_public_proposal_url
-      }>${item.initial_public_proposal_url}</a></p>
       <p>This feature was specified <a href=${
         item.standards.spec
       }>in this Spec</a>.</p>
@@ -142,9 +139,6 @@ const renderOriginTrials = (ot, version) => template`
             )}</blockquote></p>`
           : template``
       }
-      <p>This feature was initially proposed in <a href=${
-        item.initial_public_proposal_url
-      }>${item.initial_public_proposal_url}</a></p>
       <p>This feature was specified <a href=${
         item.standards.spec
       }>in this Spec</a>.</p>
@@ -171,9 +165,6 @@ const renderFlaggedFeatures = (flagged, version) => template`
             )}</blockquote></p>`
           : template``
       }
-      <p>This feature was initially proposed in <a href=${
-        item.initial_public_proposal_url
-      }>${item.initial_public_proposal_url}</a></p>
       <p>This feature was specified <a href=${
         item.standards.spec
       }>in this Spec</a>.</p>
@@ -198,9 +189,6 @@ const renderDeprecatedFeatures = (deprecated, version) => template`
             )}</blockquote></p>`
           : template``
       }
-      <p>This feature was initially proposed in <a href=${
-        item.initial_public_proposal_url
-      }>${item.initial_public_proposal_url}</a></p>
       <p>This feature was specified <a href=${
         item.standards.spec
       }>in this Spec</a>.</p>
@@ -225,9 +213,6 @@ const renderRemovedFeatures = (removed, version) => template`
             )}</blockquote></p>`
           : template``
       }
-      <p>This feature was initially proposed in <a href=${
-        item.initial_public_proposal_url
-      }>${item.initial_public_proposal_url}</a></p>
       <p>This feature was specified <a href=${
         item.standards.spec
       }>in this Spec</a>.</p>
