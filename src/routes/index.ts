@@ -71,8 +71,11 @@ const renderData = async (version, versionData) => {
 };
 
 const renderResources = (resources) => {
-  return Object.keys(resources).length > 0
-    ? template`<h4>Resources</h4>
+  if ("samples" in resources == false && "docs" in resources == false) {
+    return template``;
+  }
+
+  return template`<h4>Resources</h4>
       ${
         "docs" in resources
           ? template`<p>Docs: ${resources.docs.map(
@@ -86,8 +89,7 @@ const renderResources = (resources) => {
               (resource) => template`<a href=${resource}>${resource}</a>`
             )}</p>`
           : template`No linked samples`
-      }</p>`
-    : template``;
+      }</p>`;
 };
 
 const renderEnabled = (enabled, version) => template`
