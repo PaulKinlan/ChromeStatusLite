@@ -82,14 +82,14 @@ const renderResources = (resources) => {
 
   return template`<h4>Resources</h4>
       ${
-        "docs" in resources
+        "docs" in resources && resources.docs.length > 0
           ? template`<p>Docs: ${resources.docs.map(
               (resource) => template`<a href=${resource}>${resource}</a>`
             )}</p>`
           : template`No linked docs`
       }</p>
       ${
-        "samples" in resources
+        "samples" in resources && resources.samples.length > 0
           ? template`<p>Samples: ${resources.samples.map(
               (resource) => template`<a href=${resource}>${resource}</a>`
             )}</p>`
