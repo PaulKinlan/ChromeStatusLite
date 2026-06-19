@@ -28,14 +28,16 @@ export class ChromeStatusAPI {
     return this.fetchJson(`/api/v0/channels${queryString}`);
   }
 
-  public async getFeaturesForVersion(version?: number): Promise<any> {
-    let queryString = "";
-    if (version != undefined) {
-      queryString = `?milestone=${version}`;
-    }
-    return ((await this.fetchJson(`/features_v2.json`)) as any[]).filter(
-      (feature) => feature.milestone?.toString() == version?.toString()
+  // Returns features for a milestone grouped by status, e.g.
+  // { "Enabled by default": [...], "Origin trial": [...], ... }.
+  // The old `/features_v2.json` no longer carries a usable `milestone`
+  // field, so we use the milestone query on the v0 API which groups
+  // features by type server-side.
+  public async getFeaturesForVersion(version: number): Promise<any> {
+    const data = await this.fetchJson(
+      `/api/v0/features?milestone=${version}`
     );
+    return (data as any).features_by_type || {};
   }
 
   public async getVersions(): Promise<any> {
@@ -46,11 +48,12 @@ export class ChromeStatusAPI {
   }
 
   public async getFeaturesByType(type: number): Promise<any> {
-    return this.fetchJson(`/features_v2.json?q=feature_type=${type}`);
+    return this.fetchJson(`/api/v0/features?q=feature_type=${type}`);
   }
 
-  public async getFeatures(): Promise<any> {
-    return this.getFeaturesForVersion();
+  // Fetches a single feature's full detail by id.
+  public async getFeature(id: string | number): Promise<any> {
+    return this.fetchJson(`/api/v0/features/${id}`);
   }
 
   private async fetchJson<T>(path: string): Promise<T> {

@@ -6,23 +6,15 @@ import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import nav from "../ui-components/nav.ts";
 import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
 
-const renderData = async (version, versionData) => {
-  const enabled =
-    versionData.filter((feature) => {
-      return feature.browsers.chrome.status.text == "Enabled by default";
-    }) || [];
-  const originTrials =
-    versionData.filter((feature) => feature.browsers.chrome.origintrial) || [];
+const renderData = async (version, featuresByType) => {
+  // The v0 API groups features by status text. Pull each bucket out,
+  // defaulting to an empty list when a milestone has none of that type.
+  const enabled = featuresByType["Enabled by default"] || [];
+  const originTrials = featuresByType["Origin trial"] || [];
   const flaggedFeatures =
-    versionData.filter((feature) => feature.browsers.chrome.flag) || [];
-  const removed =
-    versionData.filter(
-      (feature) => feature.browsers.chrome.status.text == "Removed"
-    ) || [];
-  const deprecated =
-    versionData.filter(
-      (feature) => feature.browsers.chrome.status.text == "Deprecated"
-    ) || [];
+    featuresByType["In developer trial (Behind a flag)"] || [];
+  const removed = featuresByType["Removed"] || [];
+  const deprecated = featuresByType["Deprecated"] || [];
 
   console.log(
     enabled.length,
@@ -98,15 +90,18 @@ const renderResources = (resources) => {
       }</p>`;
 };
 
-const renderEnabled = (enabled, version) => template`
-    <h2 id="enabled">Enabled by default in ${version}</h2>
-    <p>This release of Chrome had ${enabled.length} new features.</p>
-    ${enabled.map(
-      (item) =>
-        template`<h3>${item.name}</h3>
-      <p>${escapeHtml(item.summary)} <a href=${
-          item.browsers.chrome.bug
-        }>#</a></p>
+// Renders a single feature block. `tag` is the heading level to use so
+// that enabled/origin-trial/flagged sections sit at h3 and the nested
+// deprecated/removed sections sit at h4.
+const renderFeature = (item, tag = "h3") => {
+  const bug = item.browsers?.chrome?.bug;
+  const spec = item.standards?.spec;
+  return template`<${tag}><a href="/feature/${item.id}">${escapeHtml(
+    item.name
+  )}</a></${tag}>
+      <p>${escapeHtml(item.summary)}${
+    bug ? template` <a href=${bug}>#</a>` : template``
+  }</p>
       ${
         "motivation" in item
           ? template`<p>${
@@ -116,109 +111,40 @@ const renderEnabled = (enabled, version) => template`
             )}</blockquote></p>`
           : template``
       }
-      <p>This feature was specified <a href=${
-        item.standards.spec
-      }>in this Spec</a>.</p>
-      ${renderResources(item.resources)}`
-    )}`;
+      ${
+        spec
+          ? template`<p>This feature was specified <a href=${spec}>in this Spec</a>.</p>`
+          : template``
+      }
+      ${renderResources(item.resources)}`;
+};
+
+const renderEnabled = (enabled, version) => template`
+    <h2 id="enabled">Enabled by default in ${version}</h2>
+    <p>This release of Chrome had ${enabled.length} new features.</p>
+    ${enabled.map((item) => renderFeature(item, "h3"))}`;
 
 const renderOriginTrials = (ot, version) => template`
     <h2 id="origin-trial">Origin Trials in-progress in ${version}</h2>
     <p>This release of Chrome had ${ot.length} new origin trials.</p>
-    ${ot.map(
-      (item) =>
-        template`<h3>${item.name}</h3>
-      <p>${escapeHtml(item.summary)} <a href=${
-          item.browsers.chrome.bug
-        }>#</a></p>
-      ${
-        "motivation" in item
-          ? template`<p>${
-              item.creator
-            } created this feature because: <blockquote>${escapeHtml(
-              item.motivation
-            )}</blockquote></p>`
-          : template``
-      }
-      <p>This feature was specified <a href=${
-        item.standards.spec
-      }>in this Spec</a>.</p>
-      ${renderResources(item.resources)}`
-    )}`;
+    ${ot.map((item) => renderFeature(item, "h3"))}`;
 
 const renderFlaggedFeatures = (flagged, version) => template`
     <h2 id="flagged">Flagged features in ${version}</h2>
     <p>This release of Chrome had ${
       flagged.length
     } are available behind a flag.</p>
-    ${flagged.map(
-      (item) =>
-        template`<h3>${item.name}</h3>
-      <p>${escapeHtml(item.summary)} <a href=${
-          item.browsers.chrome.bug
-        }>#</a></p>
-      ${
-        "motivation" in item
-          ? template`<p>${
-              item.creator
-            } created this feature because: <blockquote>${escapeHtml(
-              item.motivation
-            )}</blockquote></p>`
-          : template``
-      }
-      <p>This feature was specified <a href=${
-        item.standards.spec
-      }>in this Spec</a>.</p>
-      ${renderResources(item.resources)}`
-    )}`;
+    ${flagged.map((item) => renderFeature(item, "h3"))}`;
 
 const renderDeprecatedFeatures = (deprecated, version) => template`
     <h3 id="deprecated">Deprecated features in ${version}</h3>
     <p>This release of Chrome had ${deprecated.length} features deprecated.</p>
-    ${deprecated.map(
-      (item) =>
-        template`<h4>${item.name}</h4>
-      <p>${escapeHtml(item.summary)} <a href=${
-          item.browsers.chrome.bug
-        }>#</a></p>
-      ${
-        "motivation" in item
-          ? template`<p>${
-              item.creator
-            } created this feature because: <blockquote>${escapeHtml(
-              item.motivation
-            )}</blockquote></p>`
-          : template``
-      }
-      <p>This feature was specified <a href=${
-        item.standards.spec
-      }>in this Spec</a>.</p>
-      ${renderResources(item.resources)}`
-    )}`;
+    ${deprecated.map((item) => renderFeature(item, "h4"))}`;
 
 const renderRemovedFeatures = (removed, version) => template`
     <h3 id="removed">Removed features in ${version}</h3>
     <p>This release of Chrome had ${removed.length} features removed.</p>
-    ${removed.map(
-      (item) =>
-        template`<h4>${item.name}</h4>
-      <p>${escapeHtml(item.summary)} <a href=${
-          item.browsers.chrome.bug
-        }>#</a></p>
-      ${
-        "motivation" in item
-          ? template`<p>${
-              item.creator
-            } created this feature because: <blockquote>${escapeHtml(
-              item.motivation
-            )}</blockquote></p>`
-          : template``
-      }
-      <p>This feature was specified <a href=${
-        item.standards.spec
-      }>in this Spec</a>.</p>
-      ${renderResources(item.resources)}`
-    )}`;
+    ${removed.map((item) => renderFeature(item, "h4"))}`;
 
 export default async function render(request: Request): Response {
   const url = new URL(request.url);

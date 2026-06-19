@@ -6,6 +6,7 @@ import { Route } from "./src/types.ts";
 import { StripStream } from "./src/stream-utils.ts";
 import index from "./src/routes/index.ts";
 import deprecations from "./src/routes/deprecations.ts";
+import feature from "./src/routes/feature.ts";
 
 class StaticFileHandler {
   #basePath: string = "";
@@ -56,6 +57,12 @@ serve((req: Request) => {
       new URLPattern({ pathname: "/deprecations" }),
       (request) => {
         return deprecations(request);
+      },
+    ],
+    [
+      new URLPattern({ pathname: "/feature/:id" }),
+      (request, match) => {
+        return feature(request, match);
       },
     ],
     // Fall through.
