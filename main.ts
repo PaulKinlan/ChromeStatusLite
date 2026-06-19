@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.152.0/http/server.ts";
 import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
 import { contentType } from "https://deno.land/std@0.152.0/media_types/mod.ts";
 
@@ -39,7 +38,12 @@ class StaticFileHandler {
   }
 }
 
-serve((req: Request) => {
+// Deno Deploy injects the port to listen on via the PORT env var and
+// expects the server to bind to 0.0.0.0. Deno.serve handles both by
+// default; fall back to 8000 for local development.
+const port = Number(Deno.env.get("PORT")) || 8000;
+
+Deno.serve({ port }, (req: Request) => {
   const url = req.url;
   const staticFiles = new StaticFileHandler("static");
   let response: Response = new Response(
