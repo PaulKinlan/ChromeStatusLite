@@ -7,6 +7,7 @@ import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import nav from "../ui-components/nav.ts";
 
 export default async function render(request: Request): Response {
+  const url = new URL(request.url);
   return template`
   <!doctype html>
 <html>
@@ -14,7 +15,7 @@ export default async function render(request: Request): Response {
 <head>
   <script src="/scripts/deprecations.js" type="module"></script>
   <title>Chrome Deprection Calendar</title>
-  <link rel="canonical" href="https://chromestatuslite.com/deprecations">
+  <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 

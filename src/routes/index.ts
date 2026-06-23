@@ -161,7 +161,7 @@ export default async function render(request: Request): Response {
 <head>
   <script src="/scripts/index.js" type="module"></script>
   <title>Chrome Release ${version}</title>
-  <link rel="canonical" href="https://chromestatuslite.com/?version=${version}">
+  <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 

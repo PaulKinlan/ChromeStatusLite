@@ -110,6 +110,11 @@ export default async function render(request: Request, match): Response {
     return new Response("Not found", { status: 404 });
   }
 
+  const url = new URL(request.url);
+  const canonical = `https://chromestatuslite.com${escapeHtml(
+    url.pathname + url.search
+  )}`;
+
   const chromeStatusAPI = ChromeStatusAPI.getInstance();
 
   let feature;
@@ -126,7 +131,7 @@ export default async function render(request: Request, match): Response {
 
 <head>
   <title>Feature not found</title>
-  <link rel="canonical" href="https://chromestatuslite.com/feature/${escapeHtml(id)}">
+  <link rel="canonical" href="${canonical}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 
@@ -153,7 +158,7 @@ export default async function render(request: Request, match): Response {
 
 <head>
   <title>${escapeHtml(feature.name)} — Chrome Platform Status</title>
-  <link rel="canonical" href="https://chromestatuslite.com/feature/${feature.id}">
+  <link rel="canonical" href="${canonical}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 
