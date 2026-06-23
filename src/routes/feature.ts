@@ -126,6 +126,7 @@ export default async function render(request: Request, match): Response {
 
 <head>
   <title>Feature not found</title>
+  <link rel="canonical" href="https://chromestatuslite.com/feature/${escapeHtml(id)}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 
@@ -152,6 +153,7 @@ export default async function render(request: Request, match): Response {
 
 <head>
   <title>${escapeHtml(feature.name)} — Chrome Platform Status</title>
+  <link rel="canonical" href="https://chromestatuslite.com/feature/${feature.id}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 

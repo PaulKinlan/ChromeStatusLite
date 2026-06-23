@@ -43,7 +43,26 @@ class StaticFileHandler {
 // default; fall back to 8000 for local development.
 const port = Number(Deno.env.get("PORT")) || 8000;
 
+// Canonical custom domain. The app is also reachable on its *.deno.net deploy
+// URL, but that host should not be indexed: requests arriving on a *.deno.net
+// (or *.deno.dev) host are 301'd to the custom domain, and every page also
+// carries a <link rel="canonical"> to this origin.
+const CANONICAL_ORIGIN = "https://chromestatuslite.com";
+
 Deno.serve({ port }, (req: Request) => {
+  const reqUrl = new URL(req.url);
+  if (
+    reqUrl.hostname.endsWith(".deno.net") ||
+    reqUrl.hostname.endsWith(".deno.dev")
+  ) {
+    return new Response(null, {
+      status: 301,
+      headers: {
+        location: `${CANONICAL_ORIGIN}${reqUrl.pathname}${reqUrl.search}`,
+      },
+    });
+  }
+
   const url = req.url;
   const staticFiles = new StaticFileHandler("static");
   let response: Response = new Response(

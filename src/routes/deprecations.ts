@@ -14,6 +14,7 @@ export default async function render(request: Request): Response {
 <head>
   <script src="/scripts/deprecations.js" type="module"></script>
   <title>Chrome Deprection Calendar</title>
+  <link rel="canonical" href="https://chromestatuslite.com/deprecations">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 
