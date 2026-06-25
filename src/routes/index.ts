@@ -159,6 +159,8 @@ export default async function render(request: Request): Response {
 <html>
 
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="/scripts/index.js" type="module"></script>
   <title>Chrome Release ${version}</title>
   <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
@@ -168,9 +170,9 @@ export default async function render(request: Request): Response {
 <body>
   ${nav()}
   <h1>Chrome Release Summary</h1>
-  <p>Chrome version: ${template`${versions
+  <p class="versions">Chrome version: ${template`${versions
     .map((item) => `<a href="?version=${item}">${item}</a>`)
-    .join(", ")}`}
+    .join(" ")}`}
   </p>
   <div id="output">
   ${renderData(version, features)}

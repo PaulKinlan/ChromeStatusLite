@@ -130,6 +130,8 @@ export default async function render(request: Request, match): Response {
 <html>
 
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Feature not found</title>
   <link rel="canonical" href="${canonical}">
   <link rel="stylesheet" href="/styles/index.css">
@@ -157,6 +159,8 @@ export default async function render(request: Request, match): Response {
 <html>
 
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(feature.name)} — Chrome Platform Status</title>
   <link rel="canonical" href="${canonical}">
   <link rel="stylesheet" href="/styles/index.css">
