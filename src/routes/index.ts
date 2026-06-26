@@ -154,6 +154,24 @@ export default async function render(request: Request): Response {
 
   const features = await chromeStatusAPI.getFeaturesForVersion(version);
 
+  // Version picker: show the most recent releases as chips and tuck the long
+  // tail behind a native <details> disclosure, so the full list (which runs
+  // all the way back to v0) isn't overwhelming, especially on mobile. The
+  // selected version is always kept visible, and everything stays a plain link.
+  const RECENT_COUNT = 8;
+  const recent = versions.slice(0, RECENT_COUNT);
+  if (!recent.some((v) => String(v) === String(version))) {
+    const sel = versions.find((v) => String(v) === String(version));
+    if (sel !== undefined) recent.unshift(sel);
+  }
+  const rest = versions.filter((v) => !recent.includes(v));
+  const chip = (item) =>
+    `<a href="?version=${item}"${
+      String(item) === String(version) ? ` class="current" aria-current="page"` : ""
+    }>${item}</a>`;
+  const recentHtml = recent.map(chip).join(" ");
+  const restHtml = rest.map(chip).join(" ");
+
   return template`
   <!doctype html>
 <html>
@@ -170,10 +188,14 @@ export default async function render(request: Request): Response {
 <body>
   ${nav()}
   <h1>Chrome Release Summary</h1>
-  <p class="versions">Chrome version: ${template`${versions
-    .map((item) => `<a href="?version=${item}">${item}</a>`)
-    .join(" ")}`}
-  </p>
+  <div class="versions">Chrome version:
+    <span class="version-list">${template`${recentHtml}`}</span>
+    ${
+    rest.length
+      ? template`<details class="more-versions"><summary>${rest.length} earlier versions</summary><div class="version-list">${template`${restHtml}`}</div></details>`
+      : template``
+  }
+  </div>
   <div id="output">
   ${renderData(version, features)}
   </div>
