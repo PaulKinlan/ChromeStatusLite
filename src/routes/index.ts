@@ -192,7 +192,7 @@ export default async function render(request: Request): Response {
     <span class="version-list">${template`${recentHtml}`}</span>
     ${
     rest.length
-      ? template`<details class="more-versions"><summary>${rest.length} earlier versions</summary><div class="version-list">${template`${restHtml}`}</div></details>`
+      ? template`<details class="more-versions"><summary title="Show ${rest.length} earlier versions" aria-label="Show ${rest.length} earlier versions">+${rest.length}</summary><div class="version-list">${template`${restHtml}`}</div></details>`
       : template``
   }
   </div>

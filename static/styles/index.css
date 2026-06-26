@@ -17,13 +17,13 @@ a,dd,li,p,blockquote{overflow-wrap:break-word;word-break:break-word}
 .versions a{display:inline-block;min-width:2em;padding:.2em .5em;margin:.12em .12em 0 0;text-align:center;border:1px solid #e2e2e2;border-radius:4px;line-height:1.3;text-decoration:none}
 .versions a:hover{border-color:#f00000}
 .versions a.current{border-color:#0064c1;background:#eaf2fb;font-weight:700}
-/* The long tail of older versions lives in a native <details> disclosure. */
-.more-versions{margin:.3em 0 0;border-bottom:0;padding-bottom:0}
+/* The long tail of older versions lives in a native <details> disclosure that
+   flows inline with the recent chips; the expanded list drops below it. */
+.more-versions{display:inline;border-bottom:0;padding-bottom:0}
 .more-versions[open]{border-bottom:0;padding-bottom:0}
-.more-versions>summary{display:inline-block;cursor:pointer;padding:.2em .6em;border:1px dashed #aaa;border-radius:4px;color:#0064c1;font-size:.9em;font-weight:400;list-style:none}
+.more-versions>summary{display:inline-block;cursor:pointer;padding:.2em .5em;margin:.12em .12em 0 .15em;border:1px dashed #0064c1;border-radius:4px;color:#0064c1;line-height:1.3;list-style:none}
 .more-versions>summary::-webkit-details-marker{display:none}
-.more-versions[open]>summary{border-style:solid;margin-bottom:.4em}
-.more-versions .version-list{display:block;margin-top:.2em}
+.more-versions .version-list{display:block;margin-top:.4em}
 /* Tables (the deprecation calendar) scroll horizontally within the viewport on
    narrow screens; awsm.css already sets overflow-x. Tighten on small screens. */
 @media (max-width:32rem){
