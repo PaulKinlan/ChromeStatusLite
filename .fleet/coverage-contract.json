@@ -1,0 +1,51 @@
+{
+  "//": "fleet-check coverage attribution (chrome-status-lite-tor): changed paths that no test file imports by name would otherwise report unmapped/PARTIAL on every fast verdict. Each pattern must list exactly the suites tools/fast-gate.sh runs for that path (the five offline route/client suites plus the always-run fixture-backed smoke). Keep in sync with tools/fast-gate.sh.",
+  "tools/*": [
+    "tests/client_test.ts",
+    "tests/deprecations_test.ts",
+    "tests/feature_test.ts",
+    "tests/handler_test.ts",
+    "tests/http_smoke_test.ts",
+    "tests/index_test.ts"
+  ],
+  "main.ts": [
+    "tests/client_test.ts",
+    "tests/deprecations_test.ts",
+    "tests/feature_test.ts",
+    "tests/handler_test.ts",
+    "tests/http_smoke_test.ts",
+    "tests/index_test.ts"
+  ],
+  "src/flora.ts": [
+    "tests/client_test.ts",
+    "tests/deprecations_test.ts",
+    "tests/feature_test.ts",
+    "tests/handler_test.ts",
+    "tests/http_smoke_test.ts",
+    "tests/index_test.ts"
+  ],
+  "src/types.ts": [
+    "tests/client_test.ts",
+    "tests/deprecations_test.ts",
+    "tests/feature_test.ts",
+    "tests/handler_test.ts",
+    "tests/http_smoke_test.ts",
+    "tests/index_test.ts"
+  ],
+  "src/stream-utils.ts": [
+    "tests/client_test.ts",
+    "tests/deprecations_test.ts",
+    "tests/feature_test.ts",
+    "tests/handler_test.ts",
+    "tests/http_smoke_test.ts",
+    "tests/index_test.ts"
+  ],
+  "src/ui-components/*": [
+    "tests/client_test.ts",
+    "tests/deprecations_test.ts",
+    "tests/feature_test.ts",
+    "tests/handler_test.ts",
+    "tests/http_smoke_test.ts",
+    "tests/index_test.ts"
+  ]
+}
