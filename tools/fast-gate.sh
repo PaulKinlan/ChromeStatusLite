@@ -7,6 +7,7 @@ declare -A selected=()
 add() { selected["$1"]=1; }
 for path in "${paths[@]}"; do
   case "$path" in
+    static/*.html) add tests/handler_test.ts ;;
     src/routes/index.ts|static/scripts/index.js) add tests/index_test.ts ;;
     src/routes/feature.ts) add tests/feature_test.ts ;;
     src/lib/utils.ts|src/stream-utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts ;;
