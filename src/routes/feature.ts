@@ -1,5 +1,5 @@
 import template from "../flora.ts";
-import { ChromeStatusAPI } from "../lib/utils.ts";
+import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
@@ -103,7 +103,7 @@ const renderFeature = (feature) => {
   `;
 };
 
-export default async function render(request: Request, match): Response {
+export default async function render(request: Request, match: URLPatternResult, chromeStatusAPI: StatusClient): Response {
   const id = match?.pathname?.groups?.id;
 
   if (!id || /\D/.test(id)) {
@@ -114,8 +114,6 @@ export default async function render(request: Request, match): Response {
   const canonical = `https://chromestatuslite.com${escapeHtml(
     url.pathname + url.search
   )}`;
-
-  const chromeStatusAPI = ChromeStatusAPI.getInstance();
 
   let feature;
   try {

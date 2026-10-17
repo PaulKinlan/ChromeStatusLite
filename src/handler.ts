@@ -1,0 +1,49 @@
+import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
+import { contentType } from "https://deno.land/std@0.152.0/media_types/mod.ts";
+import { ChromeStatusAPI } from "./lib/utils.ts";
+import index from "./routes/index.ts";
+import deprecations from "./routes/deprecations.ts";
+import feature from "./routes/feature.ts";
+
+export type StatusClient = Pick<ChromeStatusAPI,
+  "getVersions" | "getFeaturesForVersion" | "getFeaturesByType" | "getChannels" | "getFeature">;
+
+const CANONICAL_ORIGIN = "https://chromestatuslite.com";
+
+// Constructing the handler never starts a listener or fetches upstream data.
+// Tests supply a fresh client; production keeps the shared cached singleton.
+export function createHandler(
+  client: StatusClient = ChromeStatusAPI.getInstance(),
+  staticRoot = join(Deno.cwd(), "static"),
+): (request: Request) => Promise<Response> {
+  return async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    if (url.hostname.endsWith(".deno.net") || url.hostname.endsWith(".deno.dev")) {
+      return new Response(null, {
+        status: 301,
+        headers: { location: `${CANONICAL_ORIGIN}${url.pathname}${url.search}` },
+      });
+    }
+
+    if (url.pathname === "/") return index(request, client);
+    if (url.pathname === "/deprecations") return deprecations(request, client);
+    const match = new URLPattern({ pathname: "/feature/:id" }).exec(url);
+    if (match) return feature(request, match, client);
+
+    // Only explicit static assets are served; do not let URL path traversal
+    // escape the static root or turn a missing route into a file read.
+    if (!/^\/(?:scripts|styles)\/[\w.-]+$/.test(url.pathname) &&
+        url.pathname !== "/google1bf7ef037ae116eb.html") {
+      return new Response("Not found", { status: 404 });
+    }
+    try {
+      const data = await Deno.readFile(join(staticRoot, url.pathname));
+      return new Response(data, {
+        status: 200,
+        headers: { "content-type": contentType(url.pathname.slice(url.pathname.lastIndexOf("."))) || "application/octet-stream" },
+      });
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
+  };
+}

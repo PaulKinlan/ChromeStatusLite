@@ -8,10 +8,19 @@ const CACHE_MAX_AGE = 1000 * 60 * 60; // 1 hour.
 export class ChromeStatusAPI {
   private static instance: null | ChromeStatusAPI = null;
 
-  private cache = new LRU<string, any>({
-    max: CACHE_MAX_ITEMS,
-    maxAge: CACHE_MAX_AGE,
-  });
+  private cache: Pick<LRU<string, any>, "get" | "set">;
+  private fetcher: typeof fetch;
+
+  constructor(options: {
+    fetcher?: typeof fetch;
+    cache?: Pick<LRU<string, any>, "get" | "set">;
+  } = {}) {
+    this.fetcher = options.fetcher ?? fetch;
+    this.cache = options.cache ?? new LRU<string, any>({
+      max: CACHE_MAX_ITEMS,
+      maxAge: CACHE_MAX_AGE,
+    });
+  }
 
   public static getInstance(): ChromeStatusAPI {
     if (ChromeStatusAPI.instance == null) {
@@ -61,7 +70,7 @@ export class ChromeStatusAPI {
 
     if (!json) {
       console.log(CHROMESTATUS_API_ENDPOINT + path);
-      let response = await fetch(CHROMESTATUS_API_ENDPOINT + path);
+      let response = await this.fetcher(CHROMESTATUS_API_ENDPOINT + path);
       (response = new Response(response.body?.pipeThrough(new StripStream()))),
         {
           status: 200,

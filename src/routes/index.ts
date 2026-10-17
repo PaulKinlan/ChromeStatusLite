@@ -1,10 +1,8 @@
 import template from "../flora.ts";
-import { ChromeStatusAPI } from "../lib/utils.ts";
-import { StripStream } from "../stream-utils.ts";
+import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
-import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
 
 const renderData = async (version, featuresByType) => {
   // The v0 API groups features by status text. Pull each bucket out,
@@ -146,9 +144,8 @@ const renderRemovedFeatures = (removed, version) => template`
     <p>This release of Chrome had ${removed.length} features removed.</p>
     ${removed.map((item) => renderFeature(item, "h4"))}`;
 
-export default async function render(request: Request): Response {
+export default async function render(request: Request, chromeStatusAPI: StatusClient): Response {
   const url = new URL(request.url);
-  const chromeStatusAPI = ChromeStatusAPI.getInstance();
   const versions = await chromeStatusAPI.getVersions();
   const version = url.searchParams.get("version") || versions[0];
 

@@ -1,0 +1,6 @@
+# Gate speed and coverage
+
+- Fast budget: <=60 s. `tools/fast-gate.sh` maps changed paths to offline route/client suites; unmapped paths fail. Common renderer/handler/static style/config changes select all suites. A zero-diff tree still runs all suites. No server starts on import. Dependencies are cached (`--cached-only`), so an uncached checkout fails rather than quietly reaching the network.
+- Full budget: <=300 s. `tools/full-gate.sh` runs all offline suites plus a fixture-backed real HTTP listener, redirect/static/404 checks and a headless Chrome DOM + screenshot check. Only the merger runs this tier on the merged union.
+- First local focused measurement (2026-10-17, Deno 2.9.7, cached dependencies): fast affected set 8 assertions / ~0.5 s Deno reported; HTTP/browser smoke 1 assertion / ~1 s Deno reported. These are development samples, **not** a fleet-check median. Coord installs host `CHECK_FAST_CMD=bash tools/fast-gate.sh` and `CHECK_CMD=bash tools/full-gate.sh`; remeasure cached PASS samples and use `fleet-budget` before claiming either budget met.
+- Route fixture suites are independent and never call upstream. Client fixture injects a fetcher and cache controlled by a local clock; it does not touch the process singleton. Browser creates and closes its own server/profile. No test reads another test's generated files.
