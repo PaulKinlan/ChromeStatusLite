@@ -18,5 +18,10 @@ Deno.test("static assets and unknown paths", async () => {
   includes(await asset.text(), "body");
   equal((await handler(new Request("https://chromestatuslite.com/unknown"))).status, 404);
   equal((await handler(new Request("https://chromestatuslite.com/scripts/missing.js"))).status, 404);
-  equal((await handler(new Request("https://chromestatuslite.com/scripts/../../main.ts"))).status, 404);
+  const verification = await handler(new Request("https://chromestatuslite.com/google1bf7ef037ae116eb.html"));
+  equal(verification.status, 200);
+  includes(verification.headers.get("content-type") || "", "text/html");
+  includes(await verification.text(), "google-site-verification: google1bf7ef037ae116eb.html");
+  // Encoded separators must not escape the explicit static asset whitelist.
+  equal((await handler(new Request("https://chromestatuslite.com/scripts/%2e%2e%2fmain.ts"))).status, 404);
 });
