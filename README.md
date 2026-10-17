@@ -33,8 +33,8 @@ tagged-template renderer.
 
 ## How it works
 
-- **`main.ts`** — Entry point. A `Deno.serve` handler matches requests against `URLPattern`
-  routes and falls through to a static file handler for anything under `static/`.
+- **`main.ts`** — Entry point, starts `Deno.serve`. The import-safe `src/handler.ts`
+  handles routes and static assets with an injectable Chrome Status client.
 - **`src/routes/`** — One module per page (`index`, `deprecations`, `feature`).
 - **`src/lib/utils.ts`** — `ChromeStatusAPI`, a singleton client over the chromestatus.com
   `/api/v0/*` endpoints (`channels`, `features?milestone=`, `features/:id`,
@@ -58,6 +58,18 @@ falls back to `8000` for local development.
 
 - `--allow-net` — to call the chromestatus.com API and bind the server.
 - `--allow-read=.` — to serve files from `static/`.
+
+## Tests and gates
+
+```sh
+deno task test:fast  # offline affected route/client tests; rejects unmapped changed paths
+deno task test:full  # all tests plus local HTTP and headless Chrome smoke
+```
+
+The fast gate uses `git merge-base HEAD origin/main` (override with `GATE_BASE`) and
+includes unstaged/untracked changes. Remote Deno modules must be cached once before
+offline gates run (`deno cache src/handler.ts tests/http_smoke_test.ts`). Full smoke
+requires `google-chrome` or `CHROME_BIN`. See [gate budget](docs/speed.md).
 
 ## Deploying
 

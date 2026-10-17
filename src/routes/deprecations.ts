@@ -1,12 +1,11 @@
 import template from "../flora.ts";
-import { ChromeStatusAPI } from "../lib/utils.ts";
-import { StripStream } from "../stream-utils.ts";
+import type { StatusClient } from "../handler.ts";
 import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
 
-export default async function render(request: Request): Response {
+export default async function render(request: Request, chromeStatusAPI: StatusClient): Response {
   const url = new URL(request.url);
   return template`
   <!doctype html>
@@ -25,7 +24,7 @@ export default async function render(request: Request): Response {
   ${nav()}
   <h1>Deprecation Calendar</h1>
   <div id="output">
-    ${renderDeprecations()}
+    ${renderDeprecations(chromeStatusAPI)}
   </div>
 </body>
 
@@ -33,7 +32,7 @@ export default async function render(request: Request): Response {
     .then(data => new Response(data, { status: 200, headers: { 'content-type': 'text/html' } }));
 }
 
-const renderDeprecations = async () => {
+const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
   const deprecationsSort = (a, b) => {
     // Move features without versions to end of list.
     if (!b.browsers.chrome.desktop) {
@@ -48,7 +47,7 @@ const renderDeprecations = async () => {
     return parseInt(b.browsers.chrome.desktop) - parseInt(a.browsers.chrome.desktop);
   };
 
-  const deprecations = (await getDeprecations()).sort(deprecationsSort);
+  const deprecations = (await chromeStatusAPI.getFeaturesByType(3)).features.sort(deprecationsSort);
 
   // Map features to browser versions, removing features that don't have version.
   const versions = deprecations
@@ -56,7 +55,6 @@ const renderDeprecations = async () => {
       .filter(f => f !== undefined)
       .sort((a, b) => parseInt(a) - parseInt(b));
 
-  const chromeStatusAPI = ChromeStatusAPI.getInstance();
   const channels = await chromeStatusAPI.getChannels(versions.at(0), versions.at(-1));
   return template`
         <table>
@@ -89,7 +87,3 @@ const renderDeprecation = async (deprecation, channels) => {
     `;
 };
 
-const getDeprecations = async () => {
-  const chromeStatusAPI = ChromeStatusAPI.getInstance();
-  return (await chromeStatusAPI.getFeaturesByType(3)).features;
-}
