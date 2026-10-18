@@ -28,6 +28,7 @@ const hasValidBuckets = (obj: any): boolean => {
   }
   return foundAnyBucket;
 };
+import linkify from "../lib/linkify.ts";
 
 const renderData = async (version, featuresByType) => {
   // The v0 API groups features by status text. Pull each bucket out,
@@ -129,7 +130,7 @@ const renderFeature = (item, tag = "h3") => {
   const spec = item.standards?.spec;
   const id = item.id !== undefined ? encodeURIComponent(String(item.id)) : "";
   const name = escapeHtml(item.name || "Unnamed feature");
-  const summary = escapeHtml(item.summary || "");
+  const summary = linkify(item.summary || "");
   return template`<${tag}><a href="/feature/${id}">${name}</a></${tag}>
       <p>${summary}${
     bug ? template` <a href=${bug}>#</a>` : template``

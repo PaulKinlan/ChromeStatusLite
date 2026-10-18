@@ -33,3 +33,31 @@ Deno.test("invalid and absent feature ids return 404 without an upstream call", 
   equal(missing.status, 404);
   includes(await missing.text(), "Feature not found");
 });
+
+Deno.test("feature detail linkifies URLs in summary, motivation, signals and notes", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 123, name: "Linked feature", summary: "See https://github.com/WebKit/WebKit/pull/70542.",
+    motivation: "Filed as https://crbug.com/500967896 for details",
+    wpt_descr: "Covered by https://wpt.fyi/results/abc",
+    browsers: { chrome: { status: { text: "Enabled by default" } }, safari: { view: { text: "Support planned, tracked in https://bugs.webkit.org/123", notes: "Position: https://webkit.org/position/" } } },
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/123"))).text();
+  includes(html, '<a href="https://github.com/WebKit/WebKit/pull/70542" rel="noopener noreferrer">https://github.com/WebKit/WebKit/pull/70542</a>.');
+  includes(html, '<a href="https://crbug.com/500967896" rel="noopener noreferrer">https://crbug.com/500967896</a>');
+  includes(html, '<a href="https://wpt.fyi/results/abc" rel="noopener noreferrer">');
+  includes(html, '<a href="https://bugs.webkit.org/123" rel="noopener noreferrer">');
+  includes(html, '<a href="https://webkit.org/position/" rel="noopener noreferrer">');
+});
+
+Deno.test("linkify keeps surrounding text escaped and ignores non-http schemes", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 124, name: "Unsafe feature",
+    summary: "Evil <script>alert(1)</script> and ftp://example.com/x and javascript:alert(2)",
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/124"))).text();
+  includes(html, "&lt;script&gt;alert(1)&lt;/script&gt;");
+  equal(html.includes("javascript:alert(2)</a>"), false);
+  equal(html.includes('href="ftp://example.com/x"'), false);
+});

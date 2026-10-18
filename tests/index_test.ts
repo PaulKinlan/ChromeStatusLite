@@ -55,3 +55,11 @@ Deno.test("release page defaults to latest fixture milestone", async () => {
   const html = await (await createHandler(fixtureClient())(new Request("https://chromestatuslite.com/"))).text();
   includes(html, "Chrome Release 120");
 });
+
+Deno.test("release page linkifies URLs in feature summaries", async () => {
+  const client = fixtureClient({ getFeaturesForVersion: async () => ({
+    "Enabled by default": [{ id: 9, name: "Summarised", summary: "Spec: https://example.com/spec.html." }],
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/"))).text();
+  includes(html, '<a href="https://example.com/spec.html" rel="noopener noreferrer">https://example.com/spec.html</a>.');
+});

@@ -1,6 +1,7 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
+import linkify from "../lib/linkify.ts";
 
 import nav from "../ui-components/nav.ts";
 import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
@@ -11,12 +12,12 @@ const renderView = (label, browser) => {
   if (!view || (!view.text && !view.url)) {
     return template``;
   }
-  const text = escapeHtml(view.text || "No signal");
+  const text = linkify(view.text || "No signal");
   return template`<li>${label}: ${
     view.url
       ? template`<a href=${view.url}>${text}</a>`
       : template`${text}`
-  }${view.notes ? template` — ${escapeHtml(view.notes)}` : template``}</li>`;
+  }${view.notes ? template` — ${linkify(view.notes)}` : template``}</li>`;
 };
 
 // Renders a list of links (docs, samples, explainers).
@@ -70,14 +71,14 @@ const renderFeature = (feature) => {
     }
   </dl>
   ${renderFeatureMetadata(feature, true)}
-  ${feature.wpt_descr ? template`<p>WPT details: ${escapeHtml(feature.wpt_descr)}</p>` : template``}
+  ${feature.wpt_descr ? template`<p>WPT details: ${linkify(feature.wpt_descr)}</p>` : template``}
 
   <h2>Summary</h2>
-  <p>${escapeHtml(feature.summary)}</p>
+  <p>${linkify(feature.summary)}</p>
 
   ${
     feature.motivation
-      ? template`<h2>Motivation</h2><blockquote>${escapeHtml(
+      ? template`<h2>Motivation</h2><blockquote>${linkify(
           feature.motivation
         )}</blockquote>`
       : template``
