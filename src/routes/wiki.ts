@@ -4,30 +4,22 @@ import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
 import { WIKI_TOPICS } from "../lib/wiki.ts";
+import { getTopicData } from "../lib/wiki-data.ts";
 
-// The topic directory. Counts come from a single num=1 request per topic
-// (the primary query): the response carries the exact total_count without
-// the feature payload, so a cold directory load is ~15 tiny requests rather
-// than ~20 full result pages. Each failure is isolated: a topic whose count
-// request fails renders without a count rather than taking down the
-// directory. The precise merged count across all of a topic's queries lives
-// on the topic page itself.
-const countFeatures = async (topic, chromeStatusAPI: StatusClient): Promise<number | undefined> => {
-  const result = await chromeStatusAPI
-    .getFeaturesByQuery(topic.queries[0], { num: 1 })
-    .catch(() => null);
-  const total = Number(result?.total_count);
-  return Number.isFinite(total) ? total : undefined;
-};
-
+// The topic directory. Counts come from getTopicData — the same deduped
+// union across ALL of a topic's queries that the topic page renders — so a
+// directory count always matches its topic page. Assembled topic data is
+// cached per client and shared with the topic pages, so warm loads make no
+// upstream requests at all. Each failure is isolated: a topic whose queries
+// all fail renders without a count rather than taking down the directory.
 const renderTopicCard = (topic, chromeStatusAPI: StatusClient) => template`
   <article class="wiki-topic">
     <h2><a href="/wiki/${escapeHtml(topic.slug)}">${escapeHtml(topic.title)}</a></h2>
     <p>${escapeHtml(topic.description)}</p>
-    ${countFeatures(topic, chromeStatusAPI).then((count) =>
-      count === undefined
+    ${getTopicData(topic, chromeStatusAPI).then((data) =>
+      data.failed
         ? template``
-        : template`<p><a href="/wiki/${escapeHtml(topic.slug)}">${count} feature${count === 1 ? "" : "s"}</a></p>`
+        : template`<p><a href="/wiki/${escapeHtml(topic.slug)}">${data.features.length} feature${data.features.length === 1 ? "" : "s"}</a></p>`
     )}
   </article>`;
 

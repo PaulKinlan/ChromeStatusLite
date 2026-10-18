@@ -294,23 +294,75 @@ Deno.test("/wiki/:topic omits the consensus section when no feature has view dat
   }
 });
 
-Deno.test("/wiki directory counts use one cheap num=1 request per topic (review chrome-status-lite-avm)", async () => {
-  const calls: { options: { num?: number; start?: number } }[] = [];
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
-      calls.push({ options });
-      return { total_count: 488, features: [] };
+Deno.test("/wiki directory counts the deduped union across ALL topic queries (review chrome-status-lite-4p4)", async () => {
+  // Device & Hardware has four queries; the directory must count the union,
+  // deduped by feature id, not just the first query's total_count.
+  const client = fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "web bluetooth") return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      return { total_count: 0, features: [] };
     },
-  }));
+  });
+  const handler = createHandler(client);
   const res = await handler(new Request("https://chromestatuslite.com/wiki"));
   equal(res.status, 200);
   const html = await res.text();
-  includes(html, "488 features");
-  equal(calls.length, WIKI_TOPICS.length);
-  for (const call of calls) {
-    equal(call.options.num, 1);
-    equal(call.options.start, undefined);
+  includes(html, '<a href="/wiki/device">3 features</a>'); // 1,2,3 — id 2 deduped
+});
+
+Deno.test("/wiki directory count matches the /wiki/:topic page count (review chrome-status-lite-4p4)", async () => {
+  const client = fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "web bluetooth") return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      return { total_count: 0, features: [] };
+    },
+  });
+  const handler = createHandler(client);
+  const directory = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  const topic = await (await handler(new Request("https://chromestatuslite.com/wiki/device"))).text();
+  includes(directory, '<a href="/wiki/device">3 features</a>');
+  includes(topic, "3 features tagged with this topic");
+});
+
+Deno.test("wiki topic data is cached and shared between directory and topic pages (review chrome-status-lite-4p4)", async () => {
+  let calls = 0;
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async () => {
+      calls++;
+      return { total_count: 1, features: [{ id: 7, name: "Cached feature" }] };
+    },
+  }));
+  await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  const afterDirectory = calls;
+  if (afterDirectory === 0) throw new Error("cold directory made no upstream calls");
+  // A second directory load and a topic page load are served entirely from
+  // the shared assembled-data cache: zero additional upstream calls.
+  await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  equal(calls, afterDirectory);
+  const topic = await (await handler(new Request("https://chromestatuslite.com/wiki/webgpu"))).text();
+  equal(calls, afterDirectory);
+  includes(topic, "1 feature tagged with this topic");
+});
+
+Deno.test("wiki topic data cache does not pin a total failure (review chrome-status-lite-4p4)", async () => {
+  let down = true;
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async () => {
+      if (down) throw new Error("upstream down");
+      return { total_count: 1, features: [{ id: 8, name: "Recovered feature" }] };
+    },
+  }));
+  const first = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  if (first.includes("feature</a>") || first.includes("features</a>")) {
+    throw new Error("count rendered while every query failed");
   }
+  down = false;
+  // Total failures are not cached: the next load retries upstream and
+  // recovers without waiting for the TTL.
+  const second = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  includes(second, '<a href="/wiki/webgpu">1 feature</a>');
 });
 
 
