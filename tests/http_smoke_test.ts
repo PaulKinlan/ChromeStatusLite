@@ -72,6 +72,10 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
     const { html, screenshot } = await browser();
     includes(html, "Chrome Release 112");
     includes(html, "Fixture feature");
+    includes(html, "Breaking change:</strong> Yes");
+    includes(html, "Enterprise impact:</strong> Medium");
+    includes(html, "Spec maturity:</strong> Working draft");
+    includes(html, "Web Platform Tests:</strong> Yes");
     includes(html, "https://chromestatuslite.com/?version=112");
     // The listener records the browser's CSS request and its response status.
     assertStylesheetLoaded(browserCssStatuses);

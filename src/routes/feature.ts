@@ -3,6 +3,7 @@ import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
+import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
 
 // Renders a single browser's standards position / view, if present.
 const renderView = (label, browser) => {
@@ -68,6 +69,8 @@ const renderFeature = (feature) => {
         : template``
     }
   </dl>
+  ${renderFeatureMetadata(feature, true)}
+  ${feature.wpt_descr ? template`<p>WPT details: ${escapeHtml(feature.wpt_descr)}</p>` : template``}
 
   <h2>Summary</h2>
   <p>${escapeHtml(feature.summary)}</p>

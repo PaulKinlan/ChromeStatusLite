@@ -3,6 +3,7 @@ import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
+import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
 
 const renderData = async (version, featuresByType) => {
   // The v0 API groups features by status text. Pull each bucket out,
@@ -114,6 +115,7 @@ const renderFeature = (item, tag = "h3") => {
           ? template`<p>This feature was specified <a href=${spec}>in this Spec</a>.</p>`
           : template``
       }
+      ${renderFeatureMetadata(item)}
       ${renderResources(item.resources)}`;
 };
 
