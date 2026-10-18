@@ -63,3 +63,17 @@ Deno.test("release page linkifies URLs in feature summaries", async () => {
   const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/"))).text();
   includes(html, '<a href="https://example.com/spec.html" rel="noopener noreferrer">https://example.com/spec.html</a>.');
 });
+
+Deno.test("release page upstream urls cannot break out of their href attributes", async () => {
+  const evil = 'https://example.com/x" onmouseover="alert(1)';
+  const client = fixtureClient({ getFeaturesForVersion: async () => ({
+    "Enabled by default": [{
+      id: 202, name: "Evil links", summary: "Summary",
+      resources: { docs: [evil], samples: [evil] },
+      browsers: { chrome: { bug: evil } }, standards: { spec: evil },
+    }],
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/?version=120"))).text();
+  equal(html.includes('onmouseover="'), false);
+  includes(html, "&quot; onmouseover=&quot;alert(1)");
+});

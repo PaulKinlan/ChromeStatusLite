@@ -20,7 +20,7 @@ const renderView = (label, browser) => {
     : linkify(view.text || "No signal");
   return template`<li>${label}: ${
     view.url
-      ? template`<a href=${view.url}>${text}</a>`
+      ? template`<a href="${escapeHtml(view.url)}">${text}</a>`
       : template`${text}`
   }${view.notes ? template` — ${linkify(view.notes)}` : template``}</li>`;
 };
@@ -31,7 +31,7 @@ const renderLinks = (label, links) => {
     return template``;
   }
   return template`<p>${label}: ${links.map(
-    (link) => template`<a href=${link}>${link}</a> `
+    (link) => template`<a href="${escapeHtml(String(link))}">${escapeHtml(String(link))}</a> `
   )}</p>`;
 };
 
@@ -93,14 +93,14 @@ const renderFeature = (feature) => {
   <ul>
     ${
       spec
-        ? template`<li>Specification: <a href=${spec}>${spec}</a></li>`
+        ? template`<li>Specification: <a href="${escapeHtml(spec)}">${escapeHtml(spec)}</a></li>`
         : template``
     }
     ${renderView("Firefox", feature.browsers?.ff)}
     ${renderView("Safari", feature.browsers?.safari)}
     ${renderView("Web developers", feature.browsers?.webdev)}
     ${
-      bug ? template`<li>Tracking bug: <a href=${bug}>${bug}</a></li>` : template``
+      bug ? template`<li>Tracking bug: <a href="${escapeHtml(bug)}">${escapeHtml(bug)}</a></li>` : template``
     }
   </ul>
 
@@ -108,7 +108,7 @@ const renderFeature = (feature) => {
   ${renderLinks("Samples", feature.sample_links || feature.resources?.samples)}
   ${renderLinks("Explainers", feature.explainer_links)}
 
-  <p><a href="https://chromestatus.com/feature/${feature.id}">View on chromestatus.com</a></p>
+  <p><a href="https://chromestatus.com/feature/${escapeHtml(String(feature.id ?? ""))}">View on chromestatus.com</a></p>
   `;
 };
 

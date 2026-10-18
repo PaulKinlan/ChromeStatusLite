@@ -90,7 +90,7 @@ Deno.test("a view with a url does not nest anchors around its text", async () =>
   }) });
   const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/127"))).text();
   // The url branch keeps its text plain: no anchor inside the outer anchor.
-  includes(html, "<a href=https://webkit.org/standards-positions/1>Positive, see https://webkit.org/position/1</a>");
+  includes(html, '<a href="https://webkit.org/standards-positions/1">Positive, see https://webkit.org/position/1</a>');
   equal(html.includes('href="https://webkit.org/position/1"'), false);
   // Notes remain free text, so they are still linkified.
   includes(html, '<a href="https://github.com/WebKit/standards-positions/issues/1" rel="noopener noreferrer">');
@@ -106,4 +106,20 @@ Deno.test("a view without a url still linkifies its text", async () => {
   }) });
   const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/128"))).text();
   includes(html, '<a href="https://bugzilla.mozilla.org/1" rel="noopener noreferrer">https://bugzilla.mozilla.org/1</a>');
+});
+
+Deno.test("upstream urls cannot break out of their href attributes", async () => {
+  const evil = 'https://example.com/x" onmouseover="alert(1)';
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 129, name: "Hostile urls", summary: "Summary",
+    spec_link: evil, bug_url: evil,
+    browsers: { safari: { view: { text: "Position", url: evil } } },
+    resources: { docs: [evil], samples: [evil] },
+    explainer_links: [evil],
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/129"))).text();
+  // A raw quote inside the attribute would start a new attribute; the escaped
+  // form keeps the whole value inside the quoted href.
+  equal(html.includes('onmouseover="'), false);
+  includes(html, "&quot; onmouseover=&quot;alert(1)");
 });

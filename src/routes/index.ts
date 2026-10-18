@@ -108,14 +108,14 @@ const renderResources = (resources) => {
       ${
         hasDocs && docs.length > 0
           ? template`<p>Docs: ${docs.map(
-              (resource) => template`<a href=${resource}>${resource}</a>`
+              (resource) => template`<a href="${escapeHtml(String(resource))}">${escapeHtml(String(resource))}</a>`
             )}</p>`
           : template`No linked docs`
       }</p>
       ${
         hasSamples && samples.length > 0
           ? template`<p>Samples: ${samples.map(
-              (resource) => template`<a href=${resource}>${resource}</a>`
+              (resource) => template`<a href="${escapeHtml(String(resource))}">${escapeHtml(String(resource))}</a>`
             )}</p>`
           : template`No linked samples`
       }</p>`;
@@ -133,7 +133,7 @@ const renderFeature = (item, tag = "h3") => {
   const summary = linkify(item.summary || "");
   return template`<${tag}><a href="/feature/${id}">${name}</a></${tag}>
       <p>${summary}${
-    bug ? template` <a href=${bug}>#</a>` : template``
+    bug ? template` <a href="${escapeHtml(String(bug))}">#</a>` : template``
   }</p>
       ${
         "motivation" in item && item.motivation
@@ -146,7 +146,7 @@ const renderFeature = (item, tag = "h3") => {
       }
       ${
         spec
-          ? template`<p>This feature was specified <a href=${spec}>in this Spec</a>.</p>`
+          ? template`<p>This feature was specified <a href="${escapeHtml(String(spec))}">in this Spec</a>.</p>`
           : template``
       }
       ${renderFeatureMetadata(item)}
