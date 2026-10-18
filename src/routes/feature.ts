@@ -12,7 +12,12 @@ const renderView = (label, browser) => {
   if (!view || (!view.text && !view.url)) {
     return template``;
   }
-  const text = linkify(view.text || "No signal");
+  // A view with a url already renders its text inside an anchor, so linkifying
+  // that text would nest <a> (invalid HTML, chrome-status-lite-cbr): only the
+  // free-text branch is linkified. Notes are always free text.
+  const text = view.url
+    ? escapeHtml(view.text || "No signal")
+    : linkify(view.text || "No signal");
   return template`<li>${label}: ${
     view.url
       ? template`<a href=${view.url}>${text}</a>`

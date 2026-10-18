@@ -77,3 +77,33 @@ Deno.test("linkify links scheme-less tracker and PR references", async () => {
   equal(html.includes('href="https://example.com/not-a-tracker"'), false);
   includes(html, "example.com/not-a-tracker");
 });
+
+Deno.test("a view with a url does not nest anchors around its text", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 127, name: "Nested anchor guard", summary: "Summary",
+    browsers: { safari: { view: {
+      text: "Positive, see https://webkit.org/position/1",
+      url: "https://webkit.org/standards-positions/1",
+      notes: "Discussed in https://github.com/WebKit/standards-positions/issues/1",
+    } } },
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/127"))).text();
+  // The url branch keeps its text plain: no anchor inside the outer anchor.
+  includes(html, "<a href=https://webkit.org/standards-positions/1>Positive, see https://webkit.org/position/1</a>");
+  equal(html.includes('href="https://webkit.org/position/1"'), false);
+  // Notes remain free text, so they are still linkified.
+  includes(html, '<a href="https://github.com/WebKit/standards-positions/issues/1" rel="noopener noreferrer">');
+  // No anchor anywhere opens inside another.
+  equal(/<a\b[^>]*>[^<]*<a\b/.test(html), false);
+});
+
+Deno.test("a view without a url still linkifies its text", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 128, name: "Free-text view", summary: "Summary",
+    browsers: { ff: { view: { text: "No signal, tracked at https://bugzilla.mozilla.org/1" } } },
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/128"))).text();
+  includes(html, '<a href="https://bugzilla.mozilla.org/1" rel="noopener noreferrer">https://bugzilla.mozilla.org/1</a>');
+});
