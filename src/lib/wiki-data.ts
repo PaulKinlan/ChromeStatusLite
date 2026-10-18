@@ -98,8 +98,10 @@ const assembleTopicData = async (
 
 // Returns the assembled feature set for a topic, serving from the shared
 // per-client cache when fresh. Concurrent callers share one in-flight
-// assembly (single-flight), and a total failure is NOT cached so the next
-// visit retries upstream instead of pinning an error page.
+// assembly (single-flight). Only COMPLETE assemblies are cached: a partial
+// inventory (a query failed, a continuation page was lost, or the cap bit)
+// or a total failure must not pin a stale count for the whole TTL, so the
+// next visit retries upstream instead (chrome-status-lite-3mh).
 export const getTopicData = (
   topic: WikiTopic,
   chromeStatusAPI: StatusClient,
@@ -114,10 +116,11 @@ export const getTopicData = (
   if (hit && hit.expires > now) return hit.promise;
   const promise = assembleTopicData(topic, chromeStatusAPI);
   // Cache the in-flight promise immediately so concurrent directory/topic
-  // renders share one assembly. Drop the entry if every query failed.
+  // renders share one assembly, then drop the entry unless the assembled
+  // data is the complete inventory.
   cache.set(topic.slug, { expires: now + TOPIC_CACHE_TTL, promise });
   promise.then((data) => {
-    if (data.failed && cache.get(topic.slug)?.promise === promise) {
+    if (!data.complete && cache.get(topic.slug)?.promise === promise) {
       cache.delete(topic.slug);
     }
   });

@@ -503,6 +503,39 @@ Deno.test("getTopicData unions every query, deduped, with failure flags (review 
   equal(allDown.features.length, 0);
 });
 
+Deno.test("getTopicData does not cache a partial assembly (review chrome-status-lite-3mh)", async () => {
+  // Reviewer repro: one query rejects once, then recovers. The partial
+  // result must NOT be pinned for the TTL - the next call retries upstream.
+  const topic = getTopic("device")!;
+  let bluetoothDown = true;
+  let calls = 0;
+  const client = fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      calls++;
+      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "web bluetooth") {
+        if (bluetoothDown) {
+          bluetoothDown = false;
+          throw new Error("503 transient");
+        }
+        return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      }
+      return { total_count: 0, features: [] };
+    },
+  });
+  const first = await getTopicData(topic, client);
+  equal(first.features.length, 2); // bluetooth down: only webusb's pair
+  equal(first.complete, false);
+  const callsAfterFirst = calls;
+  const second = await getTopicData(topic, client);
+  if (calls === callsAfterFirst) throw new Error("partial assembly was served from cache");
+  equal(second.features.length, 3); // recovered bluetooth adds WebBluetooth; id 2 still deduped
+  equal(second.complete, true);
+  // The recovered, complete assembly IS cached: a third call refetches nothing.
+  const third = await getTopicData(topic, client);
+  equal(third.complete, true);
+});
+
 Deno.test("getTopic resolves slugs", () => {
   equal(getTopic("webgpu")?.title, "WebGPU");
   equal(getTopic("nope"), undefined);
