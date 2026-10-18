@@ -67,7 +67,7 @@ export default async (strings, ...values): ReadableStream => {
         controller.close();
       }
 
-      push();
+      push().catch((err) => controller.error(err));
     },
   });
 };

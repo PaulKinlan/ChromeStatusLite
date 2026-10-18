@@ -393,3 +393,22 @@ Deno.test("index, diff, and deprecations render error-notices on upstream failur
   equal(deprecationsRes.status, 200);
   includes(await deprecationsRes.text(), "error-notice");
 });
+
+Deno.test("malformed non-throwing bodies render error-notices and avoid unhandled rejections", async () => {
+  const malformedClient = fixtureClient({
+    getVersions: async () => [120, 119],
+    getFeaturesForVersion: async () => null as any,
+    getFeaturesByType: async () => ({ features: [{ name: "X", browsers: { chrome: { desktop: "120" } } }] }),
+    getChannels: async () => null as any,
+  });
+
+  const handler = createHandler(malformedClient);
+
+  const indexRes = await handler(new Request("https://chromestatuslite.com/"));
+  equal(indexRes.status, 200);
+  includes(await indexRes.text(), "error-notice");
+
+  const deprecationsRes = await handler(new Request("https://chromestatuslite.com/deprecations"));
+  equal(deprecationsRes.status, 200);
+  includes(await deprecationsRes.text(), "error-notice");
+});

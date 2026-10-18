@@ -8,12 +8,14 @@ import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
 const renderData = async (version, featuresByType) => {
   // The v0 API groups features by status text. Pull each bucket out,
   // defaulting to an empty list when a milestone has none of that type.
-  const enabled = featuresByType["Enabled by default"] || [];
-  const originTrials = featuresByType["Origin trial"] || [];
-  const flaggedFeatures =
-    featuresByType["In developer trial (Behind a flag)"] || [];
-  const removed = featuresByType["Removed"] || [];
-  const deprecated = featuresByType["Deprecated"] || [];
+  const safeFeatures = (featuresByType && typeof featuresByType === "object") ? featuresByType : {};
+  const enabled = Array.isArray(safeFeatures["Enabled by default"]) ? safeFeatures["Enabled by default"] : [];
+  const originTrials = Array.isArray(safeFeatures["Origin trial"]) ? safeFeatures["Origin trial"] : [];
+  const flaggedFeatures = Array.isArray(safeFeatures["In developer trial (Behind a flag)"])
+    ? safeFeatures["In developer trial (Behind a flag)"]
+    : [];
+  const removed = Array.isArray(safeFeatures["Removed"]) ? safeFeatures["Removed"] : [];
+  const deprecated = Array.isArray(safeFeatures["Deprecated"]) ? safeFeatures["Deprecated"] : [];
 
   console.log(
     enabled.length,
@@ -155,11 +157,19 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 
   try {
     versions = await chromeStatusAPI.getVersions();
-    if (!version && versions.length > 0) {
-      version = versions[0];
-    }
-    if (version) {
-      features = await chromeStatusAPI.getFeaturesForVersion(version);
+    if (!Array.isArray(versions)) {
+      upstreamError = true;
+      versions = [];
+    } else {
+      if (!version && versions.length > 0) {
+        version = versions[0];
+      }
+      if (version) {
+        features = await chromeStatusAPI.getFeaturesForVersion(version);
+        if (!features || typeof features !== "object") {
+          upstreamError = true;
+        }
+      }
     }
   } catch {
     upstreamError = true;

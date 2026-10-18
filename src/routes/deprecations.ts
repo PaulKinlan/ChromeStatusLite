@@ -48,15 +48,23 @@ const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
       return parseInt(b.browsers.chrome.desktop) - parseInt(a.browsers.chrome.desktop);
     };
 
-    const deprecations = (await chromeStatusAPI.getFeaturesByType(3)).features.sort(deprecationsSort);
+    const res = await chromeStatusAPI.getFeaturesByType(3);
+    if (!res || !Array.isArray(res.features)) {
+      throw new Error("Malformed deprecations response");
+    }
+    const deprecations = res.features.sort(deprecationsSort);
 
     // Map features to browser versions, removing features that don't have version.
     const versions = deprecations
-        .map(f => f.browsers.chrome.desktop)
+        .map(f => f?.browsers?.chrome?.desktop)
         .filter(f => f !== undefined)
         .sort((a, b) => parseInt(a) - parseInt(b));
 
-    const channels = await chromeStatusAPI.getChannels(versions.at(0), versions.at(-1));
+    const rawChannels = await chromeStatusAPI.getChannels(versions.at(0), versions.at(-1));
+    if (!rawChannels || typeof rawChannels !== "object") {
+      throw new Error("Malformed channels response");
+    }
+    const channels = rawChannels;
     return template`
           <table>
           <tr>
@@ -73,20 +81,28 @@ const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
   }
 };
 
-const renderDeprecation = async (deprecation, channels) => {
-  let channel = channels[deprecation.browsers.chrome.desktop];
+const renderDeprecation = (deprecation, channels) => {
+  const desktopVersion = deprecation?.browsers?.chrome?.desktop;
+  let channel = (channels && desktopVersion) ? channels[desktopVersion] : undefined;
   let date = 'N/A';
   if (channel && channel.stable_date) {
-    date = format(new Date(channel.stable_date), 'yyyy-MM-dd');
+    try {
+      date = format(new Date(channel.stable_date), 'yyyy-MM-dd');
+    } catch {
+      date = 'N/A';
+    }
   }
 
-  let name = escapeHtml(deprecation.name);
+  let name = escapeHtml(deprecation?.name || 'Unnamed feature');
+  let id = deprecation?.id ? encodeURIComponent(String(deprecation.id)) : '';
+  let intentStage = escapeHtml(deprecation?.intent_stage || '');
+  let versionStr = escapeHtml(desktopVersion || '');
   return template`
         <tr>
             <td>${date}</td>
-            <td><a href="https://chromestatus.com/feature/${deprecation.id}">${name}</a></td>
-            <td>${escapeHtml(deprecation.intent_stage)}</td>
-            <td><a href="/?version=${deprecation.browsers.chrome.desktop}">${deprecation.browsers.chrome.desktop}</a></td>
+            <td><a href="https://chromestatus.com/feature/${id}">${name}</a></td>
+            <td>${intentStage}</td>
+            <td><a href="/?version=${versionStr}">${versionStr}</a></td>
         </tr>
     `;
 };
