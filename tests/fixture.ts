@@ -12,7 +12,12 @@ export function fixtureClient(overrides: Partial<StatusClient> = {}): StatusClie
     getFeaturesByType: async () => ({ features: [
       { id: 123, name: "Deprecated fixture", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "120" } } },
     ] }),
-    getChannels: async () => ({ "120": { stable_date: "2024-01-01T00:00:00Z" } }),
+    getChannels: async (start?: number, end?: number) => {
+      if (start === undefined && end === undefined) {
+        return { dev: { version: "120" }, stable: { version: "118" } };
+      }
+      return { "120": { stable_date: "2024-01-01T00:00:00Z" } };
+    },
     getFeature: async () => sampleFeature,
     ...overrides,
   };

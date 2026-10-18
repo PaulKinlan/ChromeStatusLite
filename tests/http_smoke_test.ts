@@ -56,6 +56,18 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
     const missing = await fetch(`${root}/missing`);
     equal(missing.status, 404);
 
+    const feed = await fetch(`${root}/feed.xml`);
+    equal(feed.status, 200);
+    includes(feed.headers.get("content-type") || "", "application/rss+xml");
+    includes(await feed.text(), "<title>Chrome Status Lite</title>");
+
+    const apiVersion = await fetch(`${root}/api/version/120`);
+    equal(apiVersion.status, 200);
+    includes(apiVersion.headers.get("content-type") || "", "application/json");
+    const apiJson = await apiVersion.json();
+    equal(apiJson.version, 120);
+    equal(apiJson.total_features, 1);
+
     browserCssStatuses = [];
     const { html, screenshot } = await browser();
     includes(html, "Chrome Release 112");
