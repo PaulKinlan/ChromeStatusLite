@@ -2,6 +2,8 @@ import type { StatusClient } from "../src/handler.ts";
 
 export const sampleFeature = {
   id: 123, name: "Fixture feature", summary: "A fixture summary", motivation: "Useful fixture",
+  breaking_change: true, enterprise_impact: 3, flag_name: "fixture-flag", wpt: true,
+  standards: { maturity: { short_text: "Working draft" } },
   resources: { docs: [], samples: [] }, browsers: { chrome: { status: { text: "Enabled by default", milestone_str: "120" } } },
 };
 
