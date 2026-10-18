@@ -46,7 +46,16 @@ const WPT_PATH_RE = /\b([a-z0-9-]+(?:\/[a-z0-9_*.-]+)+)\b/i;
 
 const wptQueryFromDescr = (descr: string): string | null => {
   const qParam = descr.match(/[?&]q=([^&\s]+)/);
-  if (qParam) return decodeURIComponent(qParam[1]);
+  if (qParam) {
+    // wpt_descr is free text: "?q=50%" or "?q=%zz" throw URIError on a
+    // bare decodeURIComponent, which would 500 the whole feature page.
+    // The raw token is still a usable literal query.
+    try {
+      return decodeURIComponent(qParam[1]);
+    } catch {
+      return qParam[1];
+    }
+  }
   const match = descr.match(WPT_PATH_RE);
   if (!match) return null;
   const path = match[1]
@@ -73,7 +82,9 @@ const renderEcosystemLinks = (feature) => {
   if (!name) return template``;
   const q = encodeURIComponent(name);
   const link = (label, url) =>
-    template`<li>${label}: <a href="${url}" rel="noopener noreferrer" target="_blank">${url}</a></li>`;
+    template`<li>${label}: <a href="${url}" rel="noopener noreferrer" target="_blank">${escapeHtml(
+      url
+    )}</a></li>`;
   return template`
   <h2>Ecosystem</h2>
   <ul>

@@ -70,3 +70,30 @@ Deno.test("ecosystem WPT link prefers the feature's real WPT path over the name 
   includes(html, 'href="https://wpt.fyi/results/?q=css%2Fcssom-view%2FscrollIntoView"');
   equal(html.includes("q=element-scrollintoview"), false);
 });
+
+Deno.test("a malformed percent escape in wpt_descr cannot 500 the feature page", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 126, name: "Malformed percent", summary: "s",
+    wpt_descr: "see https://x.test/?q=50%",
+    resources: { docs: [], samples: [] },
+  }) });
+  const res = await createHandler(client)(new Request("https://chromestatuslite.com/feature/126"));
+  equal(res.status, 200);
+  const text = await res.text();
+  includes(text, "wpt.fyi/results/?q=50%25");
+});
+
+Deno.test("an encoded script in the wpt q= param is re-encoded in href and escaped in text", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 127, name: "Hostile q", summary: "s",
+    wpt_descr: "https://wpt.fyi/results/?q=test%3Cscript%3Ealert(1)%3C/script%3E",
+    resources: { docs: [], samples: [] },
+  }) });
+  const res = await createHandler(client)(new Request("https://chromestatuslite.com/feature/127"));
+  equal(res.status, 200);
+  const text = await res.text();
+  // No decoded markup anywhere; the anchor renders the percent-encoded form.
+  equal(text.includes("<script>alert(1)</script>"), false);
+  includes(text, 'q=test%3Cscript%3Ealert(1)%3C%2Fscript%3E" rel="noopener');
+  includes(text, '_blank">https://wpt.fyi/results/?q=test%3Cscript%3Ealert(1)');
+});
