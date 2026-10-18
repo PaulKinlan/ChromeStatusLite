@@ -6,6 +6,7 @@
     "tests/diff_test.ts",
     "tests/feature_test.ts",
     "tests/handler_test.ts",
+    "tests/history_test.ts",
     "tests/http_smoke_test.ts",
     "tests/index_test.ts",
     "tests/wiki_test.ts"
@@ -16,6 +17,7 @@
     "tests/diff_test.ts",
     "tests/feature_test.ts",
     "tests/handler_test.ts",
+    "tests/history_test.ts",
     "tests/http_smoke_test.ts",
     "tests/index_test.ts",
     "tests/wiki_test.ts"
@@ -26,6 +28,7 @@
     "tests/diff_test.ts",
     "tests/feature_test.ts",
     "tests/handler_test.ts",
+    "tests/history_test.ts",
     "tests/http_smoke_test.ts",
     "tests/index_test.ts",
     "tests/wiki_test.ts"

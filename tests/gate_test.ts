@@ -15,6 +15,7 @@ const ROUTE_SUITES = [
   "tests/diff_test.ts",
   "tests/feature_test.ts",
   "tests/handler_test.ts",
+  "tests/history_test.ts",
   "tests/index_test.ts",
   "tests/wiki_test.ts",
 ];
@@ -252,7 +253,12 @@ Deno.test("full gate runs the offline suites, then the smoke in a wider sandbox"
     const log = await Deno.readTextFile(`${scratch.dir}/deno.log`);
     const invocations = log.split("\n").filter((line) => line.length > 0);
     equal(invocations.length, 2, "offline + smoke invocations");
-    for (const suite of ROUTE_SUITES) includes(invocations[0], suite, "offline invocation");
+    // Pin the EXACT offline suite set and the KV flag (chrome-status-lite-pfo):
+    // a per-suite includes() loop let the full gate silently drop
+    // tests/history_test.ts (kc1) without any test going red.
+    const offlineSuites = invocations[0].split(/\s+/).filter((token) => token.startsWith("tests/"));
+    setEqual(offlineSuites, ROUTE_SUITES, "full gate offline suite list is exactly the pinned set");
+    includes(invocations[0], "--unstable-kv", "offline invocation enables Deno.openKv for history_test");
     if (invocations[0].includes(SMOKE)) fail("smoke must run in the second, wider invocation");
     includes(invocations[1], SMOKE, "smoke invocation");
     includes(invocations[1], "--allow-net=127.0.0.1", "smoke sandbox");

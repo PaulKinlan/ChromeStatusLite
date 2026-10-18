@@ -5,7 +5,7 @@ base="${GATE_BASE:-$(git merge-base HEAD origin/main)}"
 mapfile -t paths < <( { git diff --name-only "$base" HEAD; git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; } | sort -u )
 declare -A selected=()
 add() { selected["$1"]=1; }
-add_all() { add tests/handler_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/diff_test.ts; add tests/client_test.ts; add tests/wiki_test.ts; }
+add_all() { add tests/handler_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/diff_test.ts; add tests/client_test.ts; add tests/wiki_test.ts; add tests/history_test.ts; }
 gate=0
 for path in "${paths[@]}"; do
   # Map deleted paths too: their former suites must verify that the removal is safe.
