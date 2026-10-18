@@ -8,9 +8,7 @@ add() { selected["$1"]=1; }
 add_all() { add tests/handler_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/client_test.ts; }
 gate=0
 for path in "${paths[@]}"; do
-  # A deleted file cannot be exercised; the suites that loaded it fail at module
-  # resolution if the deletion breaks them, so the diff entry itself is skipped.
-  [[ -e $path ]] || continue
+  # Map deleted paths too: their former suites must verify that the removal is safe.
   case "$path" in
     static/*.html) add tests/handler_test.ts ;;
     src/routes/index.ts|static/scripts/index.js) add tests/index_test.ts ;;

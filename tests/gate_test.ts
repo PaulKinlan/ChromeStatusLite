@@ -82,7 +82,7 @@ async function makeScratch(): Promise<Scratch> {
     await Deno.mkdir(`${dir}/bin`);
     await Deno.writeTextFile(
       `${dir}/bin/deno`,
-      `#!/usr/bin/env bash\necho "$*" >> "${dir}/deno.log"\n`,
+      `#!/usr/bin/env bash\necho "$*" >> "${dir}/deno.log"\n[[ " $* " == *" $GATE_FAIL_SUITE "* ]] && exit 1\nexit 0\n`,
     );
     await Deno.chmod(`${dir}/bin/deno`, 0o755);
     const git = async (args: string[]): Promise<string> => {
@@ -96,7 +96,14 @@ async function makeScratch(): Promise<Scratch> {
     await git(["add", "-A"]);
     await git(["commit", "-qm", "init"]);
     const base = await git(["rev-parse", "HEAD"]);
-    return { dir, env: { PATH: `${dir}/bin:${Deno.env.get("PATH") || ""}`, GATE_BASE: base } };
+    return {
+      dir,
+      env: {
+        PATH: `${dir}/bin:${Deno.env.get("PATH") || ""}`,
+        GATE_BASE: base,
+        GATE_FAIL_SUITE: "__no_such_suite__",
+      },
+    };
   } catch (error) {
     await Deno.remove(dir, { recursive: true }).catch(() => {});
     throw error;
@@ -108,6 +115,17 @@ async function touch(dir: string, rel: string): Promise<void> {
   const slash = rel.lastIndexOf("/");
   if (slash > 0) await Deno.mkdir(`${dir}/${rel.slice(0, slash)}`, { recursive: true });
   await Deno.writeTextFile(`${dir}/${rel}`, "changed\n");
+}
+
+// Stage a tracked deletion against the scratch baseline so the gate sees the
+// same git diff shape as a real removed file (not merely an absent path).
+async function removeTracked(scratch: Scratch, rel: string): Promise<void> {
+  await touch(scratch.dir, rel);
+  for (const args of [["add", rel], ["commit", "-qm", "add tracked path"], ["rm", "-q", rel]]) {
+    const result = await run(["git", ...args], { cwd: scratch.dir });
+    equal(result.code, 0, `git ${args.join(" ")}: ${result.stderr}`);
+  }
+  scratch.env.GATE_BASE = (await run(["git", "rev-parse", "HEAD"], { cwd: scratch.dir })).stdout.trim();
 }
 
 interface GateRun {
@@ -158,6 +176,27 @@ Deno.test("fast gate maps a route change to its own suite plus the smoke", () =>
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
     setEqual(gate.suites, ["tests/feature_test.ts", SMOKE], "selected suites");
+  }));
+
+Deno.test("fast gate maps a deleted route even in a mixed diff, and surfaces its suite failure", () =>
+  withScratch(async (scratch) => {
+    await removeTracked(scratch, "src/routes/feature.ts");
+    await touch(scratch.dir, "src/routes/index.ts");
+    scratch.env.GATE_FAIL_SUITE = "tests/feature_test.ts";
+    const gate = await fastGate(scratch);
+    equal(gate.code, 1, "deleted route's suite failure must fail the gate");
+    setEqual(gate.suites, ["tests/feature_test.ts", "tests/index_test.ts"], "selected suites");
+    includes(gate.invocations[0], "tests/feature_test.ts", "deleted route's suite ran");
+    equal(gate.invocations.length, 1, "gate stops after failed route suites");
+  }));
+
+Deno.test("fast gate refuses an unmapped deleted path", () =>
+  withScratch(async (scratch) => {
+    await removeTracked(scratch, "src/unknown_widget.ts");
+    const gate = await fastGate(scratch);
+    equal(gate.code, 1, "exit code");
+    includes(gate.stderr, "Unmapped changed path: src/unknown_widget.ts", "refusal");
+    equal(gate.invocations.length, 0, "no suite ran after refusal");
   }));
 
 Deno.test("fast gate maps shared modules and the smoke test itself to all suites", () =>
