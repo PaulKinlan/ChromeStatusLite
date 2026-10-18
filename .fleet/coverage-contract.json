@@ -1,30 +1,6 @@
 {
-  "//": "fleet-check coverage attribution (chrome-status-lite-tor): changed paths that no test file imports by name would otherwise report unmapped/PARTIAL on every fast verdict. Each pattern must list exactly the suites tools/fast-gate.sh runs for that path (the five offline route/client suites plus the always-run fixture-backed smoke). Keep in sync with tools/fast-gate.sh.",
-  "tools/*": [
-    "tests/client_test.ts",
-    "tests/deprecations_test.ts",
-    "tests/feature_test.ts",
-    "tests/handler_test.ts",
-    "tests/http_smoke_test.ts",
-    "tests/index_test.ts"
-  ],
-  "main.ts": [
-    "tests/client_test.ts",
-    "tests/deprecations_test.ts",
-    "tests/feature_test.ts",
-    "tests/handler_test.ts",
-    "tests/http_smoke_test.ts",
-    "tests/index_test.ts"
-  ],
+  "//": "fleet-check coverage attribution. Declares suite placement ONLY for changed paths with a real transitive import into the executed suites, which no test file imports by name (chrome-status-lite-74e: a declared-but-never-loaded path turns a truthful PARTIAL into a false KNOWN). main.ts is loaded by tests/http_smoke_test.ts, tools/* is exercised by tests/gate_test.ts, so neither needs an entry here. Each pattern lists exactly the suites tools/fast-gate.sh runs for that path; tests/gate_test.ts pins this file and the fast-gate mapping to each other.",
   "src/flora.ts": [
-    "tests/client_test.ts",
-    "tests/deprecations_test.ts",
-    "tests/feature_test.ts",
-    "tests/handler_test.ts",
-    "tests/http_smoke_test.ts",
-    "tests/index_test.ts"
-  ],
-  "src/types.ts": [
     "tests/client_test.ts",
     "tests/deprecations_test.ts",
     "tests/feature_test.ts",
