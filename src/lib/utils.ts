@@ -62,9 +62,16 @@ export class ChromeStatusAPI {
 
   // Full-text search over all features. Returns { total_count, features };
   // each feature carries the full browsers/stages payload, which the wiki
-  // topic pages group and tag from.
-  public async getFeaturesByQuery(query: string): Promise<any> {
-    return this.fetchJson(`/api/v0/features?q=${encodeURIComponent(query)}`);
+  // topic pages group and tag from. The upstream default page size is 100,
+  // so callers needing more than a page must paginate with num/start.
+  public async getFeaturesByQuery(
+    query: string,
+    options: { num?: number; start?: number } = {},
+  ): Promise<any> {
+    const params = new URLSearchParams({ q: query });
+    if (options.num !== undefined) params.set("num", String(options.num));
+    if (options.start !== undefined) params.set("start", String(options.start));
+    return this.fetchJson(`/api/v0/features?${params}`);
   }
 
   // Fetches a single feature's full detail by id.

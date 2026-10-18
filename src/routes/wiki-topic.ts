@@ -12,6 +12,36 @@ import {
   timeline,
 } from "../lib/wiki.ts";
 
+// The upstream search defaults to 100 results per page; topics can match
+// several hundred features, so fetch continuation pages in parallel. The cap
+// bounds upstream load for very broad queries while keeping the rendered
+// count truthful (it always counts exactly the features rendered).
+const PAGE_SIZE = 100;
+const MAX_FEATURES_PER_QUERY = 1000;
+
+export const fetchQueryFeatures = async (
+  query: string,
+  chromeStatusAPI: StatusClient,
+): Promise<{ total_count: number; features: any[] }> => {
+  const first = await chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE });
+  const total = Number(first?.total_count) || 0;
+  const features = Array.isArray(first?.features) ? [...first.features] : [];
+  const wanted = Math.min(total, MAX_FEATURES_PER_QUERY);
+  if (features.length < wanted) {
+    const pages = [];
+    for (let start = features.length; start < wanted; start += PAGE_SIZE) {
+      pages.push(
+        chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE, start })
+          .catch(() => null),
+      );
+    }
+    for (const page of await Promise.all(pages)) {
+      if (Array.isArray(page?.features)) features.push(...page.features);
+    }
+  }
+  return { total_count: total, features: features.slice(0, MAX_FEATURES_PER_QUERY) };
+};
+
 const renderNotFound = (slug: string, canonical: string) =>
   template`
   <!doctype html>
@@ -60,17 +90,22 @@ const renderFeature = (feature, crossTags: string[]) => {
 
 const renderConsensus = (features) => {
   const tally = consensus(features);
-  const rows = Object.entries(tally).map(([label, counts]) => {
-    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    if (entries.length === 0) return template``;
-    return template`<li><strong>${escapeHtml(label)}:</strong> ${entries.map(([text, count], index) =>
-      template`${index > 0 ? ", " : ""}${escapeHtml(text)} (${count})`
-    )}</li>`;
-  });
+  // consensus() always returns the same three browser keys, so the guard
+  // must be on whether any row actually has counts, not on rows.length.
+  const rows = Object.entries(tally)
+    .map(([label, counts]) => ({
+      label,
+      entries: Object.entries(counts).sort((a, b) => b[1] - a[1]),
+    }))
+    .filter(({ entries }) => entries.length > 0);
   if (rows.length === 0) return template``;
   return template`
   <h2>Cross-browser consensus</h2>
-  <ul class="wiki-consensus">${rows}</ul>`;
+  <ul class="wiki-consensus">${rows.map(({ label, entries }) =>
+    template`<li><strong>${escapeHtml(label)}:</strong> ${entries.map(([text, count], index) =>
+      template`${index > 0 ? ", " : ""}${escapeHtml(text)} (${count})`
+    )}</li>`
+  )}</ul>`;
 };
 
 const renderStages = (features, tagsById: Map<string, string[]>, topicSlug: string) => {
@@ -114,7 +149,7 @@ export default async function render(
   if (!topic) return renderNotFound(slug, canonical);
 
   const results = await Promise.all(
-    topic.queries.map((query) => chromeStatusAPI.getFeaturesByQuery(query).catch(() => null)),
+    topic.queries.map((query) => fetchQueryFeatures(query, chromeStatusAPI).catch(() => null)),
   );
 
   let contentBody;

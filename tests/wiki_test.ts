@@ -1,6 +1,6 @@
 import { createHandler } from "../src/handler.ts";
 import wiki from "../src/routes/wiki.ts";
-import wikiTopic from "../src/routes/wiki-topic.ts";
+import wikiTopic, { fetchQueryFeatures } from "../src/routes/wiki-topic.ts";
 import { equal, fixtureClient, includes } from "./fixture.ts";
 import {
   WIKI_TOPICS,
@@ -99,7 +99,7 @@ Deno.test("/wiki lists every topic with links and counts", async () => {
   includes(html, "Web Platform Topic Wiki");
   includes(html, '<a href="/wiki/webgpu">WebGPU</a>');
   includes(html, '<a href="/wiki/web-ai">Built-in Web AI</a>');
-  includes(html, "1 features");
+  includes(html, "1 feature</a>"); // fixture total_count: 1, singular form
 });
 
 Deno.test("/wiki tolerates a topic whose queries all fail", async () => {
@@ -184,6 +184,104 @@ Deno.test("/wiki route module renders the directory directly", async () => {
   equal(res.status, 200);
   includes(await res.text(), "Web Platform Topic Wiki");
 });
+
+Deno.test("wiki tagger avoids bare-common-word false positives (review chrome-status-lite-asn)", () => {
+  // A WGSL memory layout is not CSS Layout, and WGSL storage buffers are not
+  // the Storage & Files topic.
+  equal(
+    tagFeature({ name: "WebGPU: Uniform buffer standard layout", summary: "Uniform buffer standard layout for WGSL storage buffers." }).join(","),
+    "webgpu",
+  );
+  equal(
+    tagFeature({ name: "WGSL: unrestricted pointer parameters", summary: "Pointers to storage/uniform/workgroup address spaces are allowed." }).join(","),
+    "webgpu",
+  );
+  // A canvas text-direction getter is not the Fonts & Text topic.
+  equal(
+    tagFeature({ name: "Canvas2D getConfiguration", summary: "Returns the text-direction of a canvas context." }).length,
+    0,
+  );
+  // Real topic members still tag: CSS container queries hit css-layout,
+  // IndexedDB hits storage, an install prompt hits pwa.
+  equal(tagFeature({ name: "CSS container queries", summary: "Size container queries for elements." }).join(","), "css-layout");
+  includes(tagFeature({ name: "IndexedDB 3.0", summary: "IndexedDB improvements." }).join(","), "storage");
+  includes(tagFeature({ name: "Richer install UI", summary: "App install prompt improvements." }).join(","), "pwa");
+});
+
+Deno.test("fetchQueryFeatures paginates past the 100-result default page (review chrome-status-lite-9am)", async () => {
+  const calls: { options: { num?: number; start?: number } }[] = [];
+  const client = fixtureClient({
+    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
+      calls.push({ options });
+      const start = options.start ?? 0;
+      return {
+        total_count: 250,
+        features: Array.from({ length: Math.min(100, 250 - start) }, (_, i) => ({
+          id: start + i,
+          name: `Feature ${start + i}`,
+        })),
+      };
+    },
+  });
+  const result = await fetchQueryFeatures("javascript", client);
+  equal(result.features.length, 250);
+  equal(result.total_count, 250);
+  equal(calls.length, 3);
+  equal(calls[0].options.start, undefined);
+  equal(calls[1].options.start, 100);
+  equal(calls[2].options.start, 200);
+  for (const call of calls) equal(call.options.num, 100);
+});
+
+Deno.test("fetchQueryFeatures keeps partial pages when a continuation fails", async () => {
+  const client = fixtureClient({
+    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
+      const start = options.start ?? 0;
+      if (start >= 200) throw new Error("page lost");
+      return {
+        total_count: 300,
+        features: Array.from({ length: 100 }, (_, i) => ({ id: start + i, name: `F${start + i}` })),
+      };
+    },
+  });
+  const result = await fetchQueryFeatures("javascript", client);
+  equal(result.features.length, 200);
+});
+
+Deno.test("/wiki/:topic omits the consensus section when no feature has view data (review chrome-status-lite-098)", async () => {
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async () => ({
+      total_count: 1,
+      features: [{ id: 9, name: "Bare feature", summary: "No upstream view data." }],
+    }),
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/wiki/webgpu"));
+  equal(res.status, 200);
+  const html = await res.text();
+  if (html.includes("Cross-browser consensus")) {
+    throw new Error("consensus section rendered with zero view data");
+  }
+});
+
+Deno.test("/wiki directory counts use one cheap num=1 request per topic (review chrome-status-lite-avm)", async () => {
+  const calls: { options: { num?: number; start?: number } }[] = [];
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
+      calls.push({ options });
+      return { total_count: 488, features: [] };
+    },
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/wiki"));
+  equal(res.status, 200);
+  const html = await res.text();
+  includes(html, "488 features");
+  equal(calls.length, WIKI_TOPICS.length);
+  for (const call of calls) {
+    equal(call.options.num, 1);
+    equal(call.options.start, undefined);
+  }
+});
+
 
 Deno.test("getTopic resolves slugs", () => {
   equal(getTopic("webgpu")?.title, "WebGPU");

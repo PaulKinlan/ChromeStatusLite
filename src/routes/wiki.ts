@@ -3,17 +3,21 @@ import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
-import { WIKI_TOPICS, collectTopicFeatures } from "../lib/wiki.ts";
+import { WIKI_TOPICS } from "../lib/wiki.ts";
 
-// The topic directory. Counts are fetched per topic in parallel and each
-// failure is isolated: a topic whose queries fail renders without a count
-// rather than taking down the directory.
+// The topic directory. Counts come from a single num=1 request per topic
+// (the primary query): the response carries the exact total_count without
+// the feature payload, so a cold directory load is ~15 tiny requests rather
+// than ~20 full result pages. Each failure is isolated: a topic whose count
+// request fails renders without a count rather than taking down the
+// directory. The precise merged count across all of a topic's queries lives
+// on the topic page itself.
 const countFeatures = async (topic, chromeStatusAPI: StatusClient): Promise<number | undefined> => {
-  const results = await Promise.all(
-    topic.queries.map((query) => chromeStatusAPI.getFeaturesByQuery(query).catch(() => null)),
-  );
-  if (results.every((result) => result === null)) return undefined;
-  return collectTopicFeatures(results.filter((result) => result !== null)).length;
+  const result = await chromeStatusAPI
+    .getFeaturesByQuery(topic.queries[0], { num: 1 })
+    .catch(() => null);
+  const total = Number(result?.total_count);
+  return Number.isFinite(total) ? total : undefined;
 };
 
 const renderTopicCard = (topic, chromeStatusAPI: StatusClient) => template`
@@ -23,7 +27,7 @@ const renderTopicCard = (topic, chromeStatusAPI: StatusClient) => template`
     ${countFeatures(topic, chromeStatusAPI).then((count) =>
       count === undefined
         ? template``
-        : template`<p><a href="/wiki/${escapeHtml(topic.slug)}">${count} features</a></p>`
+        : template`<p><a href="/wiki/${escapeHtml(topic.slug)}">${count} feature${count === 1 ? "" : "s"}</a></p>`
     )}
   </article>`;
 

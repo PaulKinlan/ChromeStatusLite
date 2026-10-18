@@ -50,7 +50,8 @@ export const WIKI_TOPICS: WikiTopic[] = [
     description:
       "Persistent data on the web: IndexedDB, Cache Storage, the File System Access API, storage buckets, and quota management.",
     queries: ["storage", "file system access"],
-    keywords: ["indexeddb", "storage", "file system", "quota", "cache api"],
+    keywords: ["indexeddb", "cache storage", "web storage", "local storage", "session storage",
+      "storage api", "storage quota", "storage bucket", "file system", "origin private file system"],
   },
   {
     slug: "privacy",
@@ -77,7 +78,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     description:
       "Installable apps: web app manifests, installation prompts, service workers, shortcuts, and window controls.",
     queries: ["pwa", "web app manifest"],
-    keywords: ["install", "manifest", "service worker", "shortcuts", "window controls overlay", "app badge"],
+    keywords: ["pwa", "web app", "manifest", "service worker", "app install", "install prompt", "beforeinstallprompt", "app badge", "window controls overlay", "shortcuts"],
   },
   {
     slug: "security",
@@ -101,7 +102,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     description:
       "Typography on the web: font loading, variable fonts, text shaping, line breaking, and font metric controls.",
     queries: ["font", "text shaping"],
-    keywords: ["font", "typograph", "text-", "line break", "hyphen"],
+    keywords: ["font", "typograph", "text shaping", "line break", "hyphen"],
   },
   {
     slug: "payments",
@@ -117,7 +118,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     description:
       "Hardware access from the browser: WebUSB, Web Bluetooth, WebSerial, WebHID, WebNFC, and sensor APIs.",
     queries: ["webusb", "web bluetooth", "webserial", "webhid"],
-    keywords: ["usb", "bluetooth", "serial", "hid", "nfc", "sensor", "gamepad"],
+    keywords: ["usb", "bluetooth", "serial", "webhid", "hid device", "nfc", "sensor", "gamepad", "human interface"],
   },
   {
     slug: "css-layout",
@@ -125,7 +126,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     description:
       "Modern layout primitives: container queries, grid and subgrid, flexbox, masonry, and style queries.",
     queries: ["css layout", "container queries"],
-    keywords: ["container quer", "grid", "flexbox", "subgrid", "masonry", "layout", "style queries"],
+    keywords: ["container quer", "subgrid", "masonry", "flexbox", "css grid", "grid layout", "style queries", "css layout"],
   },
   {
     slug: "javascript",
@@ -133,7 +134,7 @@ export const WIKI_TOPICS: WikiTopic[] = [
     description:
       "ECMAScript language features landing in V8: new syntax, standard library additions, and RegExp improvements.",
     queries: ["javascript", "ecmascript"],
-    keywords: ["javascript", "ecmascript", "v8", "regexp", "array", "iterator", "promise"],
+    keywords: ["javascript", "ecmascript", "v8", "regexp", "iterator"],
   },
   {
     slug: "performance",
