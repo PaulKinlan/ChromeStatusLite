@@ -166,22 +166,27 @@ export default async function render(
   } else {
     // A query that failed outright, a failed continuation page, or a capped
     // result means what follows is partial: say so rather than presenting
-    // the rendered subset as the complete topic inventory.
+    // the rendered subset as the complete topic inventory. The notice applies
+    // to the empty branch too: "no features tagged" is only truthful when
+    // every query actually succeeded.
     const incomplete = results.some((result) => result === null || !result.complete);
     const features = collectTopicFeatures(results.filter((result) => result !== null));
-    const tagsById = new Map<string, string[]>(
-      features.map((feature) => [String(feature.id), tagFeature(feature)]),
-    );
-    contentBody = features.length === 0
-      ? template`<p>No features are currently tagged with this topic.</p>`
-      : template`
-      ${incomplete
-        ? template`<p class="error-notice">Some features could not be loaded from chromestatus.com; the list below is incomplete.</p>`
-        : template``}
+    const incompleteNotice = template`<p class="error-notice">Some features could not be loaded from chromestatus.com; the list below is incomplete.</p>`;
+    if (features.length === 0) {
+      contentBody = incomplete
+        ? template`${incompleteNotice}<p>No features were returned by the queries that did load.</p>`
+        : template`<p>No features are currently tagged with this topic.</p>`;
+    } else {
+      const tagsById = new Map<string, string[]>(
+        features.map((feature) => [String(feature.id), tagFeature(feature)]),
+      );
+      contentBody = template`
+      ${incomplete ? incompleteNotice : template``}
       <p>${features.length} feature${features.length === 1 ? "" : "s"} tagged with this topic.</p>
       ${renderConsensus(features)}
       ${renderStages(features, tagsById, topic.slug)}
       ${renderTimeline(features)}`;
+    }
   }
 
   return template`

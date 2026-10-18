@@ -314,6 +314,35 @@ Deno.test("/wiki directory counts use one cheap num=1 request per topic (review 
 });
 
 
+Deno.test("/wiki/:topic shows the incomplete notice even when nothing rendered (review chrome-status-lite-lmj)", async () => {
+  // Exact round-3 repro: primary query throws, secondary returns zero
+  // results. The page must not claim "No features are currently tagged".
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      if (query === "javascript") throw new Error("503 primary");
+      return { total_count: 0, features: [] };
+    },
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/wiki/javascript"));
+  equal(res.status, 200);
+  const html = await res.text();
+  includes(html, "is incomplete");
+  if (html.includes("No features are currently tagged")) {
+    throw new Error("false empty-topic claim rendered alongside a failed query");
+  }
+});
+
+Deno.test("/wiki/:topic says no features only when every query succeeded empty", async () => {
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async () => ({ total_count: 0, features: [] }),
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/wiki/webgpu"));
+  equal(res.status, 200);
+  const html = await res.text();
+  includes(html, "No features are currently tagged with this topic.");
+  if (html.includes("is incomplete")) throw new Error("false incomplete notice on clean empty result");
+});
+
 Deno.test("getTopic resolves slugs", () => {
   equal(getTopic("webgpu")?.title, "WebGPU");
   equal(getTopic("nope"), undefined);
