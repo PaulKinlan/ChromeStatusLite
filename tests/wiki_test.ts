@@ -11,6 +11,7 @@ import {
   tagFeature,
   timeline,
 } from "../src/lib/wiki.ts";
+import { getTopicData } from "../src/lib/wiki-data.ts";
 
 const gpuFeature = {
   id: 1,
@@ -476,6 +477,30 @@ Deno.test("/wiki/:topic marks the inventory incomplete when pages repeat records
   includes(html, "is incomplete");
   includes(html, "javascript feature 200");
   if (html.includes("javascript feature 100")) throw new Error("duplicate page rendered as distinct records");
+});
+
+Deno.test("getTopicData unions every query, deduped, with failure flags (review chrome-status-lite-4p4)", async () => {
+  const topic = getTopic("device")!; // four queries: webusb, web bluetooth, webserial, webhid
+  const client = fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "web bluetooth") return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      if (query === "webserial") throw new Error("upstream down");
+      return { total_count: 0, features: [] };
+    },
+  });
+  const data = await getTopicData(topic, client);
+  equal(data.features.length, 3); // union of both successful queries, id 2 deduped
+  equal(data.complete, false); // webserial failed outright
+  equal(data.failed, false);
+  // Sorted by name for a stable render.
+  equal(data.features.map((feature) => feature.name).join(","), "WebBluetooth,WebSerial,WebUSB");
+
+  const allDown = await getTopicData(topic, fixtureClient({
+    getFeaturesByQuery: () => Promise.reject(new Error("upstream down")),
+  }));
+  equal(allDown.failed, true);
+  equal(allDown.features.length, 0);
 });
 
 Deno.test("getTopic resolves slugs", () => {
