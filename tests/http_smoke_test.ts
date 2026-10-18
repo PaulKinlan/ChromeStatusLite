@@ -68,6 +68,16 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
     equal(apiJson.version, 120);
     equal(apiJson.total_features, 1);
 
+    const breaking = await fetch(`${root}/breaking`);
+    equal(breaking.status, 200);
+    includes(breaking.headers.get("content-type") || "", "text/html");
+    includes(await breaking.text(), "Breaking Changes");
+
+    const originTrials = await fetch(`${root}/origin-trials`);
+    equal(originTrials.status, 200);
+    includes(originTrials.headers.get("content-type") || "", "text/html");
+    includes(await originTrials.text(), "Origin Trials Tracker");
+
     browserCssStatuses = [];
     const { html, screenshot } = await browser();
     includes(html, "Chrome Release 112");
