@@ -122,8 +122,8 @@ export default async function render(request: Request, match: URLPatternResult, 
   let upstreamError = false;
   try {
     feature = await chromeStatusAPI.getFeature(id);
-    if (!feature || typeof feature !== "object") {
-      feature = null;
+    if (feature !== null && (!feature || typeof feature !== "object" || !feature.id)) {
+      upstreamError = true;
     }
   } catch (err: any) {
     const msg = err instanceof Error ? err.message.toLowerCase() : "";

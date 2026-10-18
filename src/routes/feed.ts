@@ -13,6 +13,17 @@ function cdata(content: string): string {
   return `<![CDATA[${content.replaceAll("]]>", "]]]]><![CDATA[>")}]]>`;
 }
 
+const BUCKET_KEYS = [
+  "Enabled by default",
+  "Origin trial",
+  "In developer trial (Behind a flag)",
+  "Removed",
+  "Deprecated",
+];
+
+const hasValidBuckets = (obj: any): boolean =>
+  Boolean(obj && typeof obj === "object" && BUCKET_KEYS.some((k) => Array.isArray(obj[k])));
+
 export default async function feed(
   request: Request,
   chromeStatusAPI: StatusClient,
@@ -72,9 +83,38 @@ export default async function feed(
       ? chromeStatusAPI.getChannels(minMilestone, maxMilestone).catch(() => ({}))
       : Promise.resolve({}),
     ...selectedVersions.map((v) =>
-      chromeStatusAPI.getFeaturesForVersion(v).catch(() => ({}))
+      chromeStatusAPI.getFeaturesForVersion(v).catch(() => null)
     ),
   ]);
+
+  if (selectedVersions.length > 0 && milestonesFeatures.every((f) => !hasValidBuckets(f))) {
+    upstreamError = true;
+  }
+
+  if (upstreamError) {
+    const errorRss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Chrome Status Lite</title>
+    <link>https://chromestatuslite.com/</link>
+    <description>Unable to load release data from chromestatus.com. Please try again later.</description>
+    <atom:link href="https://chromestatuslite.com/feed.xml" rel="self" type="application/rss+xml"/>
+    <item>
+      <title>Notice: Unable to load release feed</title>
+      <link>https://chromestatuslite.com/</link>
+      <guid isPermaLink="false">https://chromestatuslite.com/notice/upstream-error</guid>
+      <pubDate>${new Date().toUTCString()}</pubDate>
+      <description>${cdata("<p>Unable to load release data from chromestatus.com. Please try again later.</p>")}</description>
+    </item>
+  </channel>
+</rss>`;
+    return new Response(errorRss, {
+      status: 200,
+      headers: {
+        "content-type": "application/rss+xml; charset=utf-8",
+      },
+    });
+  }
 
   const formatList = (title: string, list: any[]) => {
     if (!list || list.length === 0) return "";
@@ -94,9 +134,9 @@ export default async function feed(
 
   for (let i = 0; i < selectedVersions.length; i++) {
     const version = selectedVersions[i];
-    const featuresByType = milestonesFeatures[i] || {};
-
-    const typeBuckets = (featuresByType && typeof featuresByType === "object")
+    const featuresByType = milestonesFeatures[i];
+    const valid = hasValidBuckets(featuresByType);
+    const typeBuckets = (valid && typeof featuresByType === "object")
       ? featuresByType
       : {};
 
@@ -115,12 +155,14 @@ export default async function feed(
       ? `      <pubDate>${new Date(stableDate).toUTCString()}</pubDate>\n`
       : "";
 
-    const descriptionHtml = [
-      `<p>Chrome ${version} includes ${totalCount} feature changes.</p>`,
-      ...bucketSections,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const descriptionHtml = valid
+      ? [
+          `<p>Chrome ${version} includes ${totalCount} feature changes.</p>`,
+          ...bucketSections,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : `<p>Unable to load release data from chromestatus.com. Please try again later.</p>`;
 
     const itemLink = `https://chromestatuslite.com/?version=${version}`;
 

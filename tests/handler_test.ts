@@ -488,3 +488,23 @@ Deno.test("feature detail and feed render error-notices on upstream service fail
   includes(feedText, "Unable to load release data from chromestatus.com");
   equal((feedText.match(/<item>/g) || []).length, 1);
 });
+
+Deno.test("malformed feature body and per-milestone feed failures render error-notices", async () => {
+  const malformedFeatureHandler = createHandler(fixtureClient({ getFeature: async () => ({}) }));
+  const res1 = await malformedFeatureHandler(new Request("https://chromestatuslite.com/feature/123456"));
+  equal(res1.status, 200);
+  const text1 = await res1.text();
+  includes(text1, "error-notice");
+  equal(text1.includes("Feature not found"), false);
+
+  const boom = async () => { throw new Error("Upstream HTTP 500"); };
+  const failingMilestoneHandler = createHandler(fixtureClient({
+    getVersions: async () => [140, 139],
+    getFeaturesForVersion: boom,
+  }));
+  const res2 = await failingMilestoneHandler(new Request("https://chromestatuslite.com/feed.xml?limit=1"));
+  equal(res2.status, 200);
+  const text2 = await res2.text();
+  includes(text2, "Unable to load release data from chromestatus.com");
+  equal(text2.includes("includes 0 feature changes"), false);
+});
