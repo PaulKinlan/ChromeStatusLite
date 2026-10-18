@@ -125,3 +125,68 @@ Deno.test("feed and apiVersion route modules execute directly with injected clie
   const data = JSON.parse(await apiRes.text());
   equal(data.version, 120);
 });
+
+Deno.test("feed.xml includes all dynamic upstream buckets like Stepped rollout", async () => {
+  const client = fixtureClient({
+    getVersions: async () => [157],
+    getFeaturesForVersion: async () => ({
+      "Enabled by default": [{ id: 1, name: "Default feature" }],
+      "Stepped rollout": [{ id: 2, name: "Stepped feature" }],
+    }),
+  });
+  const res = await (await createHandler(client)(new Request("https://chromestatuslite.com/feed.xml"))).text();
+  includes(res, "includes 2 feature changes");
+  includes(res, "Enabled by default (1)");
+  includes(res, "Stepped rollout (1)");
+  includes(res, "Stepped feature");
+});
+
+Deno.test("feed.xml sanitizes feature id and prevents attribute injection in CDATA", async () => {
+  const client = fixtureClient({
+    getVersions: async () => [120],
+    getFeaturesForVersion: async () => ({
+      "Enabled by default": [{ id: '9" onmouseover="alert(1)', name: "Hostile ID" }],
+    }),
+  });
+  const xml = await (await createHandler(client)(new Request("https://chromestatuslite.com/feed.xml"))).text();
+  equal(xml.includes('onmouseover="alert(1)"'), false);
+  includes(xml, "9%22%20onmouseover%3D%22alert(1)");
+});
+
+Deno.test("release dates resolve via milestone range queries and do not leak internal errors", async () => {
+  let rangePassedToApi = false;
+  let rangePassedToFeed = false;
+  const client = fixtureClient({
+    getChannels: async (start?: number, end?: number) => {
+      if (start === 120 && end === 120) rangePassedToApi = true;
+      if (start !== undefined && end !== undefined && start <= 120 && end >= 120) rangePassedToFeed = true;
+      if (start !== undefined && end !== undefined) {
+        return { "120": { stable_date: "2024-05-15T00:00:00Z" } };
+      }
+      return { stable: { version: "120" }, dev: { version: "122" } };
+    },
+  });
+  const handler = createHandler(client);
+
+  const apiRes = await handler(new Request("https://chromestatuslite.com/api/version/120"));
+  const apiData = await apiRes.json();
+  equal(rangePassedToApi, true);
+  equal(apiData.stable_date, "2024-05-15T00:00:00Z");
+
+  const feedRes = await handler(new Request("https://chromestatuslite.com/feed.xml?limit=1"));
+  const feedXml = await feedRes.text();
+  equal(rangePassedToFeed, true);
+  includes(feedXml, "<pubDate>Wed, 15 May 2024 00:00:00 GMT</pubDate>");
+
+  // 500 error does not leak detail
+  const failingHandler = createHandler(
+    fixtureClient({
+      getFeaturesForVersion: async () => { throw new Error("secret internal database error"); },
+    }),
+  );
+  const errorRes = await failingHandler(new Request("https://chromestatuslite.com/api/version/120"));
+  equal(errorRes.status, 500);
+  const errorJson = await errorRes.json();
+  equal(errorJson.error, "Failed to fetch milestone features");
+  equal(errorJson.detail, undefined);
+});

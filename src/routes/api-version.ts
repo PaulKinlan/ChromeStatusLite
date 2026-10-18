@@ -81,10 +81,10 @@ export default async function apiVersion(
   try {
     const [featuresByType, channels] = await Promise.all([
       chromeStatusAPI.getFeaturesForVersion(milestone),
-      chromeStatusAPI.getChannels().catch(() => ({})),
+      chromeStatusAPI.getChannels(milestone, milestone).catch(() => ({})),
     ]);
 
-    const channelData = channels?.[String(milestone)] ?? null;
+    const channelData = channels?.[String(milestone)] ?? channels?.[milestone] ?? null;
     const stableDate = channelData?.stable_date ?? null;
 
     const typeBuckets = (featuresByType && typeof featuresByType === "object")
@@ -137,11 +137,10 @@ export default async function apiVersion(
         ...corsHeaders,
       },
     });
-  } catch (error) {
+  } catch {
     return new Response(
       JSON.stringify({
         error: "Failed to fetch milestone features",
-        detail: error instanceof Error ? error.message : String(error),
       }),
       {
         status: 500,

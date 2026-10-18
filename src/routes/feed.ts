@@ -32,13 +32,31 @@ export default async function feed(
   }
 
   const selectedVersions = versions.slice(0, limit);
+  const minMilestone = selectedVersions.length > 0 ? Math.min(...selectedVersions) : undefined;
+  const maxMilestone = selectedVersions.length > 0 ? Math.max(...selectedVersions) : undefined;
 
   const [channels, ...milestonesFeatures] = await Promise.all([
-    chromeStatusAPI.getChannels().catch(() => ({})),
+    (minMilestone !== undefined && maxMilestone !== undefined)
+      ? chromeStatusAPI.getChannels(minMilestone, maxMilestone).catch(() => ({}))
+      : Promise.resolve({}),
     ...selectedVersions.map((v) =>
       chromeStatusAPI.getFeaturesForVersion(v).catch(() => ({}))
     ),
   ]);
+
+  const formatList = (title: string, list: any[]) => {
+    if (!list || list.length === 0) return "";
+    const items = list
+      .map((item) => {
+        const name = escapeXml(String(item.name || "Unnamed feature"));
+        const summary = item.summary ? escapeXml(String(item.summary)) : "";
+        const safeId = encodeURIComponent(String(item.id));
+        const link = `https://chromestatuslite.com/feature/${safeId}`;
+        return `<li><a href="${escapeXml(link)}">${name}</a>${summary ? `: ${summary}` : ""}</li>`;
+      })
+      .join("");
+    return `<h3>${escapeXml(title)} (${list.length})</h3><ul>${items}</ul>`;
+  };
 
   const itemsXml: string[] = [];
 
@@ -46,45 +64,28 @@ export default async function feed(
     const version = selectedVersions[i];
     const featuresByType = milestonesFeatures[i] || {};
 
-    const enabled: any[] = featuresByType["Enabled by default"] || [];
-    const originTrials: any[] = featuresByType["Origin trial"] || [];
-    const flagged: any[] = featuresByType["In developer trial (Behind a flag)"] || [];
-    const deprecated: any[] = featuresByType["Deprecated"] || [];
-    const removed: any[] = featuresByType["Removed"] || [];
+    const typeBuckets = (featuresByType && typeof featuresByType === "object")
+      ? featuresByType
+      : {};
 
-    const totalCount =
-      enabled.length +
-      originTrials.length +
-      flagged.length +
-      deprecated.length +
-      removed.length;
+    let totalCount = 0;
+    const bucketSections: string[] = [];
+    for (const [statusType, list] of Object.entries(typeBuckets)) {
+      if (Array.isArray(list) && list.length > 0) {
+        totalCount += list.length;
+        bucketSections.push(formatList(statusType, list));
+      }
+    }
 
-    const channelData = channels?.[String(version)];
+    const channelData = channels?.[String(version)] ?? channels?.[version];
     const stableDate = channelData?.stable_date;
     const pubDateTag = stableDate
       ? `      <pubDate>${new Date(stableDate).toUTCString()}</pubDate>\n`
       : "";
 
-    const formatList = (title: string, list: any[]) => {
-      if (!list || list.length === 0) return "";
-      const items = list
-        .map((item) => {
-          const name = escapeXml(String(item.name || "Unnamed feature"));
-          const summary = item.summary ? escapeXml(String(item.summary)) : "";
-          const link = `https://chromestatuslite.com/feature/${item.id}`;
-          return `<li><a href="${link}">${name}</a>${summary ? `: ${summary}` : ""}</li>`;
-        })
-        .join("");
-      return `<h3>${title} (${list.length})</h3><ul>${items}</ul>`;
-    };
-
     const descriptionHtml = [
       `<p>Chrome ${version} includes ${totalCount} feature changes.</p>`,
-      formatList("Enabled by default", enabled),
-      formatList("Origin Trials", originTrials),
-      formatList("In developer trial (Behind a flag)", flagged),
-      formatList("Deprecated", deprecated),
-      formatList("Removed", removed),
+      ...bucketSections,
     ]
       .filter(Boolean)
       .join("\n");
