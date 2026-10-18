@@ -33,3 +33,93 @@ Deno.test("invalid and absent feature ids return 404 without an upstream call", 
   equal(missing.status, 404);
   includes(await missing.text(), "Feature not found");
 });
+
+Deno.test("feature detail linkifies URLs in summary, motivation, signals and notes", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 123, name: "Linked feature", summary: "See https://github.com/WebKit/WebKit/pull/70542.",
+    motivation: "Filed as https://crbug.com/500967896 for details",
+    wpt_descr: "Covered by https://wpt.fyi/results/abc",
+    browsers: { chrome: { status: { text: "Enabled by default" } }, safari: { view: { text: "Support planned, tracked in https://bugs.webkit.org/123", notes: "Position: https://webkit.org/position/" } } },
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/123"))).text();
+  includes(html, '<a href="https://github.com/WebKit/WebKit/pull/70542" rel="noopener noreferrer">https://github.com/WebKit/WebKit/pull/70542</a>.');
+  includes(html, '<a href="https://crbug.com/500967896" rel="noopener noreferrer">https://crbug.com/500967896</a>');
+  includes(html, '<a href="https://wpt.fyi/results/abc" rel="noopener noreferrer">');
+  includes(html, '<a href="https://bugs.webkit.org/123" rel="noopener noreferrer">');
+  includes(html, '<a href="https://webkit.org/position/" rel="noopener noreferrer">');
+});
+
+Deno.test("linkify keeps surrounding text escaped and ignores non-http schemes", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 124, name: "Unsafe feature",
+    summary: "Evil <script>alert(1)</script> and ftp://example.com/x and javascript:alert(2)",
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/124"))).text();
+  includes(html, "&lt;script&gt;alert(1)&lt;/script&gt;");
+  equal(html.includes("javascript:alert(2)</a>"), false);
+  equal(html.includes('href="ftp://example.com/x"'), false);
+});
+
+Deno.test("linkify links scheme-less tracker and PR references", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 125, name: "Bare references",
+    motivation: "Spec PR github.com/whatwg/html/pull/123 and the bug crbug.com/500967896 (fixed).",
+    browsers: { safari: { view: { text: "No signal", notes: "See bugzilla.mozilla.org/show_bug.cgi?id=1 and example.com/not-a-tracker" } } },
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/125"))).text();
+  includes(html, '<a href="https://github.com/whatwg/html/pull/123" rel="noopener noreferrer">github.com/whatwg/html/pull/123</a>');
+  includes(html, '<a href="https://crbug.com/500967896" rel="noopener noreferrer">crbug.com/500967896</a>');
+  includes(html, '<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1" rel="noopener noreferrer">bugzilla.mozilla.org/show_bug.cgi?id=1</a>');
+  // Unknown hosts stay plain text rather than becoming an arbitrary link.
+  equal(html.includes('href="https://example.com/not-a-tracker"'), false);
+  includes(html, "example.com/not-a-tracker");
+});
+
+Deno.test("a view with a url does not nest anchors around its text", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 127, name: "Nested anchor guard", summary: "Summary",
+    browsers: { safari: { view: {
+      text: "Positive, see https://webkit.org/position/1",
+      url: "https://webkit.org/standards-positions/1",
+      notes: "Discussed in https://github.com/WebKit/standards-positions/issues/1",
+    } } },
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/127"))).text();
+  // The url branch keeps its text plain: no anchor inside the outer anchor.
+  includes(html, '<a href="https://webkit.org/standards-positions/1">Positive, see https://webkit.org/position/1</a>');
+  equal(html.includes('href="https://webkit.org/position/1"'), false);
+  // Notes remain free text, so they are still linkified.
+  includes(html, '<a href="https://github.com/WebKit/standards-positions/issues/1" rel="noopener noreferrer">');
+  // No anchor anywhere opens inside another.
+  equal(/<a\b[^>]*>[^<]*<a\b/.test(html), false);
+});
+
+Deno.test("a view without a url still linkifies its text", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 128, name: "Free-text view", summary: "Summary",
+    browsers: { ff: { view: { text: "No signal, tracked at https://bugzilla.mozilla.org/1" } } },
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/128"))).text();
+  includes(html, '<a href="https://bugzilla.mozilla.org/1" rel="noopener noreferrer">https://bugzilla.mozilla.org/1</a>');
+});
+
+Deno.test("upstream urls cannot break out of their href attributes", async () => {
+  const evil = 'https://example.com/x" onmouseover="alert(1)';
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 129, name: "Hostile urls", summary: "Summary",
+    spec_link: evil, bug_url: evil,
+    browsers: { safari: { view: { text: "Position", url: evil } } },
+    resources: { docs: [evil], samples: [evil] },
+    explainer_links: [evil],
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/129"))).text();
+  // A raw quote inside the attribute would start a new attribute; the escaped
+  // form keeps the whole value inside the quoted href.
+  equal(html.includes('onmouseover="'), false);
+  includes(html, "&quot; onmouseover=&quot;alert(1)");
+});

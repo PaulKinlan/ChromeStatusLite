@@ -13,6 +13,7 @@ for path in "${paths[@]}"; do
     static/*.html) add tests/handler_test.ts ;;
     src/routes/index.ts|static/scripts/index.js) add tests/index_test.ts ;;
     src/routes/feature.ts) add tests/feature_test.ts ;;
+    src/lib/linkify.ts) add tests/feature_test.ts; add tests/index_test.ts ;;
     src/routes/diff.ts) add tests/diff_test.ts ;;
     src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts ;;
     src/routes/deprecations.ts|static/scripts/deprecations.js) add tests/deprecations_test.ts ;;

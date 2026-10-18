@@ -28,6 +28,7 @@ const hasValidBuckets = (obj: any): boolean => {
   }
   return foundAnyBucket;
 };
+import linkify from "../lib/linkify.ts";
 
 const renderData = async (version, featuresByType) => {
   // The v0 API groups features by status text. Pull each bucket out,
@@ -107,14 +108,14 @@ const renderResources = (resources) => {
       ${
         hasDocs && docs.length > 0
           ? template`<p>Docs: ${docs.map(
-              (resource) => template`<a href=${resource}>${resource}</a>`
+              (resource) => template`<a href="${escapeHtml(String(resource))}">${escapeHtml(String(resource))}</a>`
             )}</p>`
           : template`No linked docs`
       }</p>
       ${
         hasSamples && samples.length > 0
           ? template`<p>Samples: ${samples.map(
-              (resource) => template`<a href=${resource}>${resource}</a>`
+              (resource) => template`<a href="${escapeHtml(String(resource))}">${escapeHtml(String(resource))}</a>`
             )}</p>`
           : template`No linked samples`
       }</p>`;
@@ -129,10 +130,10 @@ const renderFeature = (item, tag = "h3") => {
   const spec = item.standards?.spec;
   const id = item.id !== undefined ? encodeURIComponent(String(item.id)) : "";
   const name = escapeHtml(item.name || "Unnamed feature");
-  const summary = escapeHtml(item.summary || "");
+  const summary = linkify(item.summary || "");
   return template`<${tag}><a href="/feature/${id}">${name}</a></${tag}>
       <p>${summary}${
-    bug ? template` <a href=${bug}>#</a>` : template``
+    bug ? template` <a href="${escapeHtml(String(bug))}">#</a>` : template``
   }</p>
       ${
         "motivation" in item && item.motivation
@@ -145,7 +146,7 @@ const renderFeature = (item, tag = "h3") => {
       }
       ${
         spec
-          ? template`<p>This feature was specified <a href=${spec}>in this Spec</a>.</p>`
+          ? template`<p>This feature was specified <a href="${escapeHtml(String(spec))}">in this Spec</a>.</p>`
           : template``
       }
       ${renderFeatureMetadata(item)}

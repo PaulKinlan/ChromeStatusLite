@@ -1,6 +1,7 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
+import linkify from "../lib/linkify.ts";
 
 import nav from "../ui-components/nav.ts";
 import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
@@ -11,12 +12,17 @@ const renderView = (label, browser) => {
   if (!view || (!view.text && !view.url)) {
     return template``;
   }
-  const text = escapeHtml(view.text || "No signal");
+  // A view with a url already renders its text inside an anchor, so linkifying
+  // that text would nest <a> (invalid HTML, chrome-status-lite-cbr): only the
+  // free-text branch is linkified. Notes are always free text.
+  const text = view.url
+    ? escapeHtml(view.text || "No signal")
+    : linkify(view.text || "No signal");
   return template`<li>${label}: ${
     view.url
-      ? template`<a href=${view.url}>${text}</a>`
+      ? template`<a href="${escapeHtml(view.url)}">${text}</a>`
       : template`${text}`
-  }${view.notes ? template` — ${escapeHtml(view.notes)}` : template``}</li>`;
+  }${view.notes ? template` — ${linkify(view.notes)}` : template``}</li>`;
 };
 
 // Renders a list of links (docs, samples, explainers).
@@ -25,7 +31,7 @@ const renderLinks = (label, links) => {
     return template``;
   }
   return template`<p>${label}: ${links.map(
-    (link) => template`<a href=${link}>${link}</a> `
+    (link) => template`<a href="${escapeHtml(String(link))}">${escapeHtml(String(link))}</a> `
   )}</p>`;
 };
 
@@ -70,14 +76,14 @@ const renderFeature = (feature) => {
     }
   </dl>
   ${renderFeatureMetadata(feature, true)}
-  ${feature.wpt_descr ? template`<p>WPT details: ${escapeHtml(feature.wpt_descr)}</p>` : template``}
+  ${feature.wpt_descr ? template`<p>WPT details: ${linkify(feature.wpt_descr)}</p>` : template``}
 
   <h2>Summary</h2>
-  <p>${escapeHtml(feature.summary)}</p>
+  <p>${linkify(feature.summary)}</p>
 
   ${
     feature.motivation
-      ? template`<h2>Motivation</h2><blockquote>${escapeHtml(
+      ? template`<h2>Motivation</h2><blockquote>${linkify(
           feature.motivation
         )}</blockquote>`
       : template``
@@ -87,14 +93,14 @@ const renderFeature = (feature) => {
   <ul>
     ${
       spec
-        ? template`<li>Specification: <a href=${spec}>${spec}</a></li>`
+        ? template`<li>Specification: <a href="${escapeHtml(spec)}">${escapeHtml(spec)}</a></li>`
         : template``
     }
     ${renderView("Firefox", feature.browsers?.ff)}
     ${renderView("Safari", feature.browsers?.safari)}
     ${renderView("Web developers", feature.browsers?.webdev)}
     ${
-      bug ? template`<li>Tracking bug: <a href=${bug}>${bug}</a></li>` : template``
+      bug ? template`<li>Tracking bug: <a href="${escapeHtml(bug)}">${escapeHtml(bug)}</a></li>` : template``
     }
   </ul>
 
@@ -102,7 +108,7 @@ const renderFeature = (feature) => {
   ${renderLinks("Samples", feature.sample_links || feature.resources?.samples)}
   ${renderLinks("Explainers", feature.explainer_links)}
 
-  <p><a href="https://chromestatus.com/feature/${feature.id}">View on chromestatus.com</a></p>
+  <p><a href="https://chromestatus.com/feature/${escapeHtml(String(feature.id ?? ""))}">View on chromestatus.com</a></p>
   `;
 };
 

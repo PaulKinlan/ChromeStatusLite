@@ -26,5 +26,10 @@
     "tests/handler_test.ts",
     "tests/http_smoke_test.ts",
     "tests/index_test.ts"
+  ],
+  "src/lib/linkify.ts": [
+    "tests/feature_test.ts",
+    "tests/http_smoke_test.ts",
+    "tests/index_test.ts"
   ]
 }
