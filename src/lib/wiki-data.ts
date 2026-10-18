@@ -22,10 +22,15 @@ export const fetchQueryFeatures = async (
   chromeStatusAPI: StatusClient,
 ): Promise<{ total_count: number; features: any[]; complete: boolean }> => {
   const first = await chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE });
-  const total = Number(first?.total_count) || 0;
+  // A 200 without a numeric total_count is not evidence of a complete
+  // inventory: treat it as unknown (count 0 for sizing) and incomplete, so
+  // the assembled topic data is not cached as authoritative (i11).
+  const rawTotal = Number(first?.total_count);
+  const totalKnown = Number.isFinite(rawTotal);
+  const total = totalKnown ? rawTotal : 0;
   const features = Array.isArray(first?.features) ? [...first.features] : [];
   const wanted = Math.min(total, MAX_FEATURES_PER_QUERY);
-  let complete = total <= MAX_FEATURES_PER_QUERY;
+  let complete = totalKnown && total <= MAX_FEATURES_PER_QUERY;
   if (features.length < wanted) {
     const starts: number[] = [];
     for (let start = features.length; start < wanted; start += PAGE_SIZE) {

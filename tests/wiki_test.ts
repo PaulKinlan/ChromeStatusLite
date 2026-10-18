@@ -536,6 +536,53 @@ Deno.test("getTopicData does not cache a partial assembly (review chrome-status-
   equal(third.complete, true);
 });
 
+Deno.test("fetchQueryFeatures treats a 200 with no total_count as incomplete (review chrome-status-lite-i11)", async () => {
+  const client = fixtureClient({
+    getFeaturesByQuery: async () => ({}), // HTTP 200, no total_count, no features
+  });
+  const result = await fetchQueryFeatures("webgpu", client);
+  equal(result.complete, false); // unknown inventory size is not "complete"
+  equal(result.features.length, 0);
+
+  // And getTopicData therefore does not pin the empty assembly for the TTL.
+  let empty = true;
+  const recovering = fixtureClient({
+    getFeaturesByQuery: async () => {
+      if (empty) {
+        empty = false;
+        return {};
+      }
+      return { total_count: 1, features: [{ id: 5, name: "Back" }] };
+    },
+  });
+  const topic = getTopic("webgpu")!;
+  const first = await getTopicData(topic, recovering);
+  equal(first.complete, false);
+  const second = await getTopicData(topic, recovering);
+  equal(second.complete, true);
+  equal(second.features.length, 1);
+});
+
+Deno.test("/wiki marks a partial directory count as a lower bound (review chrome-status-lite-un2)", async () => {
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "web bluetooth") throw new Error("503 persistent");
+      return { total_count: 0, features: [] };
+    },
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/wiki"));
+  equal(res.status, 200);
+  const html = await res.text();
+  includes(html, '<a href="/wiki/device">2+ features</a>'); // lower bound, marked
+  if (html.includes('<a href="/wiki/device">2 features</a>')) {
+    throw new Error("partial count rendered as exact");
+  }
+  // Complete topics keep their exact count and singular/plural forms.
+  const clean = await (await createHandler(fixtureClient())(new Request("https://chromestatuslite.com/wiki"))).text();
+  includes(clean, "1 feature</a>");
+});
+
 Deno.test("getTopic resolves slugs", () => {
   equal(getTopic("webgpu")?.title, "WebGPU");
   equal(getTopic("nope"), undefined);

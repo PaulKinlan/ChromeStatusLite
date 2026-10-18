@@ -19,7 +19,10 @@ const renderTopicCard = (topic, chromeStatusAPI: StatusClient) => template`
     ${getTopicData(topic, chromeStatusAPI).then((data) =>
       data.failed
         ? template``
-        : template`<p><a href="/wiki/${escapeHtml(topic.slug)}">${data.features.length} feature${data.features.length === 1 ? "" : "s"}</a></p>`
+        // A partial inventory renders as a lower-bound count ("2+") rather
+        // than a silently wrong exact count; the topic page carries the full
+        // incompleteness notice (un2).
+        : template`<p><a href="/wiki/${escapeHtml(topic.slug)}">${data.features.length}${data.complete ? "" : "+"} feature${data.features.length === 1 && data.complete ? "" : "s"}</a></p>`
     )}
   </article>`;
 
