@@ -371,3 +371,25 @@ Deno.test("breaking and originTrials route modules execute directly with injecte
   equal(otRes.status, 200);
   includes(await otRes.text(), "Origin Trials Tracker");
 });
+
+Deno.test("index, diff, and deprecations render error-notices on upstream failure", async () => {
+  const failingClient = fixtureClient({
+    getVersions: async () => { throw new Error("Upstream HTTP 500"); },
+    getFeaturesForVersion: async () => { throw new Error("Upstream HTTP 500"); },
+    getFeaturesByType: async () => { throw new Error("Upstream HTTP 500"); },
+  });
+
+  const handler = createHandler(failingClient);
+
+  const indexRes = await handler(new Request("https://chromestatuslite.com/"));
+  equal(indexRes.status, 200);
+  includes(await indexRes.text(), "error-notice");
+
+  const diffRes = await handler(new Request("https://chromestatuslite.com/diff?from=120&to=119"));
+  equal(diffRes.status, 200);
+  includes(await diffRes.text(), "error-notice");
+
+  const deprecationsRes = await handler(new Request("https://chromestatuslite.com/deprecations"));
+  equal(deprecationsRes.status, 200);
+  includes(await deprecationsRes.text(), "error-notice");
+});

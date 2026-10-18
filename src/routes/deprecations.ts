@@ -33,40 +33,44 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 }
 
 const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
-  const deprecationsSort = (a, b) => {
-    // Move features without versions to end of list.
-    if (!b.browsers.chrome.desktop) {
-      return -1;
-    }
+  try {
+    const deprecationsSort = (a, b) => {
+      // Move features without versions to end of list.
+      if (!b.browsers.chrome.desktop) {
+        return -1;
+      }
 
-    if (!a.browsers.chrome.desktop) {
-      return 1;
-    }
+      if (!a.browsers.chrome.desktop) {
+        return 1;
+      }
 
-    // Sort by most recent feature.
-    return parseInt(b.browsers.chrome.desktop) - parseInt(a.browsers.chrome.desktop);
-  };
+      // Sort by most recent feature.
+      return parseInt(b.browsers.chrome.desktop) - parseInt(a.browsers.chrome.desktop);
+    };
 
-  const deprecations = (await chromeStatusAPI.getFeaturesByType(3)).features.sort(deprecationsSort);
+    const deprecations = (await chromeStatusAPI.getFeaturesByType(3)).features.sort(deprecationsSort);
 
-  // Map features to browser versions, removing features that don't have version.
-  const versions = deprecations
-      .map(f => f.browsers.chrome.desktop)
-      .filter(f => f !== undefined)
-      .sort((a, b) => parseInt(a) - parseInt(b));
+    // Map features to browser versions, removing features that don't have version.
+    const versions = deprecations
+        .map(f => f.browsers.chrome.desktop)
+        .filter(f => f !== undefined)
+        .sort((a, b) => parseInt(a) - parseInt(b));
 
-  const channels = await chromeStatusAPI.getChannels(versions.at(0), versions.at(-1));
-  return template`
-        <table>
-        <tr>
-            <th>Date</th>
-            <th>Name</th>
-            <th>Intent Stage</th>
-            <th>Chrome Version</th>
-        </tr>
-        ${deprecations.map(deprecation => renderDeprecation(deprecation, channels))}
-        </table>
-    `;
+    const channels = await chromeStatusAPI.getChannels(versions.at(0), versions.at(-1));
+    return template`
+          <table>
+          <tr>
+              <th>Date</th>
+              <th>Name</th>
+              <th>Intent Stage</th>
+              <th>Chrome Version</th>
+          </tr>
+          ${deprecations.map(deprecation => renderDeprecation(deprecation, channels))}
+          </table>
+      `;
+  } catch {
+    return template`<p class="error-notice">Unable to load deprecation calendar from chromestatus.com. Please try again later.</p>`;
+  }
 };
 
 const renderDeprecation = async (deprecation, channels) => {

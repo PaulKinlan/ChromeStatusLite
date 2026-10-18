@@ -148,10 +148,22 @@ const renderRemovedFeatures = (removed, version) => template`
 
 export default async function render(request: Request, chromeStatusAPI: StatusClient): Response {
   const url = new URL(request.url);
-  const versions = await chromeStatusAPI.getVersions();
-  const version = url.searchParams.get("version") || versions[0];
+  let versions: any[] = [];
+  let version: any = url.searchParams.get("version") || "";
+  let features: any = {};
+  let upstreamError = false;
 
-  const features = await chromeStatusAPI.getFeaturesForVersion(version);
+  try {
+    versions = await chromeStatusAPI.getVersions();
+    if (!version && versions.length > 0) {
+      version = versions[0];
+    }
+    if (version) {
+      features = await chromeStatusAPI.getFeaturesForVersion(version);
+    }
+  } catch {
+    upstreamError = true;
+  }
 
   // Version picker: show the most recent releases as chips and tuck the long
   // tail behind a native <details> disclosure, so the full list (which runs
@@ -159,7 +171,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   // selected version is always kept visible, and everything stays a plain link.
   const RECENT_COUNT = 8;
   const recent = versions.slice(0, RECENT_COUNT);
-  if (!recent.some((v) => String(v) === String(version))) {
+  if (version && !recent.some((v) => String(v) === String(version))) {
     const sel = versions.find((v) => String(v) === String(version));
     if (sel !== undefined) recent.unshift(sel);
   }
@@ -171,6 +183,10 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   const recentHtml = recent.map(chip).join(" ");
   const restHtml = rest.map(chip).join(" ");
 
+  const contentBody = upstreamError
+    ? template`<p class="error-notice">Unable to load release data from chromestatus.com. Please try again later.</p>`
+    : renderData(version, features);
+
   return template`
   <!doctype html>
 <html>
@@ -179,7 +195,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="/scripts/index.js" type="module"></script>
-  <title>Chrome Release ${version}</title>
+  <title>Chrome Release ${version || ""}</title>
   <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
@@ -196,7 +212,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   }
   </div>
   <div id="output">
-  ${renderData(version, features)}
+  ${contentBody}
   </div>
 </body>
 
