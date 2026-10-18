@@ -16,7 +16,7 @@ for path in "${paths[@]}"; do
     src/routes/diff.ts) add tests/diff_test.ts ;;
     src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts ;;
     src/routes/deprecations.ts|static/scripts/deprecations.js) add tests/deprecations_test.ts ;;
-    src/routes/feed.ts|src/routes/api-version.ts) add tests/handler_test.ts ;;
+    src/routes/feed.ts|src/routes/api-version.ts|src/routes/breaking.ts|src/routes/origin-trials.ts) add tests/handler_test.ts ;;
     # .fleet/coverage-contract.json declares suite attribution only for paths with a
     # real transitive import into the executed suites (chrome-status-lite-74e);
     # tests/gate_test.ts pins the contract and this mapping to each other.
