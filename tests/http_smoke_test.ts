@@ -1,4 +1,5 @@
 import { createHandler } from "../src/handler.ts";
+import { main } from "../main.ts"; // loads the deploy entrypoint on every gate (import-safe)
 import { equal, fixtureClient, includes } from "./fixture.ts";
 
 function assertStylesheetLoaded(statuses: number[]): void {
@@ -8,6 +9,7 @@ function assertStylesheetLoaded(statuses: number[]): void {
 }
 
 Deno.test("real HTTP and headless browser render a fixture page and load its stylesheet", async () => {
+  equal(typeof main, "function"); // the deploy entrypoint wiring loads
   const handler = createHandler(fixtureClient());
   let denyStylesheet = false;
   let browserCssStatuses: number[] = [];
