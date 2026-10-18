@@ -70,16 +70,12 @@ export class ChromeStatusAPI {
 
     if (!json) {
       console.log(CHROMESTATUS_API_ENDPOINT + path);
-      let response = await this.fetcher(CHROMESTATUS_API_ENDPOINT + path);
-      (response = new Response(response.body?.pipeThrough(new StripStream()))),
-        {
-          status: 200,
-          headers: {
-            "content-type": "application/json",
-          },
-        };
-
-      const text = await response.text();
+      const response = await this.fetcher(CHROMESTATUS_API_ENDPOINT + path);
+      if (!response.ok) {
+        throw new Error(`Upstream HTTP ${response.status} from ${path}`);
+      }
+      const strippedResponse = new Response(response.body?.pipeThrough(new StripStream()));
+      const text = await strippedResponse.text();
       json = JSON.parse(text);
       this.cache.set(path, json);
     }
