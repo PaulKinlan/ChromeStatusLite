@@ -44,13 +44,22 @@ export default async function render(
 
   let deprecationsData: any = { features: [] };
   let milestonesFeatures: any[] = [];
+  let featureErrors = 0;
+  let totalFeatureCalls = 0;
 
   if (recentVersions.length > 0) {
     try {
+      totalFeatureCalls = 1 + recentVersions.length;
       const results = await Promise.all([
-        chromeStatusAPI.getFeaturesByType(3).catch(() => ({ features: [] })),
+        chromeStatusAPI.getFeaturesByType(3).catch(() => {
+          featureErrors++;
+          return { features: [] };
+        }),
         ...recentVersions.map((v) =>
-          chromeStatusAPI.getFeaturesForVersion(v).catch(() => ({}))
+          chromeStatusAPI.getFeaturesForVersion(v).catch(() => {
+            featureErrors++;
+            return {};
+          })
         ),
       ]);
       deprecationsData = results[0];
@@ -170,6 +179,14 @@ export default async function render(
   };
 
   const totalCount = allBreakingFeatures.size;
+  if (featureErrors > 0 && (featureErrors === totalFeatureCalls || totalCount === 0)) {
+    upstreamError = true;
+  }
+
+  const upstreamTotal = deprecationsData?.total_count;
+  const upstreamNote = upstreamTotal && upstreamTotal > deprecationList.length
+    ? template`; ${upstreamTotal} deprecations tracked upstream`
+    : template``;
 
   let contentBody;
   if (upstreamError) {
@@ -195,7 +212,7 @@ export default async function render(
 <body>
   ${nav()}
   <h1>Breaking Changes &amp; Deprecations Timeline</h1>
-  <p>Track deprecated APIs, removals, and breaking changes across Chrome releases (showing ${totalCount} tracked changes across recent milestones).</p>
+  <p>Track deprecated APIs, removals, and breaking changes across Chrome releases (showing ${totalCount} tracked changes across Chrome milestones${upstreamNote}).</p>
   <div id="output">
     ${contentBody}
   </div>
