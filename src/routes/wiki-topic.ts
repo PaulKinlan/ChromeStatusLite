@@ -47,6 +47,9 @@ export const fetchQueryFeatures = async (
       }
     }
   }
+  // A continuation can also succeed with a short or empty page, so check the
+  // assembled length against what upstream said exists, not just for errors.
+  if (features.length < wanted) complete = false;
   return { total_count: total, features: features.slice(0, MAX_FEATURES_PER_QUERY), complete };
 };
 

@@ -343,6 +343,46 @@ Deno.test("/wiki/:topic says no features only when every query succeeded empty",
   if (html.includes("is incomplete")) throw new Error("false incomplete notice on clean empty result");
 });
 
+Deno.test("fetchQueryFeatures reports incomplete on a short successful continuation (review chrome-status-lite-lmj round 4)", async () => {
+  const client = fixtureClient({
+    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
+      const start = options.start ?? 0;
+      return {
+        total_count: 250,
+        // Page start=100 succeeds with zero features; start=200 returns 50.
+        features: Array.from({ length: start === 100 ? 0 : start === 200 ? 50 : 100 }, (_, i) => ({
+          id: start + i,
+          name: `F${start + i}`,
+        })),
+      };
+    },
+  });
+  const result = await fetchQueryFeatures("javascript", client);
+  equal(result.features.length, 150);
+  equal(result.complete, false);
+});
+
+Deno.test("/wiki/:topic marks the inventory incomplete on a short successful continuation (review chrome-status-lite-lmj round 4)", async () => {
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
+      const start = options.start ?? 0;
+      return {
+        total_count: 250,
+        features: Array.from({ length: start === 100 ? 0 : start === 200 ? 50 : 100 }, (_, i) => ({
+          id: `${query}-${start + i}`,
+          name: `${query} feature ${start + i}`,
+        })),
+      };
+    },
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/wiki/javascript"));
+  equal(res.status, 200);
+  const html = await res.text();
+  includes(html, "is incomplete");
+  includes(html, "javascript feature 200"); // later pages still render
+  if (html.includes("javascript feature 100")) throw new Error("short page rendered as present");
+});
+
 Deno.test("getTopic resolves slugs", () => {
   equal(getTopic("webgpu")?.title, "WebGPU");
   equal(getTopic("nope"), undefined);
