@@ -29,6 +29,36 @@ const renderLinks = (label, links) => {
   )}</p>`;
 };
 
+// Ecosystem cross-links for a feature: WPT results, Chrome platform demos
+// on chrome.dev, and MDN/Baseline references. All links are query URLs
+// built from the feature name at render time; no upstream calls.
+const renderEcosystemLinks = (feature) => {
+  const name = typeof feature?.name === "string" ? feature.name.trim() : "";
+  if (!name) return template``;
+  const q = encodeURIComponent(name);
+  const link = (label, url) =>
+    template`<li>${label}: <a href="${url}" rel="noopener noreferrer" target="_blank">${url}</a></li>`;
+  return template`
+  <h2>Ecosystem</h2>
+  <ul>
+    ${
+      link(
+        "Web Platform Tests",
+        `https://wpt.fyi/results/?q=${q}`
+      )
+    }
+    ${
+      link(
+        "Chrome platform demos",
+        `https://www.google.com/search?q=site%3Achrome.dev+${q}`
+      )
+    }
+    ${link("MDN Web Docs", `https://developer.mozilla.org/en-US/search?q=${q}`)}
+    ${link("Baseline status", `https://webstatus.dev/?q=${q}`)}
+  </ul>
+  `;
+};
+
 const renderFeature = (feature) => {
   const chrome = feature.browsers?.chrome || {};
   const status = chrome.status || {};
@@ -97,6 +127,8 @@ const renderFeature = (feature) => {
       bug ? template`<li>Tracking bug: <a href=${bug}>${bug}</a></li>` : template``
     }
   </ul>
+
+  ${renderEcosystemLinks(feature)}
 
   ${renderLinks("Docs", feature.doc_links || feature.resources?.docs)}
   ${renderLinks("Samples", feature.sample_links || feature.resources?.samples)}
