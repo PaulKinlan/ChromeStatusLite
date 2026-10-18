@@ -266,22 +266,28 @@ export default async function render(request: Request, match: URLPatternResult, 
   )}`;
 
   let feature;
+  let notFound = false;
   let upstreamError = false;
   try {
     feature = await chromeStatusAPI.getFeature(id);
-    if (!feature || typeof feature !== "object") {
-      feature = null;
-    }
   } catch (err: any) {
-    const msg = err instanceof Error ? err.message.toLowerCase() : "";
-    if (msg.includes("404") || msg.includes("not found") || msg.includes("missing")) {
-      feature = null;
-    } else {
-      upstreamError = true;
-    }
+    feature = null;
+    // The client reports a missing feature by throwing
+    // "Upstream HTTP 404 from <path>"; only that exact shape is an
+    // authoritative answer that the feature does not exist. Every other
+    // failure (5xx, network error, unparseable body) is an outage, which
+    // must not state a fact about the feature.
+    notFound = err instanceof Error && /^upstream http 404\b/i.test(err.message);
+    upstreamError = !notFound;
   }
 
-  if (upstreamError) {
+  // A renderable feature is an object carrying an id. A 200 body of null or
+  // an object without an id is upstream data corruption, not proof the
+  // feature is absent, so it must not render as an authoritative 404.
+  const usableFeature = feature !== null && typeof feature === "object" &&
+    !Array.isArray(feature) && feature.id !== undefined && feature.id !== null;
+
+  if (upstreamError || (!notFound && !usableFeature)) {
     return template`
   <!doctype html>
 <html>
@@ -309,6 +315,7 @@ export default async function render(request: Request, match: URLPatternResult, 
     );
   }
 
+  // Only a genuine upstream "not found" answer reaches this 404 page.
   if (!feature || !feature.id) {
     return template`
   <!doctype html>

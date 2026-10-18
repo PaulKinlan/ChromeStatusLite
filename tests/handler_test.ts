@@ -488,3 +488,37 @@ Deno.test("feature detail and feed render error-notices on upstream service fail
   includes(feedText, "Unable to load release data from chromestatus.com");
   equal((feedText.match(/<item>/g) || []).length, 1);
 });
+
+Deno.test("feature detail renders error-notice, not 404, for a 200 body of literal null", async () => {
+  const handler = createHandler(fixtureClient({ getFeature: async () => null }));
+
+  const res = await handler(new Request("https://chromestatuslite.com/feature/123456"));
+  equal(res.status, 200);
+  const text = await res.text();
+  includes(text, "error-notice");
+  equal(text.includes("Feature not found"), false);
+});
+
+Deno.test("feature detail renders error-notice, not 404, for a 200 object without an id", async () => {
+  const handler = createHandler(fixtureClient({ getFeature: async () => ({ name: "Shapeless" }) }));
+
+  const res = await handler(new Request("https://chromestatuslite.com/feature/123456"));
+  equal(res.status, 200);
+  const text = await res.text();
+  includes(text, "error-notice");
+  equal(text.includes("Feature not found"), false);
+});
+
+Deno.test("feature detail keeps the authoritative 404 for a genuine upstream not-found", async () => {
+  const handler = createHandler(fixtureClient({
+    getFeature: async () => {
+      throw new Error("Upstream HTTP 404 from /api/v0/features/999999");
+    },
+  }));
+
+  const res = await handler(new Request("https://chromestatuslite.com/feature/999999"));
+  equal(res.status, 404);
+  const text = await res.text();
+  includes(text, "Feature not found");
+  equal(text.includes("error-notice"), false);
+});
