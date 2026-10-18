@@ -34,6 +34,10 @@ Deno.test("/diff compares two release milestones with distinct grouped columns",
     'href="https://chromestatuslite.com/diff?from=119&amp;to=120"',
   );
   includes(html, 'action="/diff"');
+  // The shared nav must keep advertising the comparison route (review 8gx:
+  // deleting the nav entry previously stayed green).
+  includes(html, '<li><a href="/diff">Compare releases</a></li>');
+  includes(html, '<li><a href="/deprecations">Deprecation Calendar</a></li>');
   includes(html, '<label for="from">From milestone</label>');
   includes(html, '<label for="to">To milestone</label>');
   includes(html, '<option value="119" selected>Chrome 119</option>');

@@ -15,6 +15,9 @@ Deno.test("release page selects version and preserves canonical query", async ()
   includes(html, '<a href="?version=112" class="current" aria-current="page">112</a>');
   includes(html, "Fixture feature");
   includes(html, '<details class="more-versions"');
+  // The shared nav renders on every page; pin the comparison entry here too so
+  // removing it from src/ui-components/nav.ts cannot pass silently (8gx).
+  includes(html, '<li><a href="/diff">Compare releases</a></li>');
 });
 
 Deno.test("release notes expose available metadata without fetching full records", async () => {
