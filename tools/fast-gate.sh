@@ -14,6 +14,7 @@ for path in "${paths[@]}"; do
     src/routes/index.ts|static/scripts/index.js) add tests/index_test.ts ;;
     src/routes/feature.ts) add tests/feature_test.ts ;;
     src/lib/linkify.ts) add tests/feature_test.ts; add tests/index_test.ts ;;
+    src/lib/snapshots.ts|src/routes/feature-history.ts|tests/history_test.ts) add tests/feature_test.ts; add tests/history_test.ts ;;
     src/routes/diff.ts) add tests/diff_test.ts ;;
     src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts ;;
     src/routes/deprecations.ts|static/scripts/deprecations.js) add tests/deprecations_test.ts ;;
@@ -25,7 +26,7 @@ for path in "${paths[@]}"; do
     main.ts|src/handler.ts|src/flora.ts|src/stream-utils.ts|src/ui-components/*|static/styles/*|README.md|deno.json|deno.lock|docs/speed.md|tests/fixture.ts|tests/http_smoke_test.ts)
       add_all ;;
     tools/*|.fleet/*|tests/gate_test.ts) add_all; gate=1 ;;
-    tests/index_test.ts|tests/feature_test.ts|tests/deprecations_test.ts|tests/handler_test.ts|tests/diff_test.ts|tests/wiki_test.ts) add "$path" ;;
+    tests/index_test.ts|tests/feature_test.ts|tests/deprecations_test.ts|tests/handler_test.ts|tests/diff_test.ts|tests/wiki_test.ts|tests/history_test.ts) add "$path" ;;
     *) echo "Unmapped changed path: $path" >&2; exit 1 ;;
   esac
 done
@@ -37,7 +38,7 @@ mapfile -t suites < <(printf '%s\n' "${!selected[@]}" | sort)
 printf 'Fast gate: %s + tests/http_smoke_test.ts' "${suites[*]}"
 if (( gate )); then printf ' + tests/gate_test.ts'; fi
 printf '\n'
-deno test --no-check --cached-only --allow-read=static "${suites[@]}"
+deno test --no-check --cached-only --unstable-kv --allow-read=static "${suites[@]}"
 # The fixture-backed HTTP + headless-browser smoke always runs (chrome-status-lite-tor):
 # a changed test file is only 'placed' in fleet-check coverage by its own execution,
 # and the shared modules every route suite imports (src/handler.ts, tests/fixture.ts)

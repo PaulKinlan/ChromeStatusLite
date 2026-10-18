@@ -1,6 +1,8 @@
 import { join } from "https://deno.land/std@0.152.0/path/mod.ts";
 import { contentType } from "https://deno.land/std@0.152.0/media_types/mod.ts";
 import { ChromeStatusAPI } from "./lib/utils.ts";
+import { renderHistory, renderDiff } from "./routes/feature-history.ts";
+import type { SnapshotStore } from "./lib/snapshots.ts";
 import index from "./routes/index.ts";
 import deprecations from "./routes/deprecations.ts";
 import feature from "./routes/feature.ts";
@@ -22,6 +24,7 @@ const CANONICAL_ORIGIN = "https://chromestatuslite.com";
 export function createHandler(
   client: StatusClient = ChromeStatusAPI.getInstance(),
   staticRoot = join(Deno.cwd(), "static"),
+  store: SnapshotStore | null = null,
 ): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -43,8 +46,12 @@ export function createHandler(
     if (wikiMatch) return wikiTopic(request, wikiMatch, client);
     const apiVersionMatch = new URLPattern({ pathname: "/api/version/:version" }).exec(url);
     if (apiVersionMatch) return apiVersion(request, apiVersionMatch, client);
+    const historyMatch = new URLPattern({ pathname: "/feature/:id/history" }).exec(url);
+    if (historyMatch) return renderHistory(request, historyMatch, client, store);
+    const diffMatch = new URLPattern({ pathname: "/feature/:id/diff" }).exec(url);
+    if (diffMatch) return renderDiff(request, diffMatch, client, store);
     const match = new URLPattern({ pathname: "/feature/:id" }).exec(url);
-    if (match) return feature(request, match, client);
+    if (match) return feature(request, match, client, store);
 
     // Only explicit static assets are served; do not let URL path traversal
     // escape the static root or turn a missing route into a file read.

@@ -2,6 +2,7 @@ import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import linkify from "../lib/linkify.ts";
+import { captureSnapshot, type SnapshotStore } from "../lib/snapshots.ts";
 
 import nav from "../ui-components/nav.ts";
 import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
@@ -112,7 +113,7 @@ const renderFeature = (feature) => {
   `;
 };
 
-export default async function render(request: Request, match: URLPatternResult, chromeStatusAPI: StatusClient): Response {
+export default async function render(request: Request, match: URLPatternResult, chromeStatusAPI: StatusClient, store: SnapshotStore | null = null): Response {
   const id = match?.pathname?.groups?.id;
 
   if (!id || /\D/.test(id)) {
@@ -159,6 +160,12 @@ export default async function render(request: Request, match: URLPatternResult, 
           headers: { "content-type": "text/html" },
         })
     );
+  }
+
+  if (store) {
+    await captureSnapshot(store, id, feature).catch((err) => {
+      console.error("[snapshots] capture failed:", err?.message ?? err);
+    });
   }
 
   return template`
