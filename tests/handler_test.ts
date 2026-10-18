@@ -467,3 +467,24 @@ Deno.test("feature entry without resources or null deprecation entries render sa
   equal(resDep.status, 200);
   equal((await resDep.text()).includes("Unnamed feature"), false);
 });
+
+Deno.test("feature detail and feed render error-notices on upstream service failure", async () => {
+  const boom = async () => { throw new Error("Upstream HTTP 500"); };
+  const failingClient = fixtureClient({
+    getVersions: boom,
+    getFeature: boom,
+  });
+  const handler = createHandler(failingClient);
+
+  const resFeature = await handler(new Request("https://chromestatuslite.com/feature/123456"));
+  equal(resFeature.status, 200);
+  const featureText = await resFeature.text();
+  includes(featureText, "error-notice");
+  equal(featureText.includes("Feature not found"), false);
+
+  const resFeed = await handler(new Request("https://chromestatuslite.com/feed.xml"));
+  equal(resFeed.status, 200);
+  const feedText = await resFeed.text();
+  includes(feedText, "Unable to load release data from chromestatus.com");
+  equal((feedText.match(/<item>/g) || []).length, 1);
+});

@@ -22,13 +22,45 @@ export default async function feed(
   const limit = Math.min(Math.max(Number.isFinite(limitParam) ? limitParam : 10, 1), 25);
 
   let versions: number[] = [];
+  let upstreamError = false;
   try {
     const rawVersions = await chromeStatusAPI.getVersions();
     if (Array.isArray(rawVersions)) {
       versions = rawVersions.map((v) => Number(v)).filter((v) => Number.isFinite(v));
+      if (versions.length === 0) {
+        upstreamError = true;
+      }
+    } else {
+      upstreamError = true;
     }
   } catch {
+    upstreamError = true;
     versions = [];
+  }
+
+  if (upstreamError) {
+    const errorRss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Chrome Status Lite</title>
+    <link>https://chromestatuslite.com/</link>
+    <description>Unable to load release data from chromestatus.com. Please try again later.</description>
+    <atom:link href="https://chromestatuslite.com/feed.xml" rel="self" type="application/rss+xml"/>
+    <item>
+      <title>Notice: Unable to load release feed</title>
+      <link>https://chromestatuslite.com/</link>
+      <guid isPermaLink="false">https://chromestatuslite.com/notice/upstream-error</guid>
+      <pubDate>${new Date().toUTCString()}</pubDate>
+      <description>${cdata("<p>Unable to load release data from chromestatus.com. Please try again later.</p>")}</description>
+    </item>
+  </channel>
+</rss>`;
+    return new Response(errorRss, {
+      status: 200,
+      headers: {
+        "content-type": "application/rss+xml; charset=utf-8",
+      },
+    });
   }
 
   const selectedVersions = versions.slice(0, limit);

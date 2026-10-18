@@ -266,10 +266,47 @@ export default async function render(request: Request, match: URLPatternResult, 
   )}`;
 
   let feature;
+  let upstreamError = false;
   try {
     feature = await chromeStatusAPI.getFeature(id);
-  } catch (_) {
-    feature = null;
+    if (!feature || typeof feature !== "object") {
+      feature = null;
+    }
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message.toLowerCase() : "";
+    if (msg.includes("404") || msg.includes("not found") || msg.includes("missing")) {
+      feature = null;
+    } else {
+      upstreamError = true;
+    }
+  }
+
+  if (upstreamError) {
+    return template`
+  <!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unable to load feature</title>
+  <link rel="canonical" href="${canonical}">
+  <link rel="stylesheet" href="/styles/index.css">
+</head>
+
+<body>
+  ${nav()}
+  <h1>Unable to load feature</h1>
+  <p class="error-notice">Unable to load feature details from chromestatus.com. Please try again later.</p>
+</body>
+
+</html>`.then(
+      (data) =>
+        new Response(data, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        })
+    );
   }
 
   if (!feature || !feature.id) {
