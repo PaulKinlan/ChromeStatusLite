@@ -1,4 +1,6 @@
 import { createHandler } from "../src/handler.ts";
+import wiki from "../src/routes/wiki.ts";
+import wikiTopic from "../src/routes/wiki-topic.ts";
 import { equal, fixtureClient, includes } from "./fixture.ts";
 import {
   WIKI_TOPICS,
@@ -166,6 +168,21 @@ Deno.test("/wiki/:topic is 404 for unknown slugs without querying upstream", asy
   const res = await handler(new Request("https://chromestatuslite.com/wiki/no-such-topic"));
   equal(res.status, 404);
   includes(await res.text(), "Topic not found");
+
+  // Direct route-module coverage: the 404 path must not consult the client.
+  const match = new URLPattern({ pathname: "/wiki/:topic" }).exec("https://chromestatuslite.com/wiki/no-such-topic")!;
+  const direct = await wikiTopic(
+    new Request("https://chromestatuslite.com/wiki/no-such-topic"),
+    match,
+    fixtureClient({ getFeaturesByQuery: () => { throw new Error("unexpected fetch"); } }),
+  );
+  equal(direct.status, 404);
+});
+
+Deno.test("/wiki route module renders the directory directly", async () => {
+  const res = await wiki(new Request("https://chromestatuslite.com/wiki"), fixtureClient());
+  equal(res.status, 200);
+  includes(await res.text(), "Web Platform Topic Wiki");
 });
 
 Deno.test("getTopic resolves slugs", () => {
