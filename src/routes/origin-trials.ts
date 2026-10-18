@@ -51,9 +51,12 @@ export default async function render(
 
   let channelsData: any = null;
   let milestonesFeatures: any[] = [];
+  let featureErrors = 0;
+  let totalFeatureCalls = 0;
 
   if (recentVersions.length > 0) {
     try {
+      totalFeatureCalls = recentVersions.length;
       const results = await Promise.all([
         chromeStatusAPI.getChannels().catch(() => ({})),
         chromeStatusAPI.getChannels(
@@ -61,7 +64,10 @@ export default async function render(
           recentVersions[0],
         ).catch(() => ({})),
         ...recentVersions.map((v) =>
-          chromeStatusAPI.getFeaturesForVersion(v).catch(() => ({}))
+          chromeStatusAPI.getFeaturesForVersion(v).catch(() => {
+            featureErrors++;
+            return {};
+          })
         ),
       ]);
       channelsData = results[0];
@@ -103,6 +109,10 @@ export default async function render(
 
   const milestonesWithTrials = Array.from(trialsByMilestone.keys()).sort((a, b) => b - a);
 
+  if (featureErrors > 0 && (featureErrors === totalFeatureCalls || (totalActiveTrialsCount === 0 && totalPastTrialsCount === 0))) {
+    upstreamError = true;
+  }
+
   const renderTrialItem = (item: OriginTrialFeature, milestone: number) => {
     const safeId = encodeURIComponent(String(item.id));
     const name = escapeHtml(item.name || "Unnamed origin trial");
@@ -138,11 +148,13 @@ export default async function render(
 
     const isCurrentActive = milestone >= stableVersion && milestone <= devVersion;
     const isUpcoming = milestone > devVersion;
+    const count = trials.length;
+    const trialWord = count === 1 ? "trial" : "trials";
     const windowLabel = isCurrentActive
-      ? "active origin trial"
+      ? `${count} active origin ${trialWord}`
       : isUpcoming
-      ? "upcoming origin trial"
-      : "historical trial (ended)";
+      ? `${count} upcoming origin ${trialWord}`
+      : `${count} historical ${trialWord} (ended)`;
 
     return template`
     <section class="milestone-trials">
@@ -150,7 +162,7 @@ export default async function render(
         Chrome ${milestone}
         ${stableDate ? template`<small class="milestone-date">(${stableDate})</small>` : template``}
       </h2>
-      <p>${trials.length} ${windowLabel}${trials.length === 1 ? "" : "s"} in this milestone</p>
+      <p>${windowLabel} in this milestone</p>
       ${trials.map((t) => renderTrialItem(t, milestone))}
     </section>`;
   };

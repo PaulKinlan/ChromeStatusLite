@@ -319,6 +319,48 @@ Deno.test("breaking and origin-trials render error notices on upstream failure",
   includes(otHtml, "Unable to load origin trial data");
 });
 
+Deno.test("breaking and origin-trials render error notices when feature endpoints reject even if versions/channels succeed", async () => {
+  const partialFailingClient = fixtureClient({
+    getVersions: async () => [120, 119],
+    getChannels: async () => ({
+      stable: { version: "119" },
+      dev: { version: "120" },
+    }),
+    getFeaturesForVersion: async () => { throw new Error("features 500"); },
+    getFeaturesByType: async () => { throw new Error("type3 500"); },
+  });
+
+  const breakingHtml = await (await createHandler(partialFailingClient)(new Request("https://chromestatuslite.com/breaking"))).text();
+  includes(breakingHtml, "error-notice");
+  includes(breakingHtml, "Unable to load breaking change data");
+  equal(breakingHtml.includes("No breaking changes found in recent milestones"), false);
+
+  const otHtml = await (await createHandler(partialFailingClient)(new Request("https://chromestatuslite.com/origin-trials"))).text();
+  includes(otHtml, "error-notice");
+  includes(otHtml, "Unable to load origin trial data");
+  equal(otHtml.includes("No active origin trials found in recent milestones"), false);
+});
+
+Deno.test("origin-trials pluralizes historical trials cleanly without (ended)s", async () => {
+  const client = fixtureClient({
+    getVersions: async () => [118],
+    getChannels: async () => ({
+      stable: { version: "120" },
+      dev: { version: "121" },
+    }),
+    getFeaturesForVersion: async () => ({
+      "Origin trial": [
+        { id: 1, name: "Trial 1" },
+        { id: 2, name: "Trial 2" },
+      ],
+    }),
+  });
+
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/origin-trials"))).text();
+  includes(html, "2 historical trials (ended) in this milestone");
+  equal(html.includes("(ended)s"), false);
+});
+
 Deno.test("breaking and originTrials route modules execute directly with injected client", async () => {
   const client = fixtureClient();
   const breakingRes = await breaking(new Request("https://chromestatuslite.com/breaking"), client);
