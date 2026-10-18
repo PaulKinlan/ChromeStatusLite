@@ -32,40 +32,104 @@ const renderLinks = (label, links) => {
 // Ecosystem cross-links for a feature: WPT results, the Chrome Platform
 // Showcase, GenDN references, chrome.dev demos, and MDN/Baseline. Query
 // URLs are built from the feature name at render time; no upstream calls.
-// wpt.fyi's q is a literal substring match on test paths, so the name is
-// slugified - spaced names ("View Transitions") match nothing while the
-// hyphenated form ("view-transitions") matches the test tree.
+// wpt.fyi's q is a literal substring match on test paths, so a real WPT
+// path from the feature record beats any name-derived query. wpt_descr is
+// free text carrying several shapes: bare paths, wpt.fyi URLs with or
+// without a q= param, github blob/tree URLs, mozilla external/wpt/
+// prefixes - and prose slash-words ("changed/removed") that must NOT
+// become queries (measured against 80 live features by rev-od4/rev-33u).
+const WPT_PATH_RE = /\b([a-z0-9-]+(?:\/[a-z0-9_*.-]+)+)\b/gi;
+
+// Known wpt.fyi top-level test directories; a bare path token must start
+// with one to be treated as a WPT path at all.
+const WPT_TOP_DIRS = new Set([
+  "css", "html", "dom", "infrastructure", "webmessaging", "workers",
+  "shadow-dom", "xhr", "fetch", "svg", "encoding", "ai", "fedcm",
+  "content-security-policy", "external", "wpt", "websockets",
+  "webassembly", "webstorage", "webtransport", "webvtt", "webxr",
+  "webaudio", "webgl", "webgpu", "webcodecs", "webshare", "web-bluetooth",
+  "web-share", "web-animations", "webrtc", "service-workers", "storage",
+  "storage-access", "streams", "screen-wake-lock", "screen-orientation",
+  "selection", "speech-api", "secure-contexts", "scroll-animations",
+  "scroll-to-text-fragment", "resource-timing", "resize-observer",
+  "referrer-policy", "reporting", "requestidlecallback",
+  "picture-in-picture", "pointerevents", "pointerlock", "page-visibility",
+  "page-lifecycle", "permissions", "permissions-policy", "push-api",
+  "performance-timeline", "preload", "presentation-api", "portals",
+  "paint", "navigation", "navigation-timing", "notifications",
+  "network-error-logging", "user-timing", "uievents", "touch-events",
+  "trusted-types", "vibration", "video-rvfc", "visual-viewport",
+  "wai-aria", "wake-lock", "battery-status", "clipboard", "compression",
+  "cookie-store", "credential-management", "fullscreen", "geolocation",
+  "hr-time", "indexeddb", "intersection-observer", "keyboard-lock",
+  "keyboard-map", "largest-contentful-paint", "layout-instability",
+  "longtask-timing", "orientation-event", "orientation-sensor",
+  "payment-handler", "payment-request", "periodic-background-sync",
+  "priority-hints", "private-click-measurement", "remote-playback",
+  "sanitizer", "server-timing", "shape-detection", "sms",
+  "subresource-integrity", "urlpattern", "eventsource",
+  "file-system-access", "gamepad", "generic-sensor", "idle-detection",
+  "input-events", "mathml", "native-file-system", "old-clip-path",
+  "background-fetch", "badging", "beacon", "clear-site-data",
+  "content-index", "contact-picker", "digital-credentials",
+  "document-picture-in-picture", "mediasession", "shared-storage",
+  "speculation-rules", "accessibility",
+]);
+
+const trimWptPath = (p: string): string =>
+  p.replace(/\*.*$/, "") // wildcards: keep the directory
+    .replace(/\/tentative$/i, "")
+    .replace(/(\.[a-z0-9]+)+$/i, "") // file extensions (.any.js, .https)
+    .replace(/[\/.-]+$/, "");
+
 const slugify = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-// wpt.fyi's q is a literal substring match on test paths, so a real WPT
-// path from the feature record beats any name-derived query. wpt_descr
-// carries several shapes: bare paths ("css/cssom-view/scrollIntoView-*.
-// html"), wpt.fyi URLs with or without a q= param, and github blob URLs.
-const WPT_PATH_RE = /\b([a-z0-9-]+(?:\/[a-z0-9_*.-]+)+)\b/i;
-
 const wptQueryFromDescr = (descr: string): string | null => {
+  // The record may already BE a wpt.fyi search URL: use its q= verbatim.
   const qParam = descr.match(/[?&]q=([^&\s]+)/);
   if (qParam) {
-    // wpt_descr is free text: "?q=50%" or "?q=%zz" throw URIError on a
-    // bare decodeURIComponent, which would 500 the whole feature page.
-    // The raw token is still a usable literal query.
+    // Free text: "?q=50%" throws URIError on a bare decode and would 500
+    // the page; the raw token is still a usable literal query.
     try {
       return decodeURIComponent(qParam[1]);
     } catch {
       return qParam[1];
     }
   }
-  const match = descr.match(WPT_PATH_RE);
-  if (!match) return null;
-  const path = match[1]
-    .replace(/^.*\/blob\/[a-f0-9]+\//i, "") // github blob URLs: drop host+sha
-    .replace(/^.*\/results\//, "")          // wpt.fyi URLs: keep the test path
-    .replace(/^external\/wpt\//i, "")        // mozilla-style layout prefixes
-    .replace(/\*.*$/, "")                     // wildcards: keep the directory
-    .replace(/(\.[a-z0-9]+)+$/i, "")          // file extensions (.any.js, .html)
-    .replace(/[\/.-]+$/, "");
-  return path || null;
+  // Shape pass, scanning every path-like token: a real wpt.fyi/results/
+  // or web-platform-tests blob/tree URL wins even when prose slash-words
+  // appear earlier in the text.
+  for (const match of descr.matchAll(WPT_PATH_RE)) {
+    const raw = match[1];
+    if (/\/results\//i.test(raw)) {
+      const q = trimWptPath(raw.replace(/^.*\/results\//i, ""));
+      if (q) return q;
+    } else if (/\/(?:blob|tree)\/[^/]+\//i.test(raw)) {
+      const q = trimWptPath(raw.replace(/^.*\/(?:blob|tree)\/[^/]+\//i, ""));
+      if (q) return q;
+    } else if (/^fyi\//i.test(raw)) {
+      // Host-form wpt.fyi URL: the linked page's directory depth is
+      // arbitrary; WPT search works best on the top two directories.
+      const segs = trimWptPath(raw.slice(4)).split("/");
+      const q = (segs.length > 2 ? segs.slice(0, 2) : segs).join("/");
+      if (q) return q;
+    } else if (/^external\/wpt\//i.test(raw)) {
+      const q = trimWptPath(raw.slice("external/wpt/".length));
+      if (q) return q;
+    }
+  }
+
+  // Bare paths: only known WPT top-level directories count as WPT paths.
+  // Prose slash-words ("changed/removed", "PC/SC") and non-WPT hosts
+  // ("com/tc39/...", "org/chromium/...") never pass this filter.
+  for (const match of descr.matchAll(WPT_PATH_RE)) {
+    const segs = match[1].split("/");
+    if (!WPT_TOP_DIRS.has(segs[0].toLowerCase())) continue;
+    const q = trimWptPath([segs[0].toLowerCase(), ...segs.slice(1)].join("/"));
+    if (q) return q;
+  }
+  return null;
 };
 
 const wptResultsUrl = (feature: any, name: string): string => {
