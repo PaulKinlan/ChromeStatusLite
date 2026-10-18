@@ -47,10 +47,18 @@ export const fetchQueryFeatures = async (
       }
     }
   }
-  // A continuation can also succeed with a short or empty page, so check the
-  // assembled length against what upstream said exists, not just for errors.
-  if (features.length < wanted) complete = false;
-  return { total_count: total, features: features.slice(0, MAX_FEATURES_PER_QUERY), complete };
+  // A continuation can also succeed with a short or empty page, or repeat
+  // records already seen, so check the unique assembled count against what
+  // upstream said exists, not just for errors or raw length.
+  const byId = new Map<string, any>();
+  for (const feature of features) {
+    if (!feature || typeof feature !== "object" || feature.id === undefined) continue;
+    const key = String(feature.id);
+    if (!byId.has(key)) byId.set(key, feature);
+  }
+  const unique = [...byId.values()];
+  if (unique.length < wanted) complete = false;
+  return { total_count: total, features: unique.slice(0, MAX_FEATURES_PER_QUERY), complete };
 };
 
 const renderNotFound = (slug: string, canonical: string) =>

@@ -383,6 +383,49 @@ Deno.test("/wiki/:topic marks the inventory incomplete on a short successful con
   if (html.includes("javascript feature 100")) throw new Error("short page rendered as present");
 });
 
+Deno.test("fetchQueryFeatures reports incomplete when pages repeat records (review chrome-status-lite-lmj round 5)", async () => {
+  const client = fixtureClient({
+    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
+      const start = options.start ?? 0;
+      // start=100 repeats the first page's ids; raw length matches
+      // total_count but unique count does not.
+      const base = start === 100 ? 0 : start;
+      return {
+        total_count: 250,
+        features: Array.from({ length: start === 200 ? 50 : 100 }, (_, i) => ({
+          id: `f-${base + i}`,
+          name: `Feature ${base + i}`,
+        })),
+      };
+    },
+  });
+  const result = await fetchQueryFeatures("javascript", client);
+  equal(result.features.length, 150);
+  equal(result.complete, false);
+});
+
+Deno.test("/wiki/:topic marks the inventory incomplete when pages repeat records (review chrome-status-lite-lmj round 5)", async () => {
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
+      const start = options.start ?? 0;
+      const base = start === 100 ? 0 : start;
+      return {
+        total_count: 250,
+        features: Array.from({ length: start === 200 ? 50 : 100 }, (_, i) => ({
+          id: `${query}-${base + i}`,
+          name: `${query} feature ${base + i}`,
+        })),
+      };
+    },
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/wiki/javascript"));
+  equal(res.status, 200);
+  const html = await res.text();
+  includes(html, "is incomplete");
+  includes(html, "javascript feature 200");
+  if (html.includes("javascript feature 100")) throw new Error("duplicate page rendered as distinct records");
+});
+
 Deno.test("getTopic resolves slugs", () => {
   equal(getTopic("webgpu")?.title, "WebGPU");
   equal(getTopic("nope"), undefined);
