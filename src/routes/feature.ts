@@ -39,26 +39,30 @@ const slugify = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 // wpt.fyi's q is a literal substring match on test paths, so a real WPT
-// path from the feature record beats any name-derived query: chromestatus
-// carries paths like "css/cssom-view/scrollIntoView-*.html" or full
-// wpt.fyi URLs in wpt_descr; everything through "/results/" is stripped.
+// path from the feature record beats any name-derived query. wpt_descr
+// carries several shapes: bare paths ("css/cssom-view/scrollIntoView-*.
+// html"), wpt.fyi URLs with or without a q= param, and github blob URLs.
 const WPT_PATH_RE = /\b([a-z0-9-]+(?:\/[a-z0-9_*.-]+)+)\b/i;
+
+const wptQueryFromDescr = (descr: string): string | null => {
+  const qParam = descr.match(/[?&]q=([^&\s]+)/);
+  if (qParam) return decodeURIComponent(qParam[1]);
+  const match = descr.match(WPT_PATH_RE);
+  if (!match) return null;
+  const path = match[1]
+    .replace(/^.*\/blob\/[a-f0-9]+\//i, "") // github blob URLs: drop host+sha
+    .replace(/^.*\/results\//, "")          // wpt.fyi URLs: keep the test path
+    .replace(/^external\/wpt\//i, "")        // mozilla-style layout prefixes
+    .replace(/\*.*$/, "")                     // wildcards: keep the directory
+    .replace(/(\.[a-z0-9]+)+$/i, "")          // file extensions (.any.js, .html)
+    .replace(/[\/.-]+$/, "");
+  return path || null;
+};
 
 const wptResultsUrl = (feature: any, name: string): string => {
   const descr = typeof feature?.wpt_descr === "string" ? feature.wpt_descr : "";
-  const match = descr.match(WPT_PATH_RE);
-  if (match) {
-    // Trim test-file suffixes and wildcards back to a stable directory/
-    // test-name prefix: "css/cssom-view/scrollIntoView-*.html" searches as
-    // "css/cssom-view/scrollIntoView".
-    const path = match[1]
-      .replace(/^.*\/results\//, "")
-      .replace(/\.html?$/i, "")
-      .replace(/\*+$/, "")
-      .replace(/[\/.-]+$/, "");
-    return `https://wpt.fyi/results/?q=${encodeURIComponent(path)}`;
-  }
-  return `https://wpt.fyi/results/?q=${encodeURIComponent(slugify(name))}`;
+  const q = wptQueryFromDescr(descr) ?? slugify(name);
+  return `https://wpt.fyi/results/?q=${encodeURIComponent(q)}`;
 };
 
 const SHOWCASE_FEATURES = "https://chrome-platform-showcase.paulkinlan-ea.deno.net/features";
@@ -68,7 +72,6 @@ const renderEcosystemLinks = (feature) => {
   const name = typeof feature?.name === "string" ? feature.name.trim() : "";
   if (!name) return template``;
   const q = encodeURIComponent(name);
-  const slug = encodeURIComponent(slugify(name));
   const link = (label, url) =>
     template`<li>${label}: <a href="${url}" rel="noopener noreferrer" target="_blank">${url}</a></li>`;
   return template`
