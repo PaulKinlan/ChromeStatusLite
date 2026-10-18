@@ -24,8 +24,10 @@ export const fetchQueryFeatures = async (
   const first = await chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE });
   // A 200 without a numeric total_count is not evidence of a complete
   // inventory: treat it as unknown (count 0 for sizing) and incomplete, so
-  // the assembled topic data is not cached as authoritative (i11).
-  const rawTotal = Number(first?.total_count);
+  // the assembled topic data is not cached as authoritative (i11). null must
+  // be rejected explicitly - Number(null) coerces to 0 and would pass the
+  // finite check (bzs). Numeric strings still coerce.
+  const rawTotal = first?.total_count == null ? NaN : Number(first.total_count);
   const totalKnown = Number.isFinite(rawTotal);
   const total = totalKnown ? rawTotal : 0;
   const features = Array.isArray(first?.features) ? [...first.features] : [];

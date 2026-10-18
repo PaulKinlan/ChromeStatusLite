@@ -583,6 +583,35 @@ Deno.test("/wiki marks a partial directory count as a lower bound (review chrome
   includes(clean, "1 feature</a>");
 });
 
+Deno.test("fetchQueryFeatures treats a null total_count as incomplete (review chrome-status-lite-bzs)", async () => {
+  // Number(null) coerces to 0 and would pass a bare isFinite check.
+  const client = fixtureClient({
+    getFeaturesByQuery: async () => ({ total_count: null, features: [] }),
+  });
+  const result = await fetchQueryFeatures("webgpu", client);
+  equal(result.complete, false);
+
+  // And the empty assembly is not pinned: recovery is picked up next call.
+  let calls = 0;
+  const recovering = fixtureClient({
+    getFeaturesByQuery: async () =>
+      ++calls === 1
+        ? { total_count: null, features: [] }
+        : { total_count: 1, features: [{ id: 9, name: "Recovered" }] },
+  });
+  const topic = getTopic("webgpu")!;
+  const first = await getTopicData(topic, recovering);
+  equal(first.complete, false);
+  const second = await getTopicData(topic, recovering);
+  equal(second.complete, true);
+  equal(second.features.length, 1);
+  // A numeric total_count still works (and numeric strings coerce).
+  const numeric = fixtureClient({
+    getFeaturesByQuery: async () => ({ total_count: "1", features: [{ id: 9, name: "Stringy" }] }),
+  });
+  equal((await fetchQueryFeatures("webgpu", numeric)).complete, true);
+});
+
 Deno.test("getTopic resolves slugs", () => {
   equal(getTopic("webgpu")?.title, "WebGPU");
   equal(getTopic("nope"), undefined);
