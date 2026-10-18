@@ -450,3 +450,20 @@ Deno.test("flora stream converts mid-stream rejections into stream errors withou
   }
   equal(streamFailed, true);
 });
+
+Deno.test("feature entry without resources or null deprecation entries render safely", async () => {
+  const base = {
+    getVersions: async () => [120],
+    getFeaturesForVersion: async () => ({ "Enabled by default": [{ id: 7, name: "ok" }] }),
+    getFeaturesByType: async () => ({ features: [null] }),
+    getChannels: async () => ({}),
+  };
+  const handler = createHandler(fixtureClient(base as any));
+  const resIndex = await handler(new Request("https://chromestatuslite.com/"));
+  equal(resIndex.status, 200);
+  includes(await resIndex.text(), "Chrome 120");
+
+  const resDep = await handler(new Request("https://chromestatuslite.com/deprecations"));
+  equal(resDep.status, 200);
+  equal((await resDep.text()).includes("Unnamed feature"), false);
+});

@@ -92,26 +92,28 @@ const renderData = async (version, featuresByType) => {
 };
 
 const renderResources = (resources) => {
-  if (
-    "samples" in resources &&
-    resources.samples.length == 0 &&
-    "docs" in resources &&
-    resources.docs.length == 0
-  ) {
+  if (!resources || typeof resources !== "object") {
+    return template``;
+  }
+  const hasSamples = "samples" in resources && Array.isArray(resources.samples);
+  const hasDocs = "docs" in resources && Array.isArray(resources.docs);
+  const samples = hasSamples ? resources.samples : [];
+  const docs = hasDocs ? resources.docs : [];
+  if (hasSamples && samples.length === 0 && hasDocs && docs.length === 0) {
     return template``;
   }
 
   return template`<h4>Resources</h4>
       ${
-        "docs" in resources && resources.docs.length > 0
-          ? template`<p>Docs: ${resources.docs.map(
+        hasDocs && docs.length > 0
+          ? template`<p>Docs: ${docs.map(
               (resource) => template`<a href=${resource}>${resource}</a>`
             )}</p>`
           : template`No linked docs`
       }</p>
       ${
-        "samples" in resources && resources.samples.length > 0
-          ? template`<p>Samples: ${resources.samples.map(
+        hasSamples && samples.length > 0
+          ? template`<p>Samples: ${samples.map(
               (resource) => template`<a href=${resource}>${resource}</a>`
             )}</p>`
           : template`No linked samples`

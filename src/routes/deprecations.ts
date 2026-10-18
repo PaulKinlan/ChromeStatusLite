@@ -52,7 +52,9 @@ const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
     if (!res || !Array.isArray(res.features)) {
       throw new Error("Malformed deprecations response");
     }
-    const deprecations = res.features.sort(deprecationsSort);
+    const deprecations = res.features
+      .filter((f) => f && typeof f === "object" && f.id)
+      .sort(deprecationsSort);
 
     // Map features to browser versions, removing features that don't have version.
     const versions = deprecations
