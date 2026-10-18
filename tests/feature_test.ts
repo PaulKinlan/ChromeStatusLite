@@ -61,3 +61,19 @@ Deno.test("linkify keeps surrounding text escaped and ignores non-http schemes",
   equal(html.includes("javascript:alert(2)</a>"), false);
   equal(html.includes('href="ftp://example.com/x"'), false);
 });
+
+Deno.test("linkify links scheme-less tracker and PR references", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 125, name: "Bare references",
+    motivation: "Spec PR github.com/whatwg/html/pull/123 and the bug crbug.com/500967896 (fixed).",
+    browsers: { safari: { view: { text: "No signal", notes: "See bugzilla.mozilla.org/show_bug.cgi?id=1 and example.com/not-a-tracker" } } },
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/125"))).text();
+  includes(html, '<a href="https://github.com/whatwg/html/pull/123" rel="noopener noreferrer">github.com/whatwg/html/pull/123</a>');
+  includes(html, '<a href="https://crbug.com/500967896" rel="noopener noreferrer">crbug.com/500967896</a>');
+  includes(html, '<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1" rel="noopener noreferrer">bugzilla.mozilla.org/show_bug.cgi?id=1</a>');
+  // Unknown hosts stay plain text rather than becoming an arbitrary link.
+  equal(html.includes('href="https://example.com/not-a-tracker"'), false);
+  includes(html, "example.com/not-a-tracker");
+});
