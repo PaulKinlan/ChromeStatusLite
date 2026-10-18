@@ -26,5 +26,15 @@
     "tests/handler_test.ts",
     "tests/http_smoke_test.ts",
     "tests/index_test.ts"
+  ],
+  "src/lib/snapshots.ts": [
+    "tests/feature_test.ts",
+    "tests/history_test.ts",
+    "tests/http_smoke_test.ts"
+  ],
+  "src/routes/feature-history.ts": [
+    "tests/feature_test.ts",
+    "tests/history_test.ts",
+    "tests/http_smoke_test.ts"
   ]
 }
