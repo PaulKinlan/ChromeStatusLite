@@ -38,6 +38,29 @@ const renderLinks = (label, links) => {
 const slugify = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
+// wpt.fyi's q is a literal substring match on test paths, so a real WPT
+// path from the feature record beats any name-derived query: chromestatus
+// carries paths like "css/cssom-view/scrollIntoView-*.html" or full
+// wpt.fyi URLs in wpt_descr; everything through "/results/" is stripped.
+const WPT_PATH_RE = /\b([a-z0-9-]+(?:\/[a-z0-9_*.-]+)+)\b/i;
+
+const wptResultsUrl = (feature: any, name: string): string => {
+  const descr = typeof feature?.wpt_descr === "string" ? feature.wpt_descr : "";
+  const match = descr.match(WPT_PATH_RE);
+  if (match) {
+    // Trim test-file suffixes and wildcards back to a stable directory/
+    // test-name prefix: "css/cssom-view/scrollIntoView-*.html" searches as
+    // "css/cssom-view/scrollIntoView".
+    const path = match[1]
+      .replace(/^.*\/results\//, "")
+      .replace(/\.html?$/i, "")
+      .replace(/\*+$/, "")
+      .replace(/[\/.-]+$/, "");
+    return `https://wpt.fyi/results/?q=${encodeURIComponent(path)}`;
+  }
+  return `https://wpt.fyi/results/?q=${encodeURIComponent(slugify(name))}`;
+};
+
 const SHOWCASE_FEATURES = "https://chrome-platform-showcase.paulkinlan-ea.deno.net/features";
 const GENDN_FEATURES = "https://gendn.paulkinlan-ea.deno.net/features";
 
@@ -51,12 +74,7 @@ const renderEcosystemLinks = (feature) => {
   return template`
   <h2>Ecosystem</h2>
   <ul>
-    ${
-      link(
-        "Web Platform Tests",
-        `https://wpt.fyi/results/?q=${slug}`
-      )
-    }
+    ${link("Web Platform Tests", wptResultsUrl(feature, name))}
     ${link("Chrome Platform Showcase", SHOWCASE_FEATURES)}
     ${link("GenDN reference", GENDN_FEATURES)}
     ${
