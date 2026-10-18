@@ -117,3 +117,68 @@ Deno.test("diffSnapshots classifies added, removed and changed fields", () => {
   includes(JSON.stringify(diffs), '"kind":"removed"');
   includes(JSON.stringify(diffs), '"kind":"changed"');
 });
+
+Deno.test("a broken store renders unavailable, not an empty history", async () => {
+  const broken = {
+    list: async () => { throw new Error("KV unavailable"); },
+    add: async () => { throw new Error("KV unavailable"); },
+  };
+  const handler = createHandler(fixtureClient(), undefined, broken as any);
+
+  const res = await handler(new Request("https://chromestatuslite.com/feature/9/history"));
+  equal(res.status, 200);
+  const text = await res.text();
+  includes(text, "temporarily unavailable");
+  equal(text.includes("No snapshots captured yet"), false);
+});
+
+Deno.test("a reversed from/to pair is normalised to older-then-newer", async () => {
+  const store = new MemorySnapshotStore();
+  await captureSnapshot(store, "77", { name: "D", summary: "OLD" }, new Date("2026-01-01T00:00:00Z"));
+  await captureSnapshot(store, "77", { name: "D", summary: "NEW" }, new Date("2026-02-01T00:00:00Z"));
+  const handler = createHandler(fixtureClient(), undefined, store);
+
+  const res = await handler(new Request(
+    "https://chromestatuslite.com/feature/77/diff?from=2026-02-01T00:00:00.000Z&to=2026-01-01T00:00:00.000Z",
+  ));
+  const text = await res.text();
+  const delIndex = text.indexOf("diff-del");
+  const addIndex = text.indexOf("diff-add");
+  includes(text, "2026-01-01");
+  equal(delIndex < addIndex && delIndex !== -1, true);
+  const afterDel = text.slice(delIndex, addIndex);
+  includes(afterDel, "OLD");
+});
+
+Deno.test("an unresolvable from/to param says so and falls back to the full range", async () => {
+  const store = new MemorySnapshotStore();
+  await captureSnapshot(store, "77", { name: "D", summary: "A" }, new Date("2026-01-01T00:00:00Z"));
+  await captureSnapshot(store, "77", { name: "D", summary: "B" }, new Date("2026-02-01T00:00:00Z"));
+  const handler = createHandler(fixtureClient(), undefined, store);
+
+  const res = await handler(new Request(
+    "https://chromestatuslite.com/feature/77/diff?from=1999-01-01T00:00:00.000Z",
+  ));
+  includes(await res.text(), "was not found");
+});
+
+Deno.test("captureSnapshot prefers latest() and falls back to list()", async () => {
+  let latestCalls = 0;
+  let listCalls = 0;
+  const inner = new MemorySnapshotStore();
+  const withLatest = {
+    list: async (id: string) => { listCalls++; return inner.list(id); },
+    add: (id: string, snap: any) => inner.add(id, snap),
+    latest: async (id: string) => { latestCalls++; return inner.list(id)[0]; },
+  };
+  await captureSnapshot(withLatest as any, "5", { name: "N", summary: "x" });
+  equal(latestCalls, 1);
+  equal(listCalls, 0);
+
+  const bare = {
+    list: async (id: string) => { listCalls++; return inner.list(id); },
+    add: (id: string, snap: any) => inner.add(id, snap),
+  };
+  await captureSnapshot(bare as any, "6", { name: "N", summary: "x" });
+  equal(listCalls, 1);
+});

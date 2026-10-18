@@ -16,6 +16,12 @@ export interface SnapshotStore {
   list(featureId: string): Promise<FeatureSnapshot[]>;
   /** Append a snapshot for a feature. */
   add(featureId: string, snapshot: FeatureSnapshot): Promise<void>;
+  /**
+   * Only the newest snapshot, if any. Stores may implement this in O(1)
+   * (a KV prefix read with limit 1); captureSnapshot falls back to
+   * list() when a store does not provide it.
+   */
+  latest?(featureId: string): Promise<FeatureSnapshot | undefined>;
 }
 
 /** Deno KV-backed store; KV is GA on Deno Deploy and Deno 2.x locally. */
@@ -24,6 +30,11 @@ export class KvSnapshotStore implements SnapshotStore {
 
   constructor(path?: string) {
     this.#kv = Deno.openKv(path);
+    // openKv rejects asynchronously (a corrupt/unavailable KV file passes
+    // the constructor); without a handler attached now, that rejection is
+    // unhandled and kills the process before any route can catch it.
+    // Callers still see the error: they await this.#kv inside list/add.
+    this.#kv.catch(() => {});
   }
 
   async list(featureId: string): Promise<FeatureSnapshot[]> {
@@ -34,6 +45,18 @@ export class KvSnapshotStore implements SnapshotStore {
     return entries
       .map((e) => e.value)
       .sort((a, b) => b.at.localeCompare(a.at));
+  }
+
+  async latest(featureId: string): Promise<FeatureSnapshot | undefined> {
+    const kv = await this.#kv;
+    for await (const entry of kv.list<FeatureSnapshot>({
+      prefix: ["feature", featureId],
+      reverse: true,
+      limit: 1,
+    })) {
+      return entry.value;
+    }
+    return undefined;
   }
 
   async add(featureId: string, snapshot: FeatureSnapshot): Promise<void> {
@@ -98,7 +121,11 @@ export async function captureSnapshot(
 ): Promise<boolean> {
   const data = extractSnapshotData(feature);
   if (Object.keys(data).length === 0) return false;
-  const [newest] = await store.list(featureId);
+  // O(1) dedupe check: only the newest snapshot is needed. Stores without
+  // latest() fall back to a full list.
+  const newest = store.latest
+    ? await store.latest(featureId)
+    : (await store.list(featureId))[0];
   if (newest && JSON.stringify(newest.data) === JSON.stringify(data)) {
     return false;
   }

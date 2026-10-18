@@ -157,7 +157,9 @@ export default async function render(request: Request, match: URLPatternResult, 
   }
 
   if (store) {
-    await captureSnapshot(store, id, feature).catch(() => {});
+    await captureSnapshot(store, id, feature).catch((err) => {
+      console.error("[snapshots] capture failed:", err?.message ?? err);
+    });
   }
 
   return template`

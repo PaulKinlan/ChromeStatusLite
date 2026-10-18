@@ -31,6 +31,26 @@ tagged-template renderer.
   cross-browser signals (Firefox, Safari, web developers), tracking bug, and links to docs,
   samples, and explainers. `:id` is the chromestatus feature id.
 
+- **`/feature/:id/history`** — Snapshot history for a feature. Each time a reader views a feature
+  page, a slim snapshot of its tracked fields (summary, intent stage, status + milestone, spec
+  link, WPT note, vendor positions) is stored when they differ from the newest capture.
+- **`/feature/:id/diff`** — Visual field-level diff between two snapshots (oldest → newest by
+  default; pick a pair with `?from=<ISO>&to=<ISO>`, or follow the links on the history page).
+
+Snapshots are stored in Deno KV (enabled by default on Deno Deploy). Locally, `Deno.openKv`
+needs the KV flag and write access:
+
+```sh
+deno run --allow-net --allow-read=. --unstable-kv --allow-write main.ts
+```
+
+Without a working KV store the pages degrade to a "not configured" notice and capture is
+skipped — the rest of the site is unaffected.
+
+Known limits of lazy capture: history starts empty at deploy and only grows when features are
+viewed, so changes that happen while nobody views a feature are invisible (the diff shows one
+jump, not intermediate steps), and there is currently no way to delete a bad capture.
+
 ## How it works
 
 - **`main.ts`** — Entry point, starts `Deno.serve`. The import-safe `src/handler.ts`

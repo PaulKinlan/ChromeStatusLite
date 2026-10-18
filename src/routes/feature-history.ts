@@ -56,7 +56,18 @@ export async function renderHistory(
     ).then((data) => respond(data));
   }
 
-  const snapshots = await store.list(id).catch(() => [] as FeatureSnapshot[]);
+  let snapshots: FeatureSnapshot[];
+  try {
+    snapshots = await store.list(id);
+  } catch {
+    // A broken store must not look like "no history yet".
+    return page(
+      `Feature ${id} history`,
+      template`<p><a href="/feature/${id}">&larr; Back to feature</a></p>
+      <h1>Feature history</h1>
+      <p class="error-notice">Snapshot history is temporarily unavailable. Please try again later.</p>`,
+    ).then((data) => respond(data));
+  }
   const name = snapshots[0]?.data["Name"] ?? `Feature ${id}`;
 
   if (snapshots.length === 0) {
@@ -69,6 +80,10 @@ export async function renderHistory(
     ).then((data) => respond(data));
   }
 
+  // Cap the page: a heavily-viewed feature must not render an ever-growing list.
+  const MAX_ENTRIES = 25;
+  const shown = snapshots.slice(0, MAX_ENTRIES);
+  const older = snapshots.length - shown.length;
   const entries = snapshots.map((snap, i) => {
     const older = snapshots[i + 1];
     const changed = fieldChanges(older, snap);
@@ -91,7 +106,8 @@ export async function renderHistory(
     <h1>${escapeHtml(name)}: history</h1>
     <p>${snapshots.length} snapshot(s), newest first. Every capture records the
     tracked fields as they were when a reader viewed the feature.</p>
-    <ul class="snapshot-history">${entries}</ul>`,
+    <ul class="snapshot-history">${shown.map((_, i) => entries[i])}</ul>
+    ${older > 0 ? template`<p>${older} older capture(s) not shown.</p>` : template``}`,
   ).then((data) => respond(data));
 }
 
@@ -114,14 +130,32 @@ export async function renderDiff(
     ).then((data) => respond(data));
   }
 
-  const snapshots = await store.list(id).catch(() => [] as FeatureSnapshot[]);
+  let snapshots: FeatureSnapshot[];
+  try {
+    snapshots = await store.list(id);
+  } catch {
+    return page(
+      `Feature ${id} diff`,
+      template`<p><a href="/feature/${id}">&larr; Back to feature</a></p>
+      <h1>Feature diff</h1>
+      <p class="error-notice">Snapshot history is temporarily unavailable. Please try again later.</p>`,
+    ).then((data) => respond(data));
+  }
   const name = snapshots[0]?.data["Name"] ?? `Feature ${id}`;
   const url = new URL(request.url);
   const fromAt = url.searchParams.get("from");
   const toAt = url.searchParams.get("to");
-  const from = (fromAt && snapshots.find((s) => s.at === fromAt)) ??
+  let from = (fromAt && snapshots.find((s) => s.at === fromAt)) ??
     snapshots[snapshots.length - 1];
-  const to = (toAt && snapshots.find((s) => s.at === toAt)) ?? snapshots[0];
+  let to = (toAt && snapshots.find((s) => s.at === toAt)) ?? snapshots[0];
+  let paramNotice = template``;
+  if (fromAt && !snapshots.some((s) => s.at === fromAt) ||
+      toAt && !snapshots.some((s) => s.at === toAt)) {
+    paramNotice = template`<p class="error-notice">The requested snapshot pair was not found; showing oldest &rarr; newest instead.</p>`;
+  }
+  // Always diff older -> newer: a swapped URL must not present the live
+  // state as removed and the past as added.
+  if (from && to && from.at > to.at) [from, to] = [to, from];
 
   if (!from || !to || from === to) {
     return page(
@@ -154,6 +188,7 @@ export async function renderDiff(
     `${name} diff`,
     template`<p><a href="/feature/${id}/history">&larr; Back to history</a></p>
     <h1>${escapeHtml(name)}: diff</h1>
+    ${paramNotice}
     <p>${from.at.replace("T", " ").slice(0, 16)}Z → ${to.at.replace("T", " ").slice(0, 16)}Z</p>
     <div class="diff">${rows}</div>`,
   ).then((data) => respond(data));
