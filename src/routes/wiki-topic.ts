@@ -4,62 +4,17 @@ import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
 import {
-  collectTopicFeatures,
   consensus,
   getTopic,
   stageGroups,
   tagFeature,
   timeline,
 } from "../lib/wiki.ts";
+import { fetchQueryFeatures, getTopicData } from "../lib/wiki-data.ts";
 
-// The upstream search defaults to 100 results per page; topics can match
-// several hundred features, so fetch continuation pages in parallel (one
-// retry each). The cap bounds upstream load for very broad queries. A failed
-// continuation or a capped result sets complete=false, and the route must
-// say so rather than presenting a partial inventory as the whole topic.
-const PAGE_SIZE = 100;
-const MAX_FEATURES_PER_QUERY = 1000;
-
-export const fetchQueryFeatures = async (
-  query: string,
-  chromeStatusAPI: StatusClient,
-): Promise<{ total_count: number; features: any[]; complete: boolean }> => {
-  const first = await chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE });
-  const total = Number(first?.total_count) || 0;
-  const features = Array.isArray(first?.features) ? [...first.features] : [];
-  const wanted = Math.min(total, MAX_FEATURES_PER_QUERY);
-  let complete = total <= MAX_FEATURES_PER_QUERY;
-  if (features.length < wanted) {
-    const starts: number[] = [];
-    for (let start = features.length; start < wanted; start += PAGE_SIZE) {
-      starts.push(start);
-    }
-    const fetchPage = (start: number) =>
-      chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE, start })
-        // One retry for transient upstream failures before giving up.
-        .catch(() => chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE, start }))
-        .catch(() => null);
-    for (const page of await Promise.all(starts.map(fetchPage))) {
-      if (Array.isArray(page?.features)) {
-        features.push(...page.features);
-      } else {
-        complete = false;
-      }
-    }
-  }
-  // A continuation can also succeed with a short or empty page, or repeat
-  // records already seen, so check the unique assembled count against what
-  // upstream said exists, not just for errors or raw length.
-  const byId = new Map<string, any>();
-  for (const feature of features) {
-    if (!feature || typeof feature !== "object" || feature.id === undefined) continue;
-    const key = String(feature.id);
-    if (!byId.has(key)) byId.set(key, feature);
-  }
-  const unique = [...byId.values()];
-  if (unique.length < wanted) complete = false;
-  return { total_count: total, features: unique.slice(0, MAX_FEATURES_PER_QUERY), complete };
-};
+// Re-exported so existing imports of the paginated query fetcher keep
+// working; its home is the shared wiki-data module.
+export { fetchQueryFeatures };
 
 const renderNotFound = (slug: string, canonical: string) =>
   template`
@@ -167,12 +122,10 @@ export default async function render(
   const topic = getTopic(slug);
   if (!topic) return renderNotFound(slug, canonical);
 
-  const results = await Promise.all(
-    topic.queries.map((query) => fetchQueryFeatures(query, chromeStatusAPI).catch(() => null)),
-  );
+  const data = await getTopicData(topic, chromeStatusAPI);
 
   let contentBody;
-  if (results.every((result) => result === null)) {
+  if (data.failed) {
     contentBody = template`<p class="error-notice">Unable to load topic data from chromestatus.com. Please try again later.</p>`;
   } else {
     // A query that failed outright, a failed continuation page, or a capped
@@ -180,8 +133,8 @@ export default async function render(
     // the rendered subset as the complete topic inventory. The notice applies
     // to the empty branch too: "no features tagged" is only truthful when
     // every query actually succeeded.
-    const incomplete = results.some((result) => result === null || !result.complete);
-    const features = collectTopicFeatures(results.filter((result) => result !== null));
+    const incomplete = !data.complete;
+    const features = data.features;
     const incompleteNotice = template`<p class="error-notice">Some features could not be loaded from chromestatus.com; the list below is incomplete.</p>`;
     if (features.length === 0) {
       contentBody = incomplete

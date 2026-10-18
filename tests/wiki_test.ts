@@ -11,6 +11,7 @@ import {
   tagFeature,
   timeline,
 } from "../src/lib/wiki.ts";
+import { getTopicData } from "../src/lib/wiki-data.ts";
 
 const gpuFeature = {
   id: 1,
@@ -294,23 +295,75 @@ Deno.test("/wiki/:topic omits the consensus section when no feature has view dat
   }
 });
 
-Deno.test("/wiki directory counts use one cheap num=1 request per topic (review chrome-status-lite-avm)", async () => {
-  const calls: { options: { num?: number; start?: number } }[] = [];
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
-      calls.push({ options });
-      return { total_count: 488, features: [] };
+Deno.test("/wiki directory counts the deduped union across ALL topic queries (review chrome-status-lite-4p4)", async () => {
+  // Device & Hardware has four queries; the directory must count the union,
+  // deduped by feature id, not just the first query's total_count.
+  const client = fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "web bluetooth") return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      return { total_count: 0, features: [] };
     },
-  }));
+  });
+  const handler = createHandler(client);
   const res = await handler(new Request("https://chromestatuslite.com/wiki"));
   equal(res.status, 200);
   const html = await res.text();
-  includes(html, "488 features");
-  equal(calls.length, WIKI_TOPICS.length);
-  for (const call of calls) {
-    equal(call.options.num, 1);
-    equal(call.options.start, undefined);
+  includes(html, '<a href="/wiki/device">3 features</a>'); // 1,2,3 — id 2 deduped
+});
+
+Deno.test("/wiki directory count matches the /wiki/:topic page count (review chrome-status-lite-4p4)", async () => {
+  const client = fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "web bluetooth") return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      return { total_count: 0, features: [] };
+    },
+  });
+  const handler = createHandler(client);
+  const directory = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  const topic = await (await handler(new Request("https://chromestatuslite.com/wiki/device"))).text();
+  includes(directory, '<a href="/wiki/device">3 features</a>');
+  includes(topic, "3 features tagged with this topic");
+});
+
+Deno.test("wiki topic data is cached and shared between directory and topic pages (review chrome-status-lite-4p4)", async () => {
+  let calls = 0;
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async () => {
+      calls++;
+      return { total_count: 1, features: [{ id: 7, name: "Cached feature" }] };
+    },
+  }));
+  await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  const afterDirectory = calls;
+  if (afterDirectory === 0) throw new Error("cold directory made no upstream calls");
+  // A second directory load and a topic page load are served entirely from
+  // the shared assembled-data cache: zero additional upstream calls.
+  await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  equal(calls, afterDirectory);
+  const topic = await (await handler(new Request("https://chromestatuslite.com/wiki/webgpu"))).text();
+  equal(calls, afterDirectory);
+  includes(topic, "1 feature tagged with this topic");
+});
+
+Deno.test("wiki topic data cache does not pin a total failure (review chrome-status-lite-4p4)", async () => {
+  let down = true;
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async () => {
+      if (down) throw new Error("upstream down");
+      return { total_count: 1, features: [{ id: 8, name: "Recovered feature" }] };
+    },
+  }));
+  const first = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  if (first.includes("feature</a>") || first.includes("features</a>")) {
+    throw new Error("count rendered while every query failed");
   }
+  down = false;
+  // Total failures are not cached: the next load retries upstream and
+  // recovers without waiting for the TTL.
+  const second = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  includes(second, '<a href="/wiki/webgpu">1 feature</a>');
 });
 
 
@@ -424,6 +477,139 @@ Deno.test("/wiki/:topic marks the inventory incomplete when pages repeat records
   includes(html, "is incomplete");
   includes(html, "javascript feature 200");
   if (html.includes("javascript feature 100")) throw new Error("duplicate page rendered as distinct records");
+});
+
+Deno.test("getTopicData unions every query, deduped, with failure flags (review chrome-status-lite-4p4)", async () => {
+  const topic = getTopic("device")!; // four queries: webusb, web bluetooth, webserial, webhid
+  const client = fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "web bluetooth") return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      if (query === "webserial") throw new Error("upstream down");
+      return { total_count: 0, features: [] };
+    },
+  });
+  const data = await getTopicData(topic, client);
+  equal(data.features.length, 3); // union of both successful queries, id 2 deduped
+  equal(data.complete, false); // webserial failed outright
+  equal(data.failed, false);
+  // Sorted by name for a stable render.
+  equal(data.features.map((feature) => feature.name).join(","), "WebBluetooth,WebSerial,WebUSB");
+
+  const allDown = await getTopicData(topic, fixtureClient({
+    getFeaturesByQuery: () => Promise.reject(new Error("upstream down")),
+  }));
+  equal(allDown.failed, true);
+  equal(allDown.features.length, 0);
+});
+
+Deno.test("getTopicData does not cache a partial assembly (review chrome-status-lite-3mh)", async () => {
+  // Reviewer repro: one query rejects once, then recovers. The partial
+  // result must NOT be pinned for the TTL - the next call retries upstream.
+  const topic = getTopic("device")!;
+  let bluetoothDown = true;
+  let calls = 0;
+  const client = fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      calls++;
+      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "web bluetooth") {
+        if (bluetoothDown) {
+          bluetoothDown = false;
+          throw new Error("503 transient");
+        }
+        return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      }
+      return { total_count: 0, features: [] };
+    },
+  });
+  const first = await getTopicData(topic, client);
+  equal(first.features.length, 2); // bluetooth down: only webusb's pair
+  equal(first.complete, false);
+  const callsAfterFirst = calls;
+  const second = await getTopicData(topic, client);
+  if (calls === callsAfterFirst) throw new Error("partial assembly was served from cache");
+  equal(second.features.length, 3); // recovered bluetooth adds WebBluetooth; id 2 still deduped
+  equal(second.complete, true);
+  // The recovered, complete assembly IS cached: a third call refetches nothing.
+  const third = await getTopicData(topic, client);
+  equal(third.complete, true);
+});
+
+Deno.test("fetchQueryFeatures treats a 200 with no total_count as incomplete (review chrome-status-lite-i11)", async () => {
+  const client = fixtureClient({
+    getFeaturesByQuery: async () => ({}), // HTTP 200, no total_count, no features
+  });
+  const result = await fetchQueryFeatures("webgpu", client);
+  equal(result.complete, false); // unknown inventory size is not "complete"
+  equal(result.features.length, 0);
+
+  // And getTopicData therefore does not pin the empty assembly for the TTL.
+  let empty = true;
+  const recovering = fixtureClient({
+    getFeaturesByQuery: async () => {
+      if (empty) {
+        empty = false;
+        return {};
+      }
+      return { total_count: 1, features: [{ id: 5, name: "Back" }] };
+    },
+  });
+  const topic = getTopic("webgpu")!;
+  const first = await getTopicData(topic, recovering);
+  equal(first.complete, false);
+  const second = await getTopicData(topic, recovering);
+  equal(second.complete, true);
+  equal(second.features.length, 1);
+});
+
+Deno.test("/wiki marks a partial directory count as a lower bound (review chrome-status-lite-un2)", async () => {
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async (query: string) => {
+      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "web bluetooth") throw new Error("503 persistent");
+      return { total_count: 0, features: [] };
+    },
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/wiki"));
+  equal(res.status, 200);
+  const html = await res.text();
+  includes(html, '<a href="/wiki/device">2+ features</a>'); // lower bound, marked
+  if (html.includes('<a href="/wiki/device">2 features</a>')) {
+    throw new Error("partial count rendered as exact");
+  }
+  // Complete topics keep their exact count and singular/plural forms.
+  const clean = await (await createHandler(fixtureClient())(new Request("https://chromestatuslite.com/wiki"))).text();
+  includes(clean, "1 feature</a>");
+});
+
+Deno.test("fetchQueryFeatures treats a null total_count as incomplete (review chrome-status-lite-bzs)", async () => {
+  // Number(null) coerces to 0 and would pass a bare isFinite check.
+  const client = fixtureClient({
+    getFeaturesByQuery: async () => ({ total_count: null, features: [] }),
+  });
+  const result = await fetchQueryFeatures("webgpu", client);
+  equal(result.complete, false);
+
+  // And the empty assembly is not pinned: recovery is picked up next call.
+  let calls = 0;
+  const recovering = fixtureClient({
+    getFeaturesByQuery: async () =>
+      ++calls === 1
+        ? { total_count: null, features: [] }
+        : { total_count: 1, features: [{ id: 9, name: "Recovered" }] },
+  });
+  const topic = getTopic("webgpu")!;
+  const first = await getTopicData(topic, recovering);
+  equal(first.complete, false);
+  const second = await getTopicData(topic, recovering);
+  equal(second.complete, true);
+  equal(second.features.length, 1);
+  // A numeric total_count still works (and numeric strings coerce).
+  const numeric = fixtureClient({
+    getFeaturesByQuery: async () => ({ total_count: "1", features: [{ id: 9, name: "Stringy" }] }),
+  });
+  equal((await fetchQueryFeatures("webgpu", numeric)).complete, true);
 });
 
 Deno.test("getTopic resolves slugs", () => {
