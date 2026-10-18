@@ -40,11 +40,13 @@ Deno.test("feature detail renders ecosystem cross-links from the feature name", 
     resources: { docs: [], samples: [] },
   }) });
   const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/123"))).text();
-  includes(html, 'href="https://wpt.fyi/results/?q=View%20Transitions"');
+  includes(html, 'href="https://wpt.fyi/results/?q=view-transitions"');
+  includes(html, 'href="https://chrome-platform-showcase.paulkinlan-ea.deno.net/features"');
+  includes(html, 'href="https://gendn.paulkinlan-ea.deno.net/features"');
   includes(html, 'href="https://www.google.com/search?q=site%3Achrome.dev+View%20Transitions"');
   includes(html, 'href="https://developer.mozilla.org/en-US/search?q=View%20Transitions"');
   includes(html, 'href="https://webstatus.dev/?q=View%20Transitions"');
-  equal((html.match(/rel="noopener noreferrer"/g) || []).length >= 4, true);
+  equal((html.match(/rel="noopener noreferrer"/g) || []).length >= 6, true);
 });
 
 Deno.test("feature detail omits the ecosystem section when the feature has no name", async () => {

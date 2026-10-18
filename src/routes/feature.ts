@@ -29,13 +29,23 @@ const renderLinks = (label, links) => {
   )}</p>`;
 };
 
-// Ecosystem cross-links for a feature: WPT results, Chrome platform demos
-// on chrome.dev, and MDN/Baseline references. All links are query URLs
-// built from the feature name at render time; no upstream calls.
+// Ecosystem cross-links for a feature: WPT results, the Chrome Platform
+// Showcase, GenDN references, chrome.dev demos, and MDN/Baseline. Query
+// URLs are built from the feature name at render time; no upstream calls.
+// wpt.fyi's q is a literal substring match on test paths, so the name is
+// slugified - spaced names ("View Transitions") match nothing while the
+// hyphenated form ("view-transitions") matches the test tree.
+const slugify = (name: string) =>
+  name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+const SHOWCASE_FEATURES = "https://chrome-platform-showcase.paulkinlan-ea.deno.net/features";
+const GENDN_FEATURES = "https://gendn.paulkinlan-ea.deno.net/features";
+
 const renderEcosystemLinks = (feature) => {
   const name = typeof feature?.name === "string" ? feature.name.trim() : "";
   if (!name) return template``;
   const q = encodeURIComponent(name);
+  const slug = encodeURIComponent(slugify(name));
   const link = (label, url) =>
     template`<li>${label}: <a href="${url}" rel="noopener noreferrer" target="_blank">${url}</a></li>`;
   return template`
@@ -44,12 +54,14 @@ const renderEcosystemLinks = (feature) => {
     ${
       link(
         "Web Platform Tests",
-        `https://wpt.fyi/results/?q=${q}`
+        `https://wpt.fyi/results/?q=${slug}`
       )
     }
+    ${link("Chrome Platform Showcase", SHOWCASE_FEATURES)}
+    ${link("GenDN reference", GENDN_FEATURES)}
     ${
       link(
-        "Chrome platform demos",
+        "chrome.dev demos search",
         `https://www.google.com/search?q=site%3Achrome.dev+${q}`
       )
     }
