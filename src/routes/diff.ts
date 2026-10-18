@@ -53,18 +53,33 @@ export default async function render(
   client: StatusClient,
 ): Promise<Response> {
   const url = new URL(request.url);
-  const versions = (await client.getVersions()).map(String);
-  const from = url.searchParams.get("from") ?? versions[1] ?? versions[0];
-  const to = url.searchParams.get("to") ?? versions[0];
-  const valid = from && to && versions.includes(from) && versions.includes(to);
+  let versions: string[] = [];
+  let upstreamError = false;
+
+  try {
+    versions = (await client.getVersions()).map(String);
+  } catch {
+    upstreamError = true;
+  }
+
+  const from = url.searchParams.get("from") ?? versions[1] ?? versions[0] ?? "";
+  const to = url.searchParams.get("to") ?? versions[0] ?? "";
+  const valid = !upstreamError && from && to && versions.includes(from) && versions.includes(to);
   // Do not send an arbitrary user-supplied milestone to the upstream API.
-  const status = valid ? 200 : 400;
-  const groups = valid
-    ? await Promise.all([
-      client.getFeaturesForVersion(from),
-      from === to ? Promise.resolve(null) : client.getFeaturesForVersion(to),
-    ])
-    : [];
+  const status = upstreamError ? 200 : (valid ? 200 : 400);
+
+  let groups: any[] = [];
+  if (valid && !upstreamError) {
+    try {
+      groups = await Promise.all([
+        client.getFeaturesForVersion(from),
+        from === to ? Promise.resolve(null) : client.getFeaturesForVersion(to),
+      ]);
+    } catch {
+      upstreamError = true;
+    }
+  }
+
   const fromGroups = groups[0] || {};
   const toGroups = from === to ? fromGroups : groups[1] || {};
   const canonical = `https://chromestatuslite.com${
@@ -74,6 +89,26 @@ export default async function render(
     template`<option value="${escapeHtml(version)}"${
       version === selected ? " selected" : ""
     }>Chrome ${escapeHtml(version)}</option>`;
+
+  let diffContent;
+  if (upstreamError) {
+    diffContent = template`<p class="error-notice">Unable to load release comparison from chromestatus.com. Please try again later.</p>`;
+  } else if (!valid) {
+    diffContent = template`<p role="alert">Choose two available Chrome milestones to compare.</p>`;
+  } else {
+    diffContent = template`
+      ${
+        from === to
+          ? template`<p>Both selections are Chrome ${
+            escapeHtml(from)
+          }. Choose different milestones to compare releases.</p>`
+          : template``
+      }
+      <div class="diff-columns">
+        ${renderMilestone(from, fromGroups)}
+        ${renderMilestone(to, toGroups)}
+      </div>`;
+  }
 
   return template`<!doctype html>
 <html lang="en">
@@ -101,22 +136,7 @@ export default async function render(
   }</select>
       <button type="submit">Compare milestones</button>
     </form>
-    ${
-    !valid
-      ? template`<p role="alert">Choose two available Chrome milestones to compare.</p>`
-      : template`
-      ${
-        from === to
-          ? template`<p>Both selections are Chrome ${
-            escapeHtml(from)
-          }. Choose different milestones to compare releases.</p>`
-          : template``
-      }
-      <div class="diff-columns">
-        ${renderMilestone(from, fromGroups)}
-        ${renderMilestone(to, toGroups)}
-      </div>`
-  }
+    ${diffContent}
   </main>
 </body>
 </html>`.then((html) =>
