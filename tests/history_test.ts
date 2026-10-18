@@ -3,6 +3,7 @@ import { equal, fixtureClient, includes } from "./fixture.ts";
 import {
   captureSnapshot,
   diffSnapshots,
+  KvSnapshotStore,
   MemorySnapshotStore,
 } from "../src/lib/snapshots.ts";
 
@@ -181,4 +182,20 @@ Deno.test("captureSnapshot prefers latest() and falls back to list()", async () 
   };
   await captureSnapshot(bare as any, "6", { name: "N", summary: "x" });
   equal(listCalls, 1);
+});
+
+Deno.test("KvSnapshotStore on the real embedded backend: latest() is the newest, unchanged views store nothing", async () => {
+  const store = new KvSnapshotStore(":memory:");
+  await store.add("kv1", { at: "2026-01-01T00:00:00.000Z", data: { Name: "X", Summary: "v1" } });
+  await store.add("kv1", { at: "2026-02-01T00:00:00.000Z", data: { Name: "X", Summary: "v2" } });
+
+  equal((await store.latest("kv1"))!.at, "2026-02-01T00:00:00.000Z");
+  const listed = await store.list("kv1");
+  equal(listed.length, 2);
+  equal(listed[0].at, "2026-02-01T00:00:00.000Z");
+
+  equal(await captureSnapshot(store, "kv1", { name: "X", summary: "v2" }), false);
+  equal((await store.list("kv1")).length, 2);
+  equal(await captureSnapshot(store, "kv1", { name: "X", summary: "v3" }), true);
+  equal((await store.latest("kv1"))!.data["Summary"], "v3");
 });

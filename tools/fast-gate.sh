@@ -36,7 +36,7 @@ mapfile -t suites < <(printf '%s\n' "${!selected[@]}" | sort)
 printf 'Fast gate: %s + tests/http_smoke_test.ts' "${suites[*]}"
 if (( gate )); then printf ' + tests/gate_test.ts'; fi
 printf '\n'
-deno test --no-check --cached-only --allow-read=static "${suites[@]}"
+deno test --no-check --cached-only --unstable-kv --allow-read=static "${suites[@]}"
 # The fixture-backed HTTP + headless-browser smoke always runs (chrome-status-lite-tor):
 # a changed test file is only 'placed' in fleet-check coverage by its own execution,
 # and the shared modules every route suite imports (src/handler.ts, tests/fixture.ts)

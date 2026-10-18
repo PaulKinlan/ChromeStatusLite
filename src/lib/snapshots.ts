@@ -24,6 +24,13 @@ export interface SnapshotStore {
   latest?(featureId: string): Promise<FeatureSnapshot | undefined>;
 }
 
+// Second KV key holding a pointer to the newest snapshot. latest() must
+// not rely on kv.list ordering: the embedded KV backend shipped in some
+// Deno 2.x runtimes ignores reverse/limit on prefix lists (measured on
+// 2.9.7), which made an earlier list-based latest() return the OLDEST
+// snapshot. A plain get() has no ordering semantics to disagree about.
+const LATEST_KEY = "latest";
+
 /** Deno KV-backed store; KV is GA on Deno Deploy and Deno 2.x locally. */
 export class KvSnapshotStore implements SnapshotStore {
   #kv: Promise<Deno.Kv>;
@@ -43,25 +50,24 @@ export class KvSnapshotStore implements SnapshotStore {
       kv.list<FeatureSnapshot>({ prefix: ["feature", featureId] }),
     );
     return entries
+      .filter((e) => e.key[e.key.length - 1] !== LATEST_KEY)
       .map((e) => e.value)
+      // Sort in JS: never trust backend iteration order.
       .sort((a, b) => b.at.localeCompare(a.at));
   }
 
   async latest(featureId: string): Promise<FeatureSnapshot | undefined> {
     const kv = await this.#kv;
-    for await (const entry of kv.list<FeatureSnapshot>({
-      prefix: ["feature", featureId],
-      reverse: true,
-      limit: 1,
-    })) {
-      return entry.value;
-    }
-    return undefined;
+    const res = await kv.get<FeatureSnapshot>(["feature", featureId, LATEST_KEY]);
+    return res.value ?? undefined;
   }
 
   async add(featureId: string, snapshot: FeatureSnapshot): Promise<void> {
     const kv = await this.#kv;
-    await kv.set(["feature", featureId, snapshot.at], snapshot);
+    await kv.atomic()
+      .set(["feature", featureId, snapshot.at], snapshot)
+      .set(["feature", featureId, LATEST_KEY], snapshot)
+      .commit();
   }
 }
 
