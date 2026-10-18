@@ -13,33 +13,41 @@ import {
 } from "../lib/wiki.ts";
 
 // The upstream search defaults to 100 results per page; topics can match
-// several hundred features, so fetch continuation pages in parallel. The cap
-// bounds upstream load for very broad queries while keeping the rendered
-// count truthful (it always counts exactly the features rendered).
+// several hundred features, so fetch continuation pages in parallel (one
+// retry each). The cap bounds upstream load for very broad queries. A failed
+// continuation or a capped result sets complete=false, and the route must
+// say so rather than presenting a partial inventory as the whole topic.
 const PAGE_SIZE = 100;
 const MAX_FEATURES_PER_QUERY = 1000;
 
 export const fetchQueryFeatures = async (
   query: string,
   chromeStatusAPI: StatusClient,
-): Promise<{ total_count: number; features: any[] }> => {
+): Promise<{ total_count: number; features: any[]; complete: boolean }> => {
   const first = await chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE });
   const total = Number(first?.total_count) || 0;
   const features = Array.isArray(first?.features) ? [...first.features] : [];
   const wanted = Math.min(total, MAX_FEATURES_PER_QUERY);
+  let complete = total <= MAX_FEATURES_PER_QUERY;
   if (features.length < wanted) {
-    const pages = [];
+    const starts: number[] = [];
     for (let start = features.length; start < wanted; start += PAGE_SIZE) {
-      pages.push(
-        chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE, start })
-          .catch(() => null),
-      );
+      starts.push(start);
     }
-    for (const page of await Promise.all(pages)) {
-      if (Array.isArray(page?.features)) features.push(...page.features);
+    const fetchPage = (start: number) =>
+      chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE, start })
+        // One retry for transient upstream failures before giving up.
+        .catch(() => chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE, start }))
+        .catch(() => null);
+    for (const page of await Promise.all(starts.map(fetchPage))) {
+      if (Array.isArray(page?.features)) {
+        features.push(...page.features);
+      } else {
+        complete = false;
+      }
     }
   }
-  return { total_count: total, features: features.slice(0, MAX_FEATURES_PER_QUERY) };
+  return { total_count: total, features: features.slice(0, MAX_FEATURES_PER_QUERY), complete };
 };
 
 const renderNotFound = (slug: string, canonical: string) =>
@@ -156,6 +164,10 @@ export default async function render(
   if (results.every((result) => result === null)) {
     contentBody = template`<p class="error-notice">Unable to load topic data from chromestatus.com. Please try again later.</p>`;
   } else {
+    // A query that failed outright, a failed continuation page, or a capped
+    // result means what follows is partial: say so rather than presenting
+    // the rendered subset as the complete topic inventory.
+    const incomplete = results.some((result) => result === null || !result.complete);
     const features = collectTopicFeatures(results.filter((result) => result !== null));
     const tagsById = new Map<string, string[]>(
       features.map((feature) => [String(feature.id), tagFeature(feature)]),
@@ -163,6 +175,9 @@ export default async function render(
     contentBody = features.length === 0
       ? template`<p>No features are currently tagged with this topic.</p>`
       : template`
+      ${incomplete
+        ? template`<p class="error-notice">Some features could not be loaded from chromestatus.com; the list below is incomplete.</p>`
+        : template``}
       <p>${features.length} feature${features.length === 1 ? "" : "s"} tagged with this topic.</p>
       ${renderConsensus(features)}
       ${renderStages(features, tagsById, topic.slug)}

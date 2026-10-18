@@ -226,6 +226,7 @@ Deno.test("fetchQueryFeatures paginates past the 100-result default page (review
   const result = await fetchQueryFeatures("javascript", client);
   equal(result.features.length, 250);
   equal(result.total_count, 250);
+  equal(result.complete, true);
   equal(calls.length, 3);
   equal(calls[0].options.start, undefined);
   equal(calls[1].options.start, 100);
@@ -233,11 +234,15 @@ Deno.test("fetchQueryFeatures paginates past the 100-result default page (review
   for (const call of calls) equal(call.options.num, 100);
 });
 
-Deno.test("fetchQueryFeatures keeps partial pages when a continuation fails", async () => {
+Deno.test("fetchQueryFeatures reports incomplete when a continuation fails twice (review chrome-status-lite-lmj)", async () => {
+  let attempts = 0;
   const client = fixtureClient({
     getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
       const start = options.start ?? 0;
-      if (start >= 200) throw new Error("page lost");
+      if (start >= 200) {
+        attempts++;
+        throw new Error("page lost");
+      }
       return {
         total_count: 300,
         features: Array.from({ length: 100 }, (_, i) => ({ id: start + i, name: `F${start + i}` })),
@@ -246,6 +251,32 @@ Deno.test("fetchQueryFeatures keeps partial pages when a continuation fails", as
   });
   const result = await fetchQueryFeatures("javascript", client);
   equal(result.features.length, 200);
+  equal(result.complete, false);
+  equal(attempts, 2); // one retry, not silent acceptance
+});
+
+Deno.test("/wiki/:topic marks the inventory incomplete when a continuation page fails (review chrome-status-lite-lmj)", async () => {
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
+      if (query !== "javascript") return { total_count: 0, features: [] };
+      const start = options.start ?? 0;
+      if (start === 100) throw new Error("503 page 2");
+      return {
+        total_count: 250,
+        features: Array.from({ length: start === 200 ? 50 : 100 }, (_, i) => ({
+          id: start + i,
+          name: `${query} feature ${start + i}`,
+        })),
+      };
+    },
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/wiki/javascript"));
+  equal(res.status, 200);
+  const html = await res.text();
+  includes(html, "the list below is incomplete");
+  includes(html, "150 features tagged with this topic");
+  includes(html, "javascript feature 200"); // later pages still render
+  if (html.includes("javascript feature 100")) throw new Error("failed page rendered as present");
 });
 
 Deno.test("/wiki/:topic omits the consensus section when no feature has view data (review chrome-status-lite-098)", async () => {
