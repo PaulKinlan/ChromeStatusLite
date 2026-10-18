@@ -12,6 +12,7 @@ const repoRoot = Deno.cwd();
 const ROUTE_SUITES = [
   "tests/client_test.ts",
   "tests/deprecations_test.ts",
+  "tests/diff_test.ts",
   "tests/feature_test.ts",
   "tests/handler_test.ts",
   "tests/index_test.ts",
@@ -176,6 +177,14 @@ Deno.test("fast gate maps a route change to its own suite plus the smoke", () =>
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
     setEqual(gate.suites, ["tests/feature_test.ts", SMOKE], "selected suites");
+  }));
+
+Deno.test("fast gate maps diff route to its focused suite", () =>
+  withScratch(async (scratch) => {
+    await touch(scratch.dir, "src/routes/diff.ts");
+    const gate = await fastGate(scratch);
+    equal(gate.code, 0, "exit code");
+    setEqual(gate.suites, ["tests/diff_test.ts", SMOKE], "selected suites");
   }));
 
 Deno.test("fast gate maps a deleted route even in a mixed diff, and surfaces its suite failure", () =>

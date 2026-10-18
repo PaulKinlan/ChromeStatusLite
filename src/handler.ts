@@ -4,6 +4,7 @@ import { ChromeStatusAPI } from "./lib/utils.ts";
 import index from "./routes/index.ts";
 import deprecations from "./routes/deprecations.ts";
 import feature from "./routes/feature.ts";
+import diff from "./routes/diff.ts";
 
 export type StatusClient = Pick<ChromeStatusAPI,
   "getVersions" | "getFeaturesForVersion" | "getFeaturesByType" | "getChannels" | "getFeature">;
@@ -27,6 +28,7 @@ export function createHandler(
 
     if (url.pathname === "/") return index(request, client);
     if (url.pathname === "/deprecations") return deprecations(request, client);
+    if (url.pathname === "/diff") return diff(request, client);
     const match = new URLPattern({ pathname: "/feature/:id" }).exec(url);
     if (match) return feature(request, match, client);
 
