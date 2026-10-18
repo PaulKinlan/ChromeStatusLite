@@ -31,3 +31,23 @@ Deno.test("isolated API client caches responses until the fixture clock expires"
   equal((await client.getFeature(123)).name, "fixture-2");
   equal(calls, 2);
 });
+
+Deno.test("fetchJson throws on non-2xx HTTP responses", async () => {
+  const client = new ChromeStatusAPI({
+    fetcher: async () => {
+      return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+
+  let caught = false;
+  try {
+    await client.getFeature(999);
+  } catch (err) {
+    caught = true;
+    equal((err as Error).message.includes("Upstream HTTP 500"), true);
+  }
+  equal(caught, true);
+});
