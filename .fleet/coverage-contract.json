@@ -7,7 +7,8 @@
     "tests/feature_test.ts",
     "tests/handler_test.ts",
     "tests/http_smoke_test.ts",
-    "tests/index_test.ts"
+    "tests/index_test.ts",
+    "tests/wiki_test.ts"
   ],
   "src/stream-utils.ts": [
     "tests/client_test.ts",
@@ -16,7 +17,8 @@
     "tests/feature_test.ts",
     "tests/handler_test.ts",
     "tests/http_smoke_test.ts",
-    "tests/index_test.ts"
+    "tests/index_test.ts",
+    "tests/wiki_test.ts"
   ],
   "src/ui-components/*": [
     "tests/client_test.ts",
@@ -25,6 +27,7 @@
     "tests/feature_test.ts",
     "tests/handler_test.ts",
     "tests/http_smoke_test.ts",
-    "tests/index_test.ts"
+    "tests/index_test.ts",
+    "tests/wiki_test.ts"
   ]
 }

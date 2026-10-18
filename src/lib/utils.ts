@@ -60,6 +60,13 @@ export class ChromeStatusAPI {
     return this.fetchJson(`/api/v0/features?q=feature_type=${type}`);
   }
 
+  // Full-text search over all features. Returns { total_count, features };
+  // each feature carries the full browsers/stages payload, which the wiki
+  // topic pages group and tag from.
+  public async getFeaturesByQuery(query: string): Promise<any> {
+    return this.fetchJson(`/api/v0/features?q=${encodeURIComponent(query)}`);
+  }
+
   // Fetches a single feature's full detail by id.
   public async getFeature(id: string | number): Promise<any> {
     return this.fetchJson(`/api/v0/features/${id}`);

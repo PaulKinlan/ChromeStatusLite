@@ -9,9 +9,11 @@ import apiVersion from "./routes/api-version.ts";
 import diff from "./routes/diff.ts";
 import breaking from "./routes/breaking.ts";
 import originTrials from "./routes/origin-trials.ts";
+import wiki from "./routes/wiki.ts";
+import wikiTopic from "./routes/wiki-topic.ts";
 
 export type StatusClient = Pick<ChromeStatusAPI,
-  "getVersions" | "getFeaturesForVersion" | "getFeaturesByType" | "getChannels" | "getFeature">;
+  "getVersions" | "getFeaturesForVersion" | "getFeaturesByType" | "getChannels" | "getFeature" | "getFeaturesByQuery">;
 
 const CANONICAL_ORIGIN = "https://chromestatuslite.com";
 
@@ -36,6 +38,9 @@ export function createHandler(
     if (url.pathname === "/breaking") return breaking(request, client);
     if (url.pathname === "/origin-trials") return originTrials(request, client);
     if (url.pathname === "/feed.xml") return feed(request, client);
+    if (url.pathname === "/wiki") return wiki(request, client);
+    const wikiMatch = new URLPattern({ pathname: "/wiki/:topic" }).exec(url);
+    if (wikiMatch) return wikiTopic(request, wikiMatch, client);
     const apiVersionMatch = new URLPattern({ pathname: "/api/version/:version" }).exec(url);
     if (apiVersionMatch) return apiVersion(request, apiVersionMatch, client);
     const match = new URLPattern({ pathname: "/feature/:id" }).exec(url);

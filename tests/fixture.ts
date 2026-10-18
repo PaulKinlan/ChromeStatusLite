@@ -21,6 +21,7 @@ export function fixtureClient(overrides: Partial<StatusClient> = {}): StatusClie
       return { "120": { stable_date: "2024-01-01T00:00:00Z" } };
     },
     getFeature: async () => sampleFeature,
+    getFeaturesByQuery: async () => ({ total_count: 1, features: [sampleFeature] }),
     ...overrides,
   };
 }
