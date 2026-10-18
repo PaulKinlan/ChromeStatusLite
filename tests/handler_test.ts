@@ -1,4 +1,5 @@
 import { createHandler } from "../src/handler.ts";
+import template from "../src/flora.ts";
 import feed from "../src/routes/feed.ts";
 import apiVersion from "../src/routes/api-version.ts";
 import breaking from "../src/routes/breaking.ts";
@@ -392,4 +393,77 @@ Deno.test("index, diff, and deprecations render error-notices on upstream failur
   const deprecationsRes = await handler(new Request("https://chromestatuslite.com/deprecations"));
   equal(deprecationsRes.status, 200);
   includes(await deprecationsRes.text(), "error-notice");
+});
+
+Deno.test("malformed non-throwing bodies render error-notices and avoid unhandled rejections", async () => {
+  const malformedClient = fixtureClient({
+    getVersions: async () => [120, 119],
+    getFeaturesForVersion: async () => null as any,
+    getFeaturesByType: async () => ({ features: [{ name: "X", browsers: { chrome: { desktop: "120" } } }] }),
+    getChannels: async () => null as any,
+  });
+
+  const handler = createHandler(malformedClient);
+
+  const indexRes = await handler(new Request("https://chromestatuslite.com/"));
+  equal(indexRes.status, 200);
+  includes(await indexRes.text(), "error-notice");
+
+  const deprecationsRes = await handler(new Request("https://chromestatuslite.com/deprecations"));
+  equal(deprecationsRes.status, 200);
+  includes(await deprecationsRes.text(), "error-notice");
+});
+
+Deno.test("malformed feature entries and non-bucket bodies on / render error-notices", async () => {
+  const malformedEntryClient = fixtureClient({
+    getVersions: async () => [120],
+    getFeaturesForVersion: async () => ({ "Enabled by default": [null] }) as any,
+  });
+  const res1 = await createHandler(malformedEntryClient)(new Request("https://chromestatuslite.com/"));
+  equal(res1.status, 200);
+  includes(await res1.text(), "error-notice");
+
+  const nonBucketClient = fixtureClient({
+    getVersions: async () => [120],
+    getFeaturesForVersion: async () => ({ features: null }) as any,
+  });
+  const res2 = await createHandler(nonBucketClient)(new Request("https://chromestatuslite.com/"));
+  equal(res2.status, 200);
+  includes(await res2.text(), "error-notice");
+});
+
+Deno.test("flora stream converts mid-stream rejections into stream errors without unhandled rejection", async () => {
+  const stream = await template`<div>${(async () => {
+    throw new Error("mid-stream failure");
+  })()}</div>`;
+  let streamFailed = false;
+  try {
+    const reader = stream.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+  } catch (err: any) {
+    if (err.message === "mid-stream failure") {
+      streamFailed = true;
+    }
+  }
+  equal(streamFailed, true);
+});
+
+Deno.test("feature entry without resources or null deprecation entries render safely", async () => {
+  const base = {
+    getVersions: async () => [120],
+    getFeaturesForVersion: async () => ({ "Enabled by default": [{ id: 7, name: "ok" }] }),
+    getFeaturesByType: async () => ({ features: [null] }),
+    getChannels: async () => ({}),
+  };
+  const handler = createHandler(fixtureClient(base as any));
+  const resIndex = await handler(new Request("https://chromestatuslite.com/"));
+  equal(resIndex.status, 200);
+  includes(await resIndex.text(), "Chrome 120");
+
+  const resDep = await handler(new Request("https://chromestatuslite.com/deprecations"));
+  equal(resDep.status, 200);
+  equal((await resDep.text()).includes("Unnamed feature"), false);
 });
