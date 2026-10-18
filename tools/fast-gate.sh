@@ -5,7 +5,7 @@ base="${GATE_BASE:-$(git merge-base HEAD origin/main)}"
 mapfile -t paths < <( { git diff --name-only "$base" HEAD; git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; } | sort -u )
 declare -A selected=()
 add() { selected["$1"]=1; }
-add_all() { add tests/handler_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/diff_test.ts; add tests/client_test.ts; }
+add_all() { add tests/handler_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/diff_test.ts; add tests/client_test.ts; add tests/wiki_test.ts; }
 gate=0
 for path in "${paths[@]}"; do
   # Map deleted paths too: their former suites must verify that the removal is safe.
@@ -18,13 +18,14 @@ for path in "${paths[@]}"; do
     src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts ;;
     src/routes/deprecations.ts|static/scripts/deprecations.js) add tests/deprecations_test.ts ;;
     src/routes/feed.ts|src/routes/api-version.ts|src/routes/breaking.ts|src/routes/origin-trials.ts) add tests/handler_test.ts ;;
+    src/routes/wiki.ts|src/routes/wiki-topic.ts|src/lib/wiki.ts) add tests/wiki_test.ts ;;
     # .fleet/coverage-contract.json declares suite attribution only for paths with a
     # real transitive import into the executed suites (chrome-status-lite-74e);
     # tests/gate_test.ts pins the contract and this mapping to each other.
     main.ts|src/handler.ts|src/flora.ts|src/stream-utils.ts|src/ui-components/*|static/styles/*|README.md|deno.json|deno.lock|docs/speed.md|tests/fixture.ts|tests/http_smoke_test.ts)
       add_all ;;
     tools/*|.fleet/*|tests/gate_test.ts) add_all; gate=1 ;;
-    tests/index_test.ts|tests/feature_test.ts|tests/deprecations_test.ts|tests/handler_test.ts|tests/diff_test.ts) add "$path" ;;
+    tests/index_test.ts|tests/feature_test.ts|tests/deprecations_test.ts|tests/handler_test.ts|tests/diff_test.ts|tests/wiki_test.ts) add "$path" ;;
     *) echo "Unmapped changed path: $path" >&2; exit 1 ;;
   esac
 done

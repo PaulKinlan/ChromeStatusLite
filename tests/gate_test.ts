@@ -16,6 +16,7 @@ const ROUTE_SUITES = [
   "tests/feature_test.ts",
   "tests/handler_test.ts",
   "tests/index_test.ts",
+  "tests/wiki_test.ts",
 ];
 const SMOKE = "tests/http_smoke_test.ts";
 const GATE = "tests/gate_test.ts";
