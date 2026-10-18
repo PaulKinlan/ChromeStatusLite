@@ -1,4 +1,5 @@
 import type { StatusClient } from "../handler.ts";
+import { hasValidBuckets } from "../lib/buckets.ts";
 
 function escapeXml(unsafe: string): string {
   return unsafe
@@ -67,13 +68,23 @@ export default async function feed(
   const minMilestone = selectedVersions.length > 0 ? Math.min(...selectedVersions) : undefined;
   const maxMilestone = selectedVersions.length > 0 ? Math.max(...selectedVersions) : undefined;
 
-  const [channels, ...milestonesFeatures] = await Promise.all([
+  // A failed fetch or a malformed payload for a milestone is an upstream
+  // outage, not data: it must never render as an authoritative "Chrome N
+  // includes 0 feature changes". Validity is decided by the same shared
+  // validator the / release page uses, so both routes agree on what real
+  // data looks like (a genuinely empty milestone stays valid).
+  const [channels, ...milestones] = await Promise.all([
     (minMilestone !== undefined && maxMilestone !== undefined)
       ? chromeStatusAPI.getChannels(minMilestone, maxMilestone).catch(() => ({}))
       : Promise.resolve({}),
-    ...selectedVersions.map((v) =>
-      chromeStatusAPI.getFeaturesForVersion(v).catch(() => ({}))
-    ),
+    ...selectedVersions.map(async (v) => {
+      try {
+        const buckets = await chromeStatusAPI.getFeaturesForVersion(v);
+        return { ok: hasValidBuckets(buckets), buckets };
+      } catch {
+        return { ok: false as const, buckets: null };
+      }
+    }),
   ]);
 
   const formatList = (title: string, list: any[]) => {
@@ -94,7 +105,8 @@ export default async function feed(
 
   for (let i = 0; i < selectedVersions.length; i++) {
     const version = selectedVersions[i];
-    const featuresByType = milestonesFeatures[i] || {};
+    const milestone = milestones[i];
+    const featuresByType = milestone.ok ? milestone.buckets : null;
 
     const typeBuckets = (featuresByType && typeof featuresByType === "object")
       ? featuresByType
@@ -115,12 +127,14 @@ export default async function feed(
       ? `      <pubDate>${new Date(stableDate).toUTCString()}</pubDate>\n`
       : "";
 
-    const descriptionHtml = [
-      `<p>Chrome ${version} includes ${totalCount} feature changes.</p>`,
-      ...bucketSections,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const descriptionHtml = milestone.ok
+      ? [
+        `<p>Chrome ${version} includes ${totalCount} feature changes.</p>`,
+        ...bucketSections,
+      ]
+        .filter(Boolean)
+        .join("\n")
+      : `<p>Unable to load feature data for Chrome ${version} from chromestatus.com. Please try again later.</p>`;
 
     const itemLink = `https://chromestatuslite.com/?version=${version}`;
 

@@ -15,6 +15,7 @@ for path in "${paths[@]}"; do
     src/routes/feature.ts) add tests/feature_test.ts ;;
     src/lib/linkify.ts) add tests/feature_test.ts; add tests/index_test.ts ;;
     src/lib/snapshots.ts|src/routes/feature-history.ts|tests/history_test.ts) add tests/feature_test.ts; add tests/history_test.ts ;;
+    src/lib/buckets.ts) add tests/index_test.ts; add tests/handler_test.ts ;;
     src/routes/diff.ts) add tests/diff_test.ts ;;
     src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts ;;
     src/routes/deprecations.ts|static/scripts/deprecations.js) add tests/deprecations_test.ts ;;

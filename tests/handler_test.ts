@@ -522,3 +522,67 @@ Deno.test("feature detail keeps the authoritative 404 for a genuine upstream not
   includes(text, "Feature not found");
   equal(text.includes("error-notice"), false);
 });
+
+Deno.test("feed.xml shows an outage notice, not a zero-claim, for mixed malformed buckets", async () => {
+  const handler = createHandler(fixtureClient({
+    getVersions: async () => [140],
+    getFeaturesForVersion: async () => ({ "Enabled by default": [], "Deprecated": null }),
+  }));
+
+  const res = await handler(new Request("https://chromestatuslite.com/feed.xml?limit=1"));
+  equal(res.status, 200);
+  const text = await res.text();
+  includes(text, "Unable to load feature data for Chrome 140");
+  equal(text.includes("includes 0 feature changes"), false);
+});
+
+Deno.test("feed.xml shows an outage notice for a payload with no recognised buckets", async () => {
+  const handler = createHandler(fixtureClient({
+    getVersions: async () => [140],
+    getFeaturesForVersion: async () => ({ nonsense: "text" }),
+  }));
+
+  const res = await handler(new Request("https://chromestatuslite.com/feed.xml?limit=1"));
+  equal(res.status, 200);
+  const text = await res.text();
+  includes(text, "Unable to load feature data for Chrome 140");
+  equal(text.includes("includes 0 feature changes"), false);
+});
+
+Deno.test("feed.xml keeps a genuine empty milestone as valid data with a zero count", async () => {
+  const handler = createHandler(fixtureClient({
+    getVersions: async () => [200],
+    getFeaturesForVersion: async () => ({
+      "Enabled by default": [],
+      "Deprecated": [],
+      "Removed": [],
+      "Stepped rollout": [],
+      "Origin trial": [],
+      "In developer trial (Behind a flag)": [],
+      total_count: 0,
+    }),
+  }));
+
+  const res = await handler(new Request("https://chromestatuslite.com/feed.xml?limit=1"));
+  equal(res.status, 200);
+  const text = await res.text();
+  includes(text, "Chrome 200 includes 0 feature changes");
+  equal(text.includes("Unable to load feature data"), false);
+});
+
+Deno.test("feed.xml reports a per-milestone outage without claiming the healthy milestone is empty", async () => {
+  const handler = createHandler(fixtureClient({
+    getVersions: async () => [140, 139],
+    getFeaturesForVersion: (v) =>
+      v === 140
+        ? Promise.reject(new Error("Upstream HTTP 500"))
+        : Promise.resolve({ "Enabled by default": [{ id: 1, name: "x" }] }),
+  }));
+
+  const res = await handler(new Request("https://chromestatuslite.com/feed.xml?limit=2"));
+  equal(res.status, 200);
+  const text = await res.text();
+  includes(text, "Unable to load feature data for Chrome 140");
+  includes(text, "Chrome 139 includes 1 feature changes");
+  equal(text.includes("Chrome 140 includes 0 feature changes"), false);
+});
