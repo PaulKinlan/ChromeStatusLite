@@ -5,17 +5,44 @@ import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import nav from "../ui-components/nav.ts";
 import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
 
+const BUCKET_KEYS = [
+  "Enabled by default",
+  "Origin trial",
+  "In developer trial (Behind a flag)",
+  "Removed",
+  "Deprecated",
+];
+
+const isValidFeatureObject = (item: any): boolean =>
+  Boolean(item && typeof item === "object" && !Array.isArray(item));
+
+const hasValidBuckets = (obj: any): boolean => {
+  if (!obj || typeof obj !== "object") return false;
+  let foundAnyBucket = false;
+  for (const k of BUCKET_KEYS) {
+    if (k in obj) {
+      if (!Array.isArray(obj[k])) return false;
+      if (!obj[k].every(isValidFeatureObject)) return false;
+      foundAnyBucket = true;
+    }
+  }
+  return foundAnyBucket;
+};
+
 const renderData = async (version, featuresByType) => {
   // The v0 API groups features by status text. Pull each bucket out,
   // defaulting to an empty list when a milestone has none of that type.
   const safeFeatures = (featuresByType && typeof featuresByType === "object") ? featuresByType : {};
-  const enabled = Array.isArray(safeFeatures["Enabled by default"]) ? safeFeatures["Enabled by default"] : [];
-  const originTrials = Array.isArray(safeFeatures["Origin trial"]) ? safeFeatures["Origin trial"] : [];
-  const flaggedFeatures = Array.isArray(safeFeatures["In developer trial (Behind a flag)"])
-    ? safeFeatures["In developer trial (Behind a flag)"]
-    : [];
-  const removed = Array.isArray(safeFeatures["Removed"]) ? safeFeatures["Removed"] : [];
-  const deprecated = Array.isArray(safeFeatures["Deprecated"]) ? safeFeatures["Deprecated"] : [];
+  const getSafeBucket = (key: string) =>
+    Array.isArray(safeFeatures[key])
+      ? safeFeatures[key].filter((item) => item && typeof item === "object")
+      : [];
+
+  const enabled = getSafeBucket("Enabled by default");
+  const originTrials = getSafeBucket("Origin trial");
+  const flaggedFeatures = getSafeBucket("In developer trial (Behind a flag)");
+  const removed = getSafeBucket("Removed");
+  const deprecated = getSafeBucket("Deprecated");
 
   console.log(
     enabled.length,
@@ -95,18 +122,20 @@ const renderResources = (resources) => {
 // that enabled/origin-trial/flagged sections sit at h3 and the nested
 // deprecated/removed sections sit at h4.
 const renderFeature = (item, tag = "h3") => {
+  if (!item || typeof item !== "object") return template``;
   const bug = item.browsers?.chrome?.bug;
   const spec = item.standards?.spec;
-  return template`<${tag}><a href="/feature/${item.id}">${escapeHtml(
-    item.name
-  )}</a></${tag}>
-      <p>${escapeHtml(item.summary)}${
+  const id = item.id !== undefined ? encodeURIComponent(String(item.id)) : "";
+  const name = escapeHtml(item.name || "Unnamed feature");
+  const summary = escapeHtml(item.summary || "");
+  return template`<${tag}><a href="/feature/${id}">${name}</a></${tag}>
+      <p>${summary}${
     bug ? template` <a href=${bug}>#</a>` : template``
   }</p>
       ${
-        "motivation" in item
+        "motivation" in item && item.motivation
           ? template`<p>${
-              item.creator
+              escapeHtml(item.creator || "A contributor")
             } created this feature because: <blockquote>${escapeHtml(
               item.motivation
             )}</blockquote></p>`
@@ -166,7 +195,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
       }
       if (version) {
         features = await chromeStatusAPI.getFeaturesForVersion(version);
-        if (!features || typeof features !== "object") {
+        if (!features || typeof features !== "object" || !hasValidBuckets(features)) {
           upstreamError = true;
         }
       }

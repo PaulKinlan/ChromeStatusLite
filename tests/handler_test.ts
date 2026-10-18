@@ -1,4 +1,5 @@
 import { createHandler } from "../src/handler.ts";
+import template from "../src/flora.ts";
 import feed from "../src/routes/feed.ts";
 import apiVersion from "../src/routes/api-version.ts";
 import breaking from "../src/routes/breaking.ts";
@@ -411,4 +412,41 @@ Deno.test("malformed non-throwing bodies render error-notices and avoid unhandle
   const deprecationsRes = await handler(new Request("https://chromestatuslite.com/deprecations"));
   equal(deprecationsRes.status, 200);
   includes(await deprecationsRes.text(), "error-notice");
+});
+
+Deno.test("malformed feature entries and non-bucket bodies on / render error-notices", async () => {
+  const malformedEntryClient = fixtureClient({
+    getVersions: async () => [120],
+    getFeaturesForVersion: async () => ({ "Enabled by default": [null] }) as any,
+  });
+  const res1 = await createHandler(malformedEntryClient)(new Request("https://chromestatuslite.com/"));
+  equal(res1.status, 200);
+  includes(await res1.text(), "error-notice");
+
+  const nonBucketClient = fixtureClient({
+    getVersions: async () => [120],
+    getFeaturesForVersion: async () => ({ features: null }) as any,
+  });
+  const res2 = await createHandler(nonBucketClient)(new Request("https://chromestatuslite.com/"));
+  equal(res2.status, 200);
+  includes(await res2.text(), "error-notice");
+});
+
+Deno.test("flora stream converts mid-stream rejections into stream errors without unhandled rejection", async () => {
+  const stream = await template`<div>${(async () => {
+    throw new Error("mid-stream failure");
+  })()}</div>`;
+  let streamFailed = false;
+  try {
+    const reader = stream.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+  } catch (err: any) {
+    if (err.message === "mid-stream failure") {
+      streamFailed = true;
+    }
+  }
+  equal(streamFailed, true);
 });
