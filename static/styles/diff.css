@@ -1,0 +1,10 @@
+/* Each column is a complete milestone; on narrow screens they stack instead
+   of shrinking release-note text to an unreadable width. */
+body main{max-width:80rem}
+.diff-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem;align-items:start;margin-top:1.5rem}
+.diff-columns>.diff-milestone{margin-top:0}
+.diff-milestone{min-width:0;padding:0 1rem 1rem;border:1px solid #ddd;border-radius:4px}
+.diff-milestone h2{margin-top:1rem}
+.diff-milestone li{margin-bottom:1rem;overflow-wrap:anywhere}
+.diff-milestone li p{margin:.2rem 0 0}
+@media(max-width:48rem){.diff-columns{grid-template-columns:1fr}}

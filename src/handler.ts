@@ -6,6 +6,7 @@ import deprecations from "./routes/deprecations.ts";
 import feature from "./routes/feature.ts";
 import feed from "./routes/feed.ts";
 import apiVersion from "./routes/api-version.ts";
+import diff from "./routes/diff.ts";
 
 export type StatusClient = Pick<ChromeStatusAPI,
   "getVersions" | "getFeaturesForVersion" | "getFeaturesByType" | "getChannels" | "getFeature">;
@@ -32,6 +33,7 @@ export function createHandler(
     if (url.pathname === "/feed.xml") return feed(request, client);
     const apiVersionMatch = new URLPattern({ pathname: "/api/version/:version" }).exec(url);
     if (apiVersionMatch) return apiVersion(request, apiVersionMatch, client);
+    if (url.pathname === "/diff") return diff(request, client);
     const match = new URLPattern({ pathname: "/feature/:id" }).exec(url);
     if (match) return feature(request, match, client);
 

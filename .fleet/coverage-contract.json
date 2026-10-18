@@ -3,6 +3,7 @@
   "src/flora.ts": [
     "tests/client_test.ts",
     "tests/deprecations_test.ts",
+    "tests/diff_test.ts",
     "tests/feature_test.ts",
     "tests/handler_test.ts",
     "tests/http_smoke_test.ts",
@@ -11,6 +12,7 @@
   "src/stream-utils.ts": [
     "tests/client_test.ts",
     "tests/deprecations_test.ts",
+    "tests/diff_test.ts",
     "tests/feature_test.ts",
     "tests/handler_test.ts",
     "tests/http_smoke_test.ts",
@@ -19,6 +21,7 @@
   "src/ui-components/*": [
     "tests/client_test.ts",
     "tests/deprecations_test.ts",
+    "tests/diff_test.ts",
     "tests/feature_test.ts",
     "tests/handler_test.ts",
     "tests/http_smoke_test.ts",
