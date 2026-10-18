@@ -63,8 +63,8 @@ const renderConsensus = (features) => {
   const rows = Object.entries(tally).map(([label, counts]) => {
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     if (entries.length === 0) return template``;
-    return template`<li><strong>${escapeHtml(label)}:</strong> ${entries.map(([text, count]) =>
-      template`${escapeHtml(text)} (${count})`
+    return template`<li><strong>${escapeHtml(label)}:</strong> ${entries.map(([text, count], index) =>
+      template`${index > 0 ? ", " : ""}${escapeHtml(text)} (${count})`
     )}</li>`;
   });
   if (rows.length === 0) return template``;
