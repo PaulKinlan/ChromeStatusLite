@@ -187,3 +187,75 @@ Deno.test("an encoded script in the wpt q= param is re-encoded in href and escap
   includes(text, 'q=test%3Cscript%3Ealert(1)%3C%2Fscript%3E" rel="noopener');
   includes(text, '_blank">https://wpt.fyi/results/?q=test%3Cscript%3Ealert(1)');
 });
+
+// One test per wpt_descr shape family so a rewrite of the extraction
+// cannot pass the gate unseen (chrome-status-lite-gyz: the suite was green
+// with the whole blob/tree branch mutated into a non-equivalent form).
+const ecosystemHtml = async (wpt_descr: string, id = 200) => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id, name: "Probe feature", summary: "s",
+    wpt_descr,
+    resources: { docs: [], samples: [] },
+  }) });
+  return await (await createHandler(client)(new Request(`https://chromestatuslite.com/feature/${id}`))).text();
+};
+
+Deno.test("ecosystem WPT query from a github blob URL strips host, branch and file extension", async () => {
+  const html = await ecosystemHtml(
+    "https://github.com/web-platform-tests/wpt/blob/master/css/css-ui/animation/caret-animation-parsing.html",
+  );
+  includes(html, 'href="https://wpt.fyi/results/?q=css%2Fcss-ui%2Fanimation%2Fcaret-animation-parsing"');
+  equal(html.includes("q=probe-feature"), false);
+});
+
+Deno.test("ecosystem WPT query from a github tree URL keeps the directory path", async () => {
+  const html = await ecosystemHtml(
+    "https://github.com/web-platform-tests/wpt/tree/master/content-security-policy/script-src/tentative",
+  );
+  includes(html, 'href="https://wpt.fyi/results/?q=content-security-policy%2Fscript-src"');
+  equal(html.includes("q=probe-feature"), false);
+});
+
+Deno.test("ecosystem WPT query from a wpt.fyi /results/ URL uses the test path", async () => {
+  const html = await ecosystemHtml(
+    "Covered by https://wpt.fyi/results/dom/events/Event-dispatch.html in full",
+  );
+  includes(html, 'href="https://wpt.fyi/results/?q=dom%2Fevents%2FEvent-dispatch"');
+  equal(html.includes("q=probe-feature"), false);
+});
+
+Deno.test("ecosystem WPT query from a host-form wpt.fyi URL without /results/ keeps two directories", async () => {
+  const html = await ecosystemHtml(
+    "Also at https://wpt.fyi/css/css-ui/animation and in the spec",
+  );
+  includes(html, 'href="https://wpt.fyi/results/?q=css%2Fcss-ui"');
+  equal(html.includes("q=probe-feature"), false);
+});
+
+Deno.test("ecosystem WPT query from an external/wpt/ path drops the prefix", async () => {
+  const html = await ecosystemHtml(
+    "Landed as external/wpt/dom/events/Event-dispatch.html in the gecko tree",
+  );
+  includes(html, 'href="https://wpt.fyi/results/?q=dom%2Fevents%2FEvent-dispatch"');
+  equal(html.includes("q=probe-feature"), false);
+});
+
+Deno.test("ecosystem WPT q= param wins verbatim even when prose slash-words come first", async () => {
+  const html = await ecosystemHtml(
+    "was css/cssom-view/scrollIntoView-*.html; now tracked at https://wpt.fyi/results/?q=dom%2Fintroduction",
+  );
+  includes(html, 'href="https://wpt.fyi/results/?q=dom%2Fintroduction"');
+  // The real WPT path in the prose must NOT beat the record's own q= param,
+  // and a dead q= branch must not silently fall back to another shape.
+  equal(html.includes("q=css%2Fcssom-view%2FscrollIntoView"), false);
+  equal(html.includes("q=results"), false);
+});
+
+Deno.test("ecosystem WPT query falls back to the name slug when wpt_descr has no WPT shape", async () => {
+  const html = await ecosystemHtml(
+    "See the demo on example.com/docs/page and the discuss thread changed/removed",
+  );
+  includes(html, 'href="https://wpt.fyi/results/?q=probe-feature"');
+  equal(html.includes("q=example-com"), false);
+  equal(html.includes("q=changed"), false);
+});
