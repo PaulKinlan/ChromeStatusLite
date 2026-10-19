@@ -42,6 +42,37 @@ tagged-template renderer.
   does not match a stored capture the page says so and falls back to the full range. Timestamps are
   full ISO strings including milliseconds; the links on the history page carry them ready to copy.
 
+- **`/diff`** — Compare two Chrome releases: each milestone's release notes, grouped by status
+  (enabled by default, origin trial, behind a flag, deprecated, removed) with per-group counts.
+  Defaults to the latest milestone and the one before it; `?from=N&to=N` picks any two available
+  milestones. A milestone that is not in the available list returns `400` with "Choose two available
+  Chrome milestones to compare."
+
+- **`/breaking`** — Breaking changes and deprecations timeline across recent milestones: each
+  deprecated or removed feature with its enterprise impact, intent stage, and migration guidance.
+
+- **`/origin-trials`** — Origin trials tracker: the active trials in the recent milestones, plus
+  recent trial history, each with its stage and the milestone it is active in.
+
+- **`/feed.xml`** — An RSS 2.0 feed of recent releases (one item per milestone, linking to
+  `/?version=N`). `?limit=N` sets how many milestones to include: default 10, clamped to 1–25.
+
+- **`/wiki`** — Topic wiki index: topic pages that group related features (WebGPU, CSS anchor
+  positioning, built-in AI, storage, privacy, …) with their feature counts.
+
+- **`/wiki/:topic`** — One topic page: cross-browser consensus tallies (Firefox, Safari, web
+  developers), the tagged features grouped by stage, and a shipping timeline. An unknown topic is a
+  `404`.
+
+- **`/api/version/:version`** — JSON for one milestone: `version`, `stable_date`, `total_features`
+  and `features_by_type`. `latest` is accepted in place of a number, responses carry
+  `access-control-allow-origin: *` so other sites can fetch them, and an unknown or non-numeric
+  version returns `400` with a JSON error.
+
+The navigation bar links home, compare releases, breaking changes, origin trials, the deprecation
+calendar, the topic wiki and RSS. The history, diff and `/api/version/:version` routes are not in it —
+reach them by URL (history and diff from the feature page, once a snapshot store is configured).
+
 ## Snapshot history
 
 History builds up lazily from reader traffic — there is no cron or background job. Viewing
@@ -67,8 +98,8 @@ The two routes distinguish three states:
 
 - **`main.ts`** — Entry point, starts `Deno.serve`. The import-safe `src/handler.ts`
   handles routes and static assets with an injectable Chrome Status client.
-- **`src/routes/`** — One module per page (`index`, `deprecations`, `feature`, `feature-history`,
-  plus the feed, wiki and compatibility pages).
+- **`src/routes/`** — One module per page (`index`, `deprecations`, `diff`, `breaking`,
+  `origin-trials`, `feature`, `feature-history`, `wiki`, `wiki-topic`, `feed`, `api-version`).
 - **`src/lib/utils.ts`** — `ChromeStatusAPI`, a singleton client over the chromestatus.com
   `/api/v0/*` endpoints (`channels`, `features?milestone=`, `features/:id`,
   `features?q=feature_type=`). Responses are cached in an LRU (100 entries, 1 hour TTL) to keep
