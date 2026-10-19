@@ -47,8 +47,9 @@ tagged-template renderer.
 History builds up lazily from reader traffic — there is no cron or background job. Viewing
 `/feature/:id` records the tracked display fields, and a capture is only appended when they differ
 from the newest stored capture (content-based dedupe), so repeated views add nothing and history
-stays proportional to real changes and attention. The `/feature/:id` page itself does not link to
-the history routes yet; go to them by URL.
+stays proportional to real changes and attention. When a store is configured the `/feature/:id` page
+links to its history ("Snapshot history", above the details); on a store-less deployment the link is
+omitted rather than pointing at a "not configured" page.
 
 Captures live in [Deno KV](https://docs.deno.com/deploy/kv/manual/), which is generally available
 on Deno Deploy and needs `--unstable-kv` under Deno 2.x locally (see [Run locally](#run-locally)).

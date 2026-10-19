@@ -174,7 +174,7 @@ const renderEcosystemLinks = (feature) => {
   `;
 };
 
-const renderFeature = (feature) => {
+const renderFeature = (feature, showHistory = false) => {
   const chrome = feature.browsers?.chrome || {};
   const status = chrome.status || {};
   const spec = feature.spec_link || feature.standards?.spec;
@@ -183,6 +183,16 @@ const renderFeature = (feature) => {
   return template`
   <p><a href="/">&larr; Back to release summary</a></p>
   <h1>${escapeHtml(feature.name)}</h1>
+  ${
+    // Only advertise the history routes when a store is configured: on a
+    // store-less deployment they render "not configured", so a link would
+    // send readers to a dead end.
+    showHistory
+      ? template`<p><a href="/feature/${escapeHtml(
+          String(feature.id ?? "")
+        )}/history">Snapshot history</a></p>`
+      : template``
+  }
 
   <dl>
     ${
@@ -367,7 +377,7 @@ export default async function render(request: Request, match: URLPatternResult, 
 <body>
   ${nav()}
   <div id="output">
-  ${renderFeature(feature)}
+  ${renderFeature(feature, store !== null)}
   </div>
 </body>
 
