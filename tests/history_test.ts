@@ -99,6 +99,21 @@ Deno.test("diff renders a visual field-level code diff between snapshots", async
   includes(addedText, "https://example.com/spec");
 });
 
+Deno.test("the feature page links to its history only when a store is configured", async () => {
+  const withStore = createHandler(fixtureClient(), undefined, new MemorySnapshotStore());
+  const linked = await (await withStore(
+    new Request("https://chromestatuslite.com/feature/123"),
+  )).text();
+  includes(linked, 'href="/feature/123/history"');
+
+  // No store: the history routes render "not configured", so the page must
+  // not advertise them.
+  const storeless = await (await createHandler(fixtureClient())(
+    new Request("https://chromestatuslite.com/feature/123"),
+  )).text();
+  equal(storeless.includes("/history"), false);
+});
+
 Deno.test("without a store the history and diff routes say so instead of failing", async () => {
   const handler = createHandler(fixtureClient());
   for (const path of ["/feature/123/history", "/feature/123/diff"]) {
