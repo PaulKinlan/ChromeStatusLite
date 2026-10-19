@@ -123,3 +123,67 @@ Deno.test("upstream urls cannot break out of their href attributes", async () =>
   equal(html.includes('onmouseover="'), false);
   includes(html, "&quot; onmouseover=&quot;alert(1)");
 });
+
+Deno.test("feature detail renders ecosystem cross-links from the feature name", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 123, name: "View Transitions", summary: "A fixture summary",
+    wpt_descr: "Covered by css/view-transitions/*.html",
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/123"))).text();
+  includes(html, 'href="https://wpt.fyi/results/?q=css%2Fview-transitions"');
+  includes(html, 'href="https://chrome-platform-showcase.paulkinlan-ea.deno.net/features"');
+  includes(html, 'href="https://gendn.paulkinlan-ea.deno.net/features"');
+  includes(html, 'href="https://www.google.com/search?q=site%3Achrome.dev+View%20Transitions"');
+  includes(html, 'href="https://developer.mozilla.org/en-US/search?q=View%20Transitions"');
+  includes(html, 'href="https://webstatus.dev/?q=View%20Transitions"');
+  equal((html.match(/rel="noopener noreferrer"/g) || []).length >= 6, true);
+});
+
+Deno.test("feature detail omits the ecosystem section when the feature has no name", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 124, name: "", summary: "Anonymous",
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/124"))).text();
+  equal(html.includes("<h2>Ecosystem</h2>"), false);
+  equal(html.includes("wpt.fyi/results/?q="), false);
+});
+
+Deno.test("ecosystem WPT link prefers the feature's real WPT path over the name slug", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 125, name: "Element.scrollIntoView()", summary: "Scrolling",
+    wpt_descr: "css/cssom-view/scrollIntoView-*.html",
+    resources: { docs: [], samples: [] },
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/125"))).text();
+  includes(html, 'href="https://wpt.fyi/results/?q=css%2Fcssom-view%2FscrollIntoView"');
+  equal(html.includes("q=element-scrollintoview"), false);
+});
+
+Deno.test("a malformed percent escape in wpt_descr cannot 500 the feature page", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 126, name: "Malformed percent", summary: "s",
+    wpt_descr: "see https://x.test/?q=50%",
+    resources: { docs: [], samples: [] },
+  }) });
+  const res = await createHandler(client)(new Request("https://chromestatuslite.com/feature/126"));
+  equal(res.status, 200);
+  const text = await res.text();
+  includes(text, "wpt.fyi/results/?q=50%25");
+});
+
+Deno.test("an encoded script in the wpt q= param is re-encoded in href and escaped in text", async () => {
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 127, name: "Hostile q", summary: "s",
+    wpt_descr: "https://wpt.fyi/results/?q=test%3Cscript%3Ealert(1)%3C/script%3E",
+    resources: { docs: [], samples: [] },
+  }) });
+  const res = await createHandler(client)(new Request("https://chromestatuslite.com/feature/127"));
+  equal(res.status, 200);
+  const text = await res.text();
+  // No decoded markup anywhere; the anchor renders the percent-encoded form.
+  equal(text.includes("<script>alert(1)</script>"), false);
+  includes(text, 'q=test%3Cscript%3Ealert(1)%3C%2Fscript%3E" rel="noopener');
+  includes(text, '_blank">https://wpt.fyi/results/?q=test%3Cscript%3Ealert(1)');
+});
