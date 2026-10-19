@@ -27,7 +27,13 @@ Deno.test("feature detail exposes impact, flag, WPT and spec maturity", async ()
 });
 
 Deno.test("invalid and absent feature ids return 404 without an upstream call", async () => {
-  const handler = createHandler(fixtureClient({ getFeature: async () => { throw Error("missing"); } }));
+  // The client throws "Upstream HTTP <code> from <path>"; a 404 is the only
+  // shape that authoritatively means the feature does not exist.
+  const handler = createHandler(fixtureClient({
+    getFeature: async () => {
+      throw new Error("Upstream HTTP 404 from /api/v0/features/456");
+    },
+  }));
   equal((await handler(new Request("https://chromestatuslite.com/feature/not-a-number"))).status, 404);
   const missing = await handler(new Request("https://chromestatuslite.com/feature/456"));
   equal(missing.status, 404);

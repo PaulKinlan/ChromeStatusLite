@@ -266,12 +266,56 @@ export default async function render(request: Request, match: URLPatternResult, 
   )}`;
 
   let feature;
+  let notFound = false;
+  let upstreamError = false;
   try {
     feature = await chromeStatusAPI.getFeature(id);
-  } catch (_) {
+  } catch (err: any) {
     feature = null;
+    // The client reports a missing feature by throwing
+    // "Upstream HTTP 404 from <path>"; only that exact shape is an
+    // authoritative answer that the feature does not exist. Every other
+    // failure (5xx, network error, unparseable body) is an outage, which
+    // must not state a fact about the feature.
+    notFound = err instanceof Error && /^upstream http 404\b/i.test(err.message);
+    upstreamError = !notFound;
   }
 
+  // A renderable feature is an object carrying an id. A 200 body of null or
+  // an object without an id is upstream data corruption, not proof the
+  // feature is absent, so it must not render as an authoritative 404.
+  const usableFeature = feature !== null && typeof feature === "object" &&
+    !Array.isArray(feature) && feature.id !== undefined && feature.id !== null;
+
+  if (upstreamError || (!notFound && !usableFeature)) {
+    return template`
+  <!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unable to load feature</title>
+  <link rel="canonical" href="${canonical}">
+  <link rel="stylesheet" href="/styles/index.css">
+</head>
+
+<body>
+  ${nav()}
+  <h1>Unable to load feature</h1>
+  <p class="error-notice">Unable to load feature details from chromestatus.com. Please try again later.</p>
+</body>
+
+</html>`.then(
+      (data) =>
+        new Response(data, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        })
+    );
+  }
+
+  // Only a genuine upstream "not found" answer reaches this 404 page.
   if (!feature || !feature.id) {
     return template`
   <!doctype html>

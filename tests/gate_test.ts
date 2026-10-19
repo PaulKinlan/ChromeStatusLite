@@ -269,10 +269,11 @@ Deno.test("coverage contract declares only transitively loaded paths and matches
     const contract = JSON.parse(await Deno.readTextFile(`${repoRoot}/.fleet/coverage-contract.json`));
     const keys = Object.keys(contract).filter((key) => !key.startsWith("//")).sort();
     // Updating the contract without updating this test fails here on purpose.
-    setEqual(keys, ["src/flora.ts", "src/lib/linkify.ts", "src/lib/snapshots.ts", "src/routes/feature-history.ts", "src/stream-utils.ts", "src/ui-components/*"], "contract keys");
+    setEqual(keys, ["src/flora.ts", "src/lib/buckets.ts", "src/lib/linkify.ts", "src/lib/snapshots.ts", "src/routes/feature-history.ts", "src/stream-utils.ts", "src/ui-components/*"], "contract keys");
     const samples: Record<string, string> = {
       "src/flora.ts": "src/flora.ts",
       "src/lib/linkify.ts": "src/lib/linkify.ts",
+      "src/lib/buckets.ts": "src/lib/buckets.ts",
       "src/lib/snapshots.ts": "src/lib/snapshots.ts",
       "src/routes/feature-history.ts": "src/routes/feature-history.ts",
       "src/stream-utils.ts": "src/stream-utils.ts",

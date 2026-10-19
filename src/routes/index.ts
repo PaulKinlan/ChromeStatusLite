@@ -4,30 +4,7 @@ import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
 import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
-
-const BUCKET_KEYS = [
-  "Enabled by default",
-  "Origin trial",
-  "In developer trial (Behind a flag)",
-  "Removed",
-  "Deprecated",
-];
-
-const isValidFeatureObject = (item: any): boolean =>
-  Boolean(item && typeof item === "object" && !Array.isArray(item));
-
-const hasValidBuckets = (obj: any): boolean => {
-  if (!obj || typeof obj !== "object") return false;
-  let foundAnyBucket = false;
-  for (const k of BUCKET_KEYS) {
-    if (k in obj) {
-      if (!Array.isArray(obj[k])) return false;
-      if (!obj[k].every(isValidFeatureObject)) return false;
-      foundAnyBucket = true;
-    }
-  }
-  return foundAnyBucket;
-};
+import { hasValidBuckets } from "../lib/buckets.ts";
 import linkify from "../lib/linkify.ts";
 
 const renderData = async (version, featuresByType) => {
