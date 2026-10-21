@@ -393,3 +393,23 @@ Deno.test("MemorySnapshotStore enforces the same per-feature cap", async () => {
   equal(listed[0].at, "2026-02-05T00:00:00.000Z");
   equal(listed[2].at, "2026-02-03T00:00:00.000Z");
 });
+
+Deno.test("history and diff views refresh eviction recency", async () => {
+  // Readers who only ever open /history or /diff must still count as reads
+  // for LRU eviction (chrome-status-lite-3fn).
+  for (const route of ["history", "diff"]) {
+    const store = new MemorySnapshotStore({ maxTrackedFeatures: 2 });
+    await captureSnapshot(store, "41", { name: "A", summary: "v1" }, new Date("2026-01-01T00:00:00Z"));
+    await captureSnapshot(store, "42", { name: "B", summary: "v1" }, new Date("2026-01-02T00:00:00Z"));
+    const handler = createHandler(fixtureClient(), undefined, store);
+    // Reading feature 41's history/diff touches its marker (wall-clock now
+    // is past the 24h throttle window relative to the capture timestamps).
+    const res = await handler(new Request(`https://chromestatuslite.com/feature/41/${route}`));
+    equal(res.status, 200);
+    // A new capture must now evict 42, not the freshly-read 41.
+    await captureSnapshot(store, "43", { name: "C", summary: "v1" }, new Date("2026-01-03T00:00:00Z"));
+    equal((await store.list("41")).length, 1);
+    equal((await store.list("42")).length, 0);
+    equal((await store.list("43")).length, 1);
+  }
+});

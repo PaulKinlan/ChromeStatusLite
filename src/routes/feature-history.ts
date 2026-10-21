@@ -68,6 +68,9 @@ export async function renderHistory(
       <p class="error-notice">Snapshot history is temporarily unavailable. Please try again later.</p>`,
     ).then((data) => respond(data));
   }
+  // Refresh eviction recency for readers who only ever visit the history
+  // page (chrome-status-lite-3fn); a touch failure must not break the read.
+  await store.touch?.(id).catch(() => {});
   const name = snapshots[0]?.data["Name"] ?? `Feature ${id}`;
 
   if (snapshots.length === 0) {
@@ -141,6 +144,8 @@ export async function renderDiff(
       <p class="error-notice">Snapshot history is temporarily unavailable. Please try again later.</p>`,
     ).then((data) => respond(data));
   }
+  // Same recency refresh as the history page (chrome-status-lite-3fn).
+  await store.touch?.(id).catch(() => {});
   const name = snapshots[0]?.data["Name"] ?? `Feature ${id}`;
   const url = new URL(request.url);
   const fromAt = url.searchParams.get("from");
