@@ -120,3 +120,47 @@ Deno.test("release page upstream urls cannot break out of their href attributes"
   equal(html.includes('onmouseover="'), false);
   includes(html, "&quot; onmouseover=&quot;alert(1)");
 });
+
+Deno.test("release page drops non-http(s) hrefs in resources, bug and spec fields", async () => {
+  const evil = ["javascript:alert(document.domain)", "data:text/html,<script>alert(1)</script>"];
+  for (const url of evil) {
+    const client = fixtureClient({ getFeaturesForVersion: async () => ({
+      "Enabled by default": [{
+        id: 203, name: "Scheme attack", summary: "Summary",
+        resources: { docs: [url], samples: [url] },
+        browsers: { chrome: { bug: url } }, standards: { spec: url },
+      }],
+    }) });
+    const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/?version=120"))).text();
+    equal(html.includes('href="javascript:'), false);
+    equal(html.includes('href="data:'), false);
+    equal(html.includes(url), false);
+  }
+});
+
+Deno.test("release page drops the Docs/Samples label when every link is filtered out", async () => {
+  const client = fixtureClient({ getFeaturesForVersion: async () => ({
+    "Enabled by default": [{
+      id: 205, name: "All filtered", summary: "Summary",
+      resources: { docs: ["javascript:alert(1)"], samples: ["javascript:alert(1)"] },
+    }],
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/?version=120"))).text();
+  equal(html.includes("Docs:"), false);
+  equal(html.includes("Samples:"), false);
+});
+
+Deno.test("release page keeps http(s) hrefs in resources, bug and spec fields", async () => {
+  const url = "https://example.com/tracking";
+  const client = fixtureClient({ getFeaturesForVersion: async () => ({
+    "Enabled by default": [{
+      id: 204, name: "Honest links", summary: "Summary",
+      resources: { docs: [url], samples: [url] },
+      browsers: { chrome: { bug: url } }, standards: { spec: url },
+    }],
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/?version=120"))).text();
+  includes(html, `<a href="${url}">${url}</a>`);
+  includes(html, `<a href="${url}">#</a>`);
+  includes(html, `<a href="${url}">in this Spec</a>`);
+});

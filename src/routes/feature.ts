@@ -2,6 +2,7 @@ import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import linkify from "../lib/linkify.ts";
+import { sanitizeUrl } from "../lib/url.ts";
 import { captureSnapshot, type SnapshotStore } from "../lib/snapshots.ts";
 
 import nav from "../ui-components/nav.ts";
@@ -19,9 +20,10 @@ const renderView = (label, browser) => {
   const text = view.url
     ? escapeHtml(view.text || "No signal")
     : linkify(view.text || "No signal");
+  const url = sanitizeUrl(view.url);
   return template`<li>${label}: ${
-    view.url
-      ? template`<a href="${escapeHtml(view.url)}">${text}</a>`
+    url
+      ? template`<a href="${url}">${text}</a>`
       : template`${text}`
   }${view.notes ? template` — ${linkify(view.notes)}` : template``}</li>`;
 };
@@ -31,8 +33,14 @@ const renderLinks = (label, links) => {
   if (!links || links.length == 0) {
     return template``;
   }
-  return template`<p>${label}: ${links.map(
-    (link) => template`<a href="${escapeHtml(String(link))}">${escapeHtml(String(link))}</a> `
+  const safeLinks = links
+    .map((link) => sanitizeUrl(String(link)))
+    .filter((link) => link !== null);
+  if (safeLinks.length === 0) {
+    return template``;
+  }
+  return template`<p>${label}: ${safeLinks.map(
+    (link) => template`<a href="${link}">${link}</a> `
   )}</p>`;
 };
 
@@ -177,8 +185,8 @@ const renderEcosystemLinks = (feature) => {
 const renderFeature = (feature, showHistory = false) => {
   const chrome = feature.browsers?.chrome || {};
   const status = chrome.status || {};
-  const spec = feature.spec_link || feature.standards?.spec;
-  const bug = feature.bug_url || chrome.bug;
+  const spec = sanitizeUrl(feature.spec_link || feature.standards?.spec);
+  const bug = sanitizeUrl(feature.bug_url || chrome.bug);
 
   return template`
   <p><a href="/">&larr; Back to release summary</a></p>
@@ -242,14 +250,14 @@ const renderFeature = (feature, showHistory = false) => {
   <ul>
     ${
       spec
-        ? template`<li>Specification: <a href="${escapeHtml(spec)}">${escapeHtml(spec)}</a></li>`
+        ? template`<li>Specification: <a href="${spec}">${spec}</a></li>`
         : template``
     }
     ${renderView("Firefox", feature.browsers?.ff)}
     ${renderView("Safari", feature.browsers?.safari)}
     ${renderView("Web developers", feature.browsers?.webdev)}
     ${
-      bug ? template`<li>Tracking bug: <a href="${escapeHtml(bug)}">${escapeHtml(bug)}</a></li>` : template``
+      bug ? template`<li>Tracking bug: <a href="${bug}">${bug}</a></li>` : template``
     }
   </ul>
 
@@ -358,7 +366,11 @@ export default async function render(request: Request, match: URLPatternResult, 
 
   if (store) {
     await captureSnapshot(store, id, feature).catch((err) => {
-      console.error("[snapshots] capture failed:", err?.message ?? err);
+      console.error(JSON.stringify({
+        event: "snapshot_capture_failed",
+        featureId: id,
+        error: String(err?.message ?? err),
+      }));
     });
   }
 

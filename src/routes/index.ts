@@ -6,6 +6,7 @@ import nav from "../ui-components/nav.ts";
 import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
 import { hasValidBuckets } from "../lib/buckets.ts";
 import linkify from "../lib/linkify.ts";
+import { sanitizeUrl } from "../lib/url.ts";
 
 const renderData = async (version, featuresByType) => {
   // The v0 API groups features by status text. Pull each bucket out,
@@ -75,8 +76,15 @@ const renderResources = (resources) => {
   }
   const hasSamples = "samples" in resources && Array.isArray(resources.samples);
   const hasDocs = "docs" in resources && Array.isArray(resources.docs);
-  const samples = hasSamples ? resources.samples : [];
-  const docs = hasDocs ? resources.docs : [];
+  // Sanitize before deciding what to render: a docs array whose every entry
+  // is filtered out must behave like an empty array, not leave a dangling
+  // "Docs:" label (chrome-status-lite-4vp).
+  const samples = (hasSamples ? resources.samples : [])
+    .map((resource) => sanitizeUrl(String(resource)))
+    .filter((resource) => resource !== null);
+  const docs = (hasDocs ? resources.docs : [])
+    .map((resource) => sanitizeUrl(String(resource)))
+    .filter((resource) => resource !== null);
   if (hasSamples && samples.length === 0 && hasDocs && docs.length === 0) {
     return template``;
   }
@@ -85,14 +93,14 @@ const renderResources = (resources) => {
       ${
         hasDocs && docs.length > 0
           ? template`<p>Docs: ${docs.map(
-              (resource) => template`<a href="${escapeHtml(String(resource))}">${escapeHtml(String(resource))}</a>`
+              (resource) => template`<a href="${resource}">${resource}</a>`
             )}</p>`
           : template`No linked docs`
       }</p>
       ${
         hasSamples && samples.length > 0
           ? template`<p>Samples: ${samples.map(
-              (resource) => template`<a href="${escapeHtml(String(resource))}">${escapeHtml(String(resource))}</a>`
+              (resource) => template`<a href="${resource}">${resource}</a>`
             )}</p>`
           : template`No linked samples`
       }</p>`;
@@ -103,14 +111,14 @@ const renderResources = (resources) => {
 // deprecated/removed sections sit at h4.
 const renderFeature = (item, tag = "h3") => {
   if (!item || typeof item !== "object") return template``;
-  const bug = item.browsers?.chrome?.bug;
-  const spec = item.standards?.spec;
+  const bug = sanitizeUrl(item.browsers?.chrome?.bug);
+  const spec = sanitizeUrl(item.standards?.spec);
   const id = item.id !== undefined ? encodeURIComponent(String(item.id)) : "";
   const name = escapeHtml(item.name || "Unnamed feature");
   const summary = linkify(item.summary || "");
   return template`<${tag}><a href="/feature/${id}">${name}</a></${tag}>
       <p>${summary}${
-    bug ? template` <a href="${escapeHtml(String(bug))}">#</a>` : template``
+    bug ? template` <a href="${bug}">#</a>` : template``
   }</p>
       ${
         "motivation" in item && item.motivation
@@ -123,7 +131,7 @@ const renderFeature = (item, tag = "h3") => {
       }
       ${
         spec
-          ? template`<p>This feature was specified <a href="${escapeHtml(String(spec))}">in this Spec</a>.</p>`
+          ? template`<p>This feature was specified <a href="${spec}">in this Spec</a>.</p>`
           : template``
       }
       ${renderFeatureMetadata(item)}
