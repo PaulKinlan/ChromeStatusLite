@@ -30,7 +30,7 @@ const renderData = async (version, featuresByType) => {
     deprecated.length
   );
   return template`
-  <h1>Chrome ${version}</h1>
+  <h1>Chrome ${escapeHtml(String(version))}</h1>
   <a href="#enabled">Enabled (${enabled.length})</a> |
   <a href="#origin-trial">Origin Trial (${originTrials.length})</a> |
   <a href="#flagged">Behind a flag (${flaggedFeatures.length})</a> |
@@ -131,36 +131,37 @@ const renderFeature = (item, tag = "h3") => {
 };
 
 const renderEnabled = (enabled, version) => template`
-    <h2 id="enabled">Enabled by default in ${version}</h2>
+    <h2 id="enabled">Enabled by default in ${escapeHtml(String(version))}</h2>
     <p>This release of Chrome had ${enabled.length} new features.</p>
     ${enabled.map((item) => renderFeature(item, "h3"))}`;
 
 const renderOriginTrials = (ot, version) => template`
-    <h2 id="origin-trial">Origin Trials in-progress in ${version}</h2>
+    <h2 id="origin-trial">Origin Trials in-progress in ${escapeHtml(String(version))}</h2>
     <p>This release of Chrome had ${ot.length} new origin trials.</p>
     ${ot.map((item) => renderFeature(item, "h3"))}`;
 
 const renderFlaggedFeatures = (flagged, version) => template`
-    <h2 id="flagged">Flagged features in ${version}</h2>
+    <h2 id="flagged">Flagged features in ${escapeHtml(String(version))}</h2>
     <p>This release of Chrome had ${
       flagged.length
     } are available behind a flag.</p>
     ${flagged.map((item) => renderFeature(item, "h3"))}`;
 
 const renderDeprecatedFeatures = (deprecated, version) => template`
-    <h3 id="deprecated">Deprecated features in ${version}</h3>
+    <h3 id="deprecated">Deprecated features in ${escapeHtml(String(version))}</h3>
     <p>This release of Chrome had ${deprecated.length} features deprecated.</p>
     ${deprecated.map((item) => renderFeature(item, "h4"))}`;
 
 const renderRemovedFeatures = (removed, version) => template`
-    <h3 id="removed">Removed features in ${version}</h3>
+    <h3 id="removed">Removed features in ${escapeHtml(String(version))}</h3>
     <p>This release of Chrome had ${removed.length} features removed.</p>
     ${removed.map((item) => renderFeature(item, "h4"))}`;
 
 export default async function render(request: Request, chromeStatusAPI: StatusClient): Response {
   const url = new URL(request.url);
+  const requested = url.searchParams.get("version") || "";
   let versions: any[] = [];
-  let version: any = url.searchParams.get("version") || "";
+  let version: any = "";
   let features: any = {};
   let upstreamError = false;
 
@@ -170,9 +171,15 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
       upstreamError = true;
       versions = [];
     } else {
-      if (!version && versions.length > 0) {
-        version = versions[0];
-      }
+      // Only a milestone the upstream version list knows about may reach the
+      // page sinks or the upstream query (same whitelist as /diff); anything
+      // else — including HTML in the query string — falls back to the latest
+      // release instead of being reflected.
+      version = versions.some((v) => String(v) === requested)
+        ? requested
+        : versions.length > 0
+        ? String(versions[0])
+        : "";
       if (version) {
         features = await chromeStatusAPI.getFeaturesForVersion(version);
         if (!features || typeof features !== "object" || !hasValidBuckets(features)) {
@@ -196,9 +203,9 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   }
   const rest = versions.filter((v) => !recent.includes(v));
   const chip = (item) =>
-    `<a href="?version=${item}"${
+    `<a href="?version=${encodeURIComponent(String(item))}"${
       String(item) === String(version) ? ` class="current" aria-current="page"` : ""
-    }>${item}</a>`;
+    }>${escapeHtml(String(item))}</a>`;
   const recentHtml = recent.map(chip).join(" ");
   const restHtml = rest.map(chip).join(" ");
 
@@ -214,7 +221,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="/scripts/index.js" type="module"></script>
-  <title>Chrome Release ${version || ""}</title>
+  <title>Chrome Release ${escapeHtml(version)}</title>
   <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
