@@ -214,3 +214,52 @@ Deno.test("KvSnapshotStore on the real embedded backend: latest() is the newest,
   equal(await captureSnapshot(store, "kv1", { name: "X", summary: "v3" }), true);
   equal((await store.latest("kv1"))!.data["Summary"], "v3");
 });
+
+Deno.test("KvSnapshotStore keeps only the newest snapshots per feature", async () => {
+  const store = new KvSnapshotStore(":memory:", { maxSnapshotsPerFeature: 5 });
+  for (let i = 1; i <= 8; i++) {
+    const at = `2026-01-0${i}T00:00:00.000Z`;
+    equal(await store.add("kvtrim", { at, data: { Summary: `v${i}` } }), true);
+  }
+  const listed = await store.list("kvtrim");
+  equal(listed.length, 5);
+  // Newest first, and the three oldest were deleted.
+  equal(listed[0].at, "2026-01-08T00:00:00.000Z");
+  equal(listed[4].at, "2026-01-04T00:00:00.000Z");
+  equal((await store.latest("kvtrim"))!.at, "2026-01-08T00:00:00.000Z");
+});
+
+Deno.test("KvSnapshotStore drops captures past the tracked-feature cap with a structured log", async () => {
+  const store = new KvSnapshotStore(":memory:", { maxTrackedFeatures: 2 });
+  equal(await store.add("f1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } }), true);
+  equal(await store.add("f2", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "b" } }), true);
+
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (msg: unknown) => warnings.push(String(msg));
+  try {
+    equal(await store.add("f3", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "c" } }), false);
+  } finally {
+    console.warn = originalWarn;
+  }
+  equal((await store.list("f3")).length, 0);
+  equal(warnings.length, 1);
+  const event = JSON.parse(warnings[0]);
+  equal(event.event, "snapshot_capture_dropped");
+  equal(event.reason, "tracked_feature_cap");
+  equal(event.featureId, "f3");
+
+  // Existing features are never dropped by the cap.
+  equal(await store.add("f1", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "a2" } }), true);
+});
+
+Deno.test("MemorySnapshotStore enforces the same per-feature cap", async () => {
+  const store = new MemorySnapshotStore({ maxSnapshotsPerFeature: 3 });
+  for (let i = 1; i <= 5; i++) {
+    equal(await store.add("m1", { at: `2026-02-0${i}T00:00:00.000Z`, data: { Summary: `v${i}` } }), true);
+  }
+  const listed = await store.list("m1");
+  equal(listed.length, 3);
+  equal(listed[0].at, "2026-02-05T00:00:00.000Z");
+  equal(listed[2].at, "2026-02-03T00:00:00.000Z");
+});

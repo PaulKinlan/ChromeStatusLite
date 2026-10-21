@@ -366,7 +366,11 @@ export default async function render(request: Request, match: URLPatternResult, 
 
   if (store) {
     await captureSnapshot(store, id, feature).catch((err) => {
-      console.error("[snapshots] capture failed:", err?.message ?? err);
+      console.error(JSON.stringify({
+        event: "snapshot_capture_failed",
+        featureId: id,
+        error: String(err?.message ?? err),
+      }));
     });
   }
 
