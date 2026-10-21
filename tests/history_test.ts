@@ -413,3 +413,114 @@ Deno.test("history and diff views refresh eviction recency", async () => {
     equal((await store.list("43")).length, 1);
   }
 });
+
+Deno.test("a re-capture holding a stale marker cannot resurrect it past the cap", async () => {
+  // Deterministic chrome-status-lite-r83: the feature's marker is evicted
+  // between the add() reading it and its commit. The openKv seam returns a
+  // stale marker entry for exactly one get(); with the own-marker check the
+  // commit fails (the real marker is gone) and the retry re-enters through
+  // the counter path - without it the commit resurrects the marker and the
+  // index stays over the cap.
+  const baseKv = await Deno.openKv(":memory:");
+  let staleReads = 0;
+  let staleEntry: Deno.KvEntryMaybe<unknown> | null = null;
+  const kv = new Proxy(baseKv, {
+    get(t, p) {
+      if (p === "get") {
+        return (key: Deno.KvKey) => {
+          if (
+            staleReads > 0 && Array.isArray(key) &&
+            key[0] === "feature_index" && key[1] === "raceA"
+          ) {
+            staleReads--;
+            return Promise.resolve(staleEntry);
+          }
+          return t.get(key as never);
+        };
+      }
+      const v = Reflect.get(t, p);
+      return typeof v === "function" ? v.bind(t) : v;
+    },
+  });
+  const store = new KvSnapshotStore(undefined, {
+    maxTrackedFeatures: 1,
+    openKv: async () => kv,
+  });
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    await store.add("raceA", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } });
+    // Capture raceA's real marker entry (real versionstamp) before eviction.
+    staleEntry = await baseKv.get(["feature_index", "raceA"]);
+    // raceB's first-capture evicts raceA (cap 1): marker and snapshots gone.
+    await store.add("raceB", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } });
+    equal((await store.list("raceA")).length, 0);
+    // Now raceA is re-captured with a stale marker read, as if its add had
+    // read the marker before raceB's eviction committed.
+    staleReads = 1;
+    await store.add("raceA", { at: "2026-01-03T00:00:00.000Z", data: { Summary: "a2" } });
+    let tracked = 0;
+    for (const id of ["raceA", "raceB"]) {
+      if ((await store.list(id)).length > 0) tracked++;
+    }
+    equal(tracked <= 1, true);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+Deno.test("KvSnapshotStore trim keeps the newest snapshots even when the backend lists keys in reverse", async () => {
+  // The embedded backend only lists ascending, so the call-site use of the
+  // sorted trim can only be pinned by a non-ascending backend (yrn). Inject
+  // an opener whose prefix lists yield entries in reverse key order, then
+  // run the trim scenario through the real store: an inline unsorted slice
+  // at the call site would delete the NEWEST snapshot here.
+  const reversedOpenKv = async (path?: string) => {
+    const kv = await Deno.openKv(path);
+    return new Proxy(kv, {
+      get(kvTarget, kvProp, receiver) {
+        if (kvProp !== "list") {
+          // KV methods use private fields: bind them to the real instance,
+          // a proxy receiver breaks them.
+          const value = Reflect.get(kvTarget, kvProp);
+          return typeof value === "function" ? value.bind(kvTarget) : value;
+        }
+        return (selector: unknown, options?: unknown) => {
+          const iter = kvTarget.list(selector as never, options as never);
+          return {
+            [Symbol.asyncIterator]() {
+              let buf: unknown[] | null = null;
+              let i = 0;
+              const it = iter[Symbol.asyncIterator]();
+              return {
+                async next() {
+                  if (buf === null) {
+                    buf = [];
+                    for (let r = await it.next(); !r.done; r = await it.next()) {
+                      buf.push(r.value);
+                    }
+                    buf.reverse();
+                  }
+                  return i < buf.length
+                    ? { value: buf[i++], done: false as const }
+                    : { value: undefined, done: true as const };
+                },
+              };
+            },
+          };
+        };
+      },
+    });
+  };
+  const store = new KvSnapshotStore(":memory:", {
+    maxSnapshotsPerFeature: 2,
+    openKv: reversedOpenKv,
+  });
+  await store.add("rev", { at: "2026-03-01T00:00:00.000Z", data: { Summary: "new" } });
+  await store.add("rev", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "old" } });
+  await store.add("rev", { at: "2026-02-01T00:00:00.000Z", data: { Summary: "mid" } });
+  const listed = await store.list("rev");
+  equal(listed.length, 2);
+  equal(listed[0].at, "2026-03-01T00:00:00.000Z");
+  equal(listed[1].at, "2026-02-01T00:00:00.000Z");
+});

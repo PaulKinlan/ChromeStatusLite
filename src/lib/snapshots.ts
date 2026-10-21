@@ -93,6 +93,9 @@ const MAX_EVICTION_ATTEMPTS = 10;
 export type KvSnapshotStoreOptions = {
   maxSnapshotsPerFeature?: number;
   maxTrackedFeatures?: number;
+  /** Testing seam: override the KV opener (e.g. to fake a backend whose
+   * prefix lists are not ascending). Defaults to Deno.openKv. */
+  openKv?: (path?: string) => Promise<Deno.Kv>;
 };
 
 /** Deno KV-backed store; KV is GA on Deno Deploy and Deno 2.x locally. */
@@ -102,7 +105,7 @@ export class KvSnapshotStore implements SnapshotStore {
   #maxTrackedFeatures: number;
 
   constructor(path?: string, options: KvSnapshotStoreOptions = {}) {
-    this.#kv = Deno.openKv(path);
+    this.#kv = (options.openKv ?? Deno.openKv)(path);
     this.#maxSnapshotsPerFeature =
       options.maxSnapshotsPerFeature ?? MAX_SNAPSHOTS_PER_FEATURE;
     this.#maxTrackedFeatures =
@@ -204,6 +207,19 @@ export class KvSnapshotStore implements SnapshotStore {
         .set(["feature", featureId, LATEST_KEY], snapshot)
         .set([FEATURE_INDEX_KEY, featureId], { lastCaptureAt: snapshot.at });
       for (const key of staleKeys) op.delete(key);
+      if (ownMarker.value !== null) {
+        // Guard against a concurrent eviction of THIS feature
+        // (chrome-status-lite-r83): if our marker was changed or deleted
+        // since we read it, the commit fails and the retry re-enters
+        // through the first-capture path, which accounts for the marker
+        // against feature_count. Without this check a re-captured victim
+        // resurrects its marker after eviction and the index stays
+        // permanently over the cap.
+        op.check({
+          key: [FEATURE_INDEX_KEY, featureId],
+          versionstamp: ownMarker.versionstamp,
+        });
+      }
       if (ownMarker.value === null && counter) {
         op.check({ key: [FEATURE_COUNT_KEY], versionstamp: counter.versionstamp });
         if (victim) {
