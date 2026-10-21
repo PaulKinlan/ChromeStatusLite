@@ -76,8 +76,15 @@ const renderResources = (resources) => {
   }
   const hasSamples = "samples" in resources && Array.isArray(resources.samples);
   const hasDocs = "docs" in resources && Array.isArray(resources.docs);
-  const samples = hasSamples ? resources.samples : [];
-  const docs = hasDocs ? resources.docs : [];
+  // Sanitize before deciding what to render: a docs array whose every entry
+  // is filtered out must behave like an empty array, not leave a dangling
+  // "Docs:" label (chrome-status-lite-4vp).
+  const samples = (hasSamples ? resources.samples : [])
+    .map((resource) => sanitizeUrl(String(resource)))
+    .filter((resource) => resource !== null);
+  const docs = (hasDocs ? resources.docs : [])
+    .map((resource) => sanitizeUrl(String(resource)))
+    .filter((resource) => resource !== null);
   if (hasSamples && samples.length === 0 && hasDocs && docs.length === 0) {
     return template``;
   }
@@ -85,20 +92,14 @@ const renderResources = (resources) => {
   return template`<h4>Resources</h4>
       ${
         hasDocs && docs.length > 0
-          ? template`<p>Docs: ${docs
-              .map((resource) => sanitizeUrl(String(resource)))
-              .filter((resource) => resource !== null)
-              .map(
+          ? template`<p>Docs: ${docs.map(
               (resource) => template`<a href="${resource}">${resource}</a>`
             )}</p>`
           : template`No linked docs`
       }</p>
       ${
         hasSamples && samples.length > 0
-          ? template`<p>Samples: ${samples
-              .map((resource) => sanitizeUrl(String(resource)))
-              .filter((resource) => resource !== null)
-              .map(
+          ? template`<p>Samples: ${samples.map(
               (resource) => template`<a href="${resource}">${resource}</a>`
             )}</p>`
           : template`No linked samples`

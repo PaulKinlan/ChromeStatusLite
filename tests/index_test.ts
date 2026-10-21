@@ -95,6 +95,18 @@ Deno.test("release page drops non-http(s) hrefs in resources, bug and spec field
   }
 });
 
+Deno.test("release page drops the Docs/Samples label when every link is filtered out", async () => {
+  const client = fixtureClient({ getFeaturesForVersion: async () => ({
+    "Enabled by default": [{
+      id: 205, name: "All filtered", summary: "Summary",
+      resources: { docs: ["javascript:alert(1)"], samples: ["javascript:alert(1)"] },
+    }],
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/?version=120"))).text();
+  equal(html.includes("Docs:"), false);
+  equal(html.includes("Samples:"), false);
+});
+
 Deno.test("release page keeps http(s) hrefs in resources, bug and spec fields", async () => {
   const url = "https://example.com/tracking";
   const client = fixtureClient({ getFeaturesForVersion: async () => ({
