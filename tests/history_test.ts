@@ -5,6 +5,7 @@ import {
   diffSnapshots,
   KvSnapshotStore,
   MemorySnapshotStore,
+  snapshotKeysToTrim,
 } from "../src/lib/snapshots.ts";
 
 Deno.test("viewing a feature captures a snapshot and dedupes unchanged views", async () => {
@@ -338,6 +339,25 @@ Deno.test("captureSnapshot refreshes recency on deduped views, protecting hot st
   equal((await store.list("h1")).length, 1); // hot stable feature survives
   equal((await store.list("h2")).length, 0); // stale one is evicted
   equal((await store.list("h3")).length, 1);
+});
+
+Deno.test("snapshotKeysToTrim picks the oldest by timestamp regardless of input order", () => {
+  // The embedded KV backend only lists ascending, so the integration test
+  // cannot distinguish sorted from unsorted trimming (ign): this feeds the
+  // trim function descending and shuffled sequences directly. An unsorted
+  // implementation trims the FIRST listed key here - the newest.
+  const k = (t: string) => ["feature", "x", t];
+  const descending = [k("2026-03-01"), k("2026-02-01"), k("2026-01-01")];
+  // keys exclude the pending add: 3 existing keys with a cap of 3 means
+  // one excess once the new snapshot lands.
+  for (const input of [descending, [...descending].reverse(), [descending[1], descending[2], descending[0]]]) {
+    const trim = snapshotKeysToTrim(input, 3);
+    equal(trim.length, 1);
+    equal(String(trim[0][2]), "2026-01-01");
+  }
+  // At or under the cap nothing is trimmed.
+  equal(snapshotKeysToTrim([k("2026-01-01")], 2).length, 0);
+  equal(snapshotKeysToTrim([k("2026-01-01"), k("2026-01-02")], 3).length, 0);
 });
 
 Deno.test("KvSnapshotStore trims by snapshot timestamp, not insertion or iteration order", async () => {

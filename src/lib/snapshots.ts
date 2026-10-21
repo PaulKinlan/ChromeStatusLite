@@ -57,6 +57,26 @@ const FEATURE_INDEX_KEY = "feature_index";
 // holds under bursts instead of racing on a read-then-write count (6kk).
 const FEATURE_COUNT_KEY = "feature_count";
 
+/**
+ * Keys of the oldest snapshots beyond the cap, chosen by the ISO timestamp
+ * key part - never by backend iteration order (chrome-status-lite-03h).
+ * `keys` excludes the snapshot about to be added, so one excess key is
+ * trimmed when the feature already holds the cap. Exported for tests: the
+ * embedded backend only ever lists ascending, so order-independence can
+ * only be pinned by feeding this function a non-ascending sequence directly
+ * (chrome-status-lite-ign).
+ */
+export function snapshotKeysToTrim(
+  keys: Deno.KvKey[],
+  maxSnapshots: number,
+): Deno.KvKey[] {
+  const sorted = [...keys].sort((a, b) =>
+    String(a[a.length - 1]).localeCompare(String(b[b.length - 1]))
+  );
+  const excess = sorted.length + 1 - maxSnapshots;
+  return excess > 0 ? sorted.slice(0, excess) : [];
+}
+
 /** Minimum interval between recency-refresh writes for one feature. A page
  * view of an unchanged feature touches the index marker so eviction follows
  * last-read (4x3), but an unthrottled write per anonymous read would
@@ -127,12 +147,11 @@ export class KvSnapshotStore implements SnapshotStore {
       kv.list({ prefix: ["feature", featureId] }),
     ))
       .map((e) => e.key)
-      .filter((key) => key[key.length - 1] !== LATEST_KEY)
-      .sort((a, b) =>
-        String(a[a.length - 1]).localeCompare(String(b[b.length - 1]))
-      );
-    const excess = existingKeys.length + 1 - this.#maxSnapshotsPerFeature;
-    const staleKeys = excess > 0 ? existingKeys.slice(0, excess) : [];
+      .filter((key) => key[key.length - 1] !== LATEST_KEY);
+    const staleKeys = snapshotKeysToTrim(
+      existingKeys,
+      this.#maxSnapshotsPerFeature,
+    );
 
     // The cap is a hard bound, not a one-way switch (chrome-status-lite-579,
     // -6kk). First captures serialize on the FEATURE_COUNT_KEY versionstamp:
