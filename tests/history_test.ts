@@ -252,7 +252,7 @@ Deno.test("KvSnapshotStore evicts the least-recently-captured feature when the t
   equal(event.event, "snapshot_feature_evicted");
   equal(event.reason, "tracked_feature_cap");
   equal(event.evictedFeatureId, "f1");
-  equal(event.trackedFeatures, 2);
+  equal(event.maxTrackedFeatures, 2);
 });
 
 Deno.test("KvSnapshotStore eviction follows recency: a fresh capture protects its feature", async () => {
@@ -271,6 +271,73 @@ Deno.test("KvSnapshotStore eviction follows recency: a fresh capture protects it
   equal((await store.list("f1")).length, 2);
   equal((await store.list("f2")).length, 0);
   equal((await store.list("f3")).length, 1);
+});
+
+Deno.test("KvSnapshotStore holds the tracked-feature cap under concurrent first-captures", async () => {
+  // The threat model is anonymous concurrent GETs of distinct features:
+  // every full-index commit must remove one marker for every one it
+  // inserts, so bursts cannot ratchet the index past the cap (6kk).
+  const store = new KvSnapshotStore(":memory:", { maxTrackedFeatures: 3 });
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  const ids: string[] = [];
+  try {
+    for (let burst = 0; burst < 4; burst++) {
+      const batch = [];
+      for (let i = 0; i < 5; i++) {
+        const id = `c${burst}x${i}`;
+        ids.push(id);
+        batch.push(store.add(id, {
+          at: `2026-04-0${burst + 1}T0${i}:00:00.000Z`,
+          data: { Summary: `s${burst}-${i}` },
+        }));
+      }
+      await Promise.all(batch);
+      let tracked = 0;
+      for (const id of ids) {
+        if ((await store.list(id)).length > 0) tracked++;
+      }
+      equal(tracked <= 3, true);
+    }
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+Deno.test("KvSnapshotStore touch() refreshes eviction recency past the throttle window", async () => {
+  const store = new KvSnapshotStore(":memory:", { maxTrackedFeatures: 2 });
+  await store.add("t1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } });
+  await store.add("t2", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } });
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    // A touch inside the 24h window is throttled: t1 stays oldest.
+    await store.touch("t1", new Date("2026-01-01T06:00:00.000Z"));
+    await store.add("t3", { at: "2026-01-03T00:00:00.000Z", data: { Summary: "c" } });
+    equal((await store.list("t1")).length, 0);
+    equal((await store.list("t2")).length, 1);
+    // A touch past the window makes t2 the oldest: the next capture evicts it.
+    await store.touch("t2", new Date("2026-01-04T00:00:00.000Z"));
+    await store.add("t4", { at: "2026-01-05T00:00:00.000Z", data: { Summary: "d" } });
+    equal((await store.list("t2")).length, 1);
+    equal((await store.list("t3")).length, 0);
+    equal((await store.list("t4")).length, 1);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+Deno.test("captureSnapshot refreshes recency on deduped views, protecting hot stable features", async () => {
+  const store = new MemorySnapshotStore({ maxTrackedFeatures: 2 });
+  await captureSnapshot(store, "h1", { name: "A", summary: "v1" }, new Date("2026-01-01T00:00:00Z"));
+  await captureSnapshot(store, "h2", { name: "B", summary: "v1" }, new Date("2026-01-02T00:00:00Z"));
+  // h1 is read again days later with unchanged data: deduped, but touched.
+  equal(await captureSnapshot(store, "h1", { name: "A", summary: "v1" }, new Date("2026-01-10T00:00:00Z")), false);
+  equal((await store.list("h1")).length, 1);
+  await captureSnapshot(store, "h3", { name: "C", summary: "v1" }, new Date("2026-01-11T00:00:00Z"));
+  equal((await store.list("h1")).length, 1); // hot stable feature survives
+  equal((await store.list("h2")).length, 0); // stale one is evicted
+  equal((await store.list("h3")).length, 1);
 });
 
 Deno.test("KvSnapshotStore trims by snapshot timestamp, not insertion or iteration order", async () => {
