@@ -130,6 +130,36 @@ Deno.test("upstream urls cannot break out of their href attributes", async () =>
   includes(html, "&quot; onmouseover=&quot;alert(1)");
 });
 
+Deno.test("feature detail drops non-http(s) hrefs in every upstream url field", async () => {
+  const evil = ["javascript:alert(document.domain)", "data:text/html,<script>alert(1)</script>"];
+  for (const url of evil) {
+    const client = fixtureClient({ getFeature: async () => ({
+      id: 130, name: "Scheme attack", summary: "Summary",
+      spec_link: url, bug_url: url,
+      browsers: { safari: { view: { text: "Position", url } } },
+      resources: { docs: [url], samples: [url] },
+      doc_links: [url], sample_links: [url], explainer_links: [url],
+    }) });
+    const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/130"))).text();
+    equal(html.includes('href="javascript:'), false);
+    equal(html.includes('href="data:'), false);
+    equal(html.includes(url), false);
+  }
+});
+
+Deno.test("feature detail keeps http(s) hrefs in upstream url fields", async () => {
+  const url = "https://example.com/spec";
+  const client = fixtureClient({ getFeature: async () => ({
+    id: 131, name: "Honest links", summary: "Summary",
+    spec_link: url, bug_url: url,
+    browsers: { safari: { view: { text: "Position", url } } },
+    doc_links: [url], sample_links: [url], explainer_links: [url],
+  }) });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/131"))).text();
+  includes(html, `<a href="${url}">${url}</a>`);
+  includes(html, `<a href="${url}">Position</a>`);
+});
+
 Deno.test("feature detail renders ecosystem cross-links from the feature name", async () => {
   const client = fixtureClient({ getFeature: async () => ({
     id: 123, name: "View Transitions", summary: "A fixture summary",

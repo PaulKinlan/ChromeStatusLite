@@ -14,6 +14,7 @@ for path in "${paths[@]}"; do
     src/routes/index.ts|static/scripts/index.js) add tests/index_test.ts ;;
     src/routes/feature.ts) add tests/feature_test.ts ;;
     src/lib/linkify.ts) add tests/feature_test.ts; add tests/index_test.ts ;;
+    src/lib/url.ts) add tests/feature_test.ts; add tests/index_test.ts; add tests/handler_test.ts ;;
     src/lib/snapshots.ts|src/routes/feature-history.ts|tests/history_test.ts) add tests/feature_test.ts; add tests/history_test.ts ;;
     src/lib/buckets.ts) add tests/index_test.ts; add tests/handler_test.ts ;;
     src/routes/diff.ts) add tests/diff_test.ts ;;

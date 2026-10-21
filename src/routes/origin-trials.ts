@@ -3,6 +3,7 @@ import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
 
+import { sanitizeUrl } from "../lib/url.ts";
 import nav from "../ui-components/nav.ts";
 
 interface OriginTrialFeature {
@@ -13,19 +14,6 @@ interface OriginTrialFeature {
   intent_stage?: string;
   standards?: { spec?: string };
   resources?: { docs?: string[]; samples?: string[] };
-}
-
-function sanitizeUrl(urlStr?: string): string | null {
-  if (!urlStr || typeof urlStr !== "string") return null;
-  try {
-    const parsed = new URL(urlStr);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      return escapeHtml(urlStr);
-    }
-  } catch {
-    // invalid URL format
-  }
-  return null;
 }
 
 export default async function render(
