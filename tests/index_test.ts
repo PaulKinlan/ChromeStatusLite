@@ -64,6 +64,49 @@ Deno.test("release page linkifies URLs in feature summaries", async () => {
   includes(html, '<a href="https://example.com/spec.html" rel="noopener noreferrer">https://example.com/spec.html</a>.');
 });
 
+Deno.test("release page never reflects an unlisted ?version= into the page or the upstream query", async () => {
+  const calls: unknown[] = [];
+  const handler = createHandler(fixtureClient({ getFeaturesForVersion: async (version) => {
+    calls.push(version);
+    return { "Enabled by default": [] };
+  } }));
+  const response = await handler(
+    new Request("https://chromestatuslite.com/?version=%3Cscript%3Ealert(document.domain)%3C/script%3E"),
+  );
+  equal(response.status, 200);
+  const html = await response.text();
+  // Unlisted input falls back to the latest known milestone everywhere:
+  // title, h1, section headings and the upstream query.
+  equal(calls[0], "120");
+  includes(html, "<title>Chrome Release 120</title>");
+  const body = html.slice(html.indexOf("<body>"));
+  equal(body.includes("alert(document.domain)"), false);
+  equal(body.includes("<script"), false);
+  includes(body, "<h1>Chrome 120</h1>");
+});
+
+Deno.test("release page escapes the selected version at every HTML sink even when whitelisted", async () => {
+  const evil = '<script>alert(1)</script>';
+  const client = fixtureClient({
+    getVersions: async () => [120, evil],
+    getFeaturesForVersion: async () => ({
+      "Enabled by default": [{ id: 1, name: "X", summary: "Y", resources: { docs: [], samples: [] } }],
+    }),
+  });
+  const response = await createHandler(client)(
+    new Request(`https://chromestatuslite.com/?version=${encodeURIComponent(evil)}`),
+  );
+  const html = await response.text();
+  equal(html.includes("<script>alert(1)</script>"), false);
+  includes(html, "<title>Chrome Release &lt;script&gt;alert(1)&lt;/script&gt;</title>");
+  includes(html, "<h1>Chrome &lt;script&gt;alert(1)&lt;/script&gt;</h1>");
+  includes(html, "Enabled by default in &lt;script&gt;alert(1)&lt;/script&gt;</h2>");
+  // Version chips survive upstream-supplied markup: the selected (evil) chip
+  // is fully encoded in its href and escaped in its label.
+  includes(html, '<a href="?version=%3Cscript%3Ealert(1)%3C%2Fscript%3E" class="current" aria-current="page">&lt;script&gt;alert(1)&lt;/script&gt;</a>');
+  includes(html, '<a href="?version=120">120</a>');
+});
+
 Deno.test("release page upstream urls cannot break out of their href attributes", async () => {
   const evil = 'https://example.com/x" onmouseover="alert(1)';
   const client = fixtureClient({ getFeaturesForVersion: async () => ({

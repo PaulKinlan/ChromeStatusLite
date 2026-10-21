@@ -51,3 +51,40 @@ Deno.test("fetchJson throws on non-2xx HTTP responses", async () => {
   }
   equal(caught, true);
 });
+
+Deno.test("getFeaturesForVersion sends the milestone as one encoded upstream parameter", async () => {
+  const seen: string[] = [];
+  const client = new ChromeStatusAPI({
+    fetcher: async (input) => {
+      seen.push(String(input));
+      return new Response(`)]}'\n${JSON.stringify({ features_by_type: {} })}`);
+    },
+  });
+  await client.getFeaturesForVersion("120&num=1&q=foo");
+  equal(seen[0], "https://chromestatus.com/api/v0/features?milestone=120");
+});
+
+Deno.test("getFeaturesForVersion canonicalises the cache key per integer milestone", async () => {
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    fetcher: async () => {
+      calls++;
+      return new Response(`)]}'\n{"features_by_type":{}}`);
+    },
+  });
+  await client.getFeaturesForVersion("120&num=1");
+  await client.getFeaturesForVersion(120);
+  equal(calls, 1);
+});
+
+Deno.test("getFeaturesForVersion rejects milestones that are not integers", async () => {
+  const client = new ChromeStatusAPI({ fetcher: async () => new Response("{}") });
+  let caught = false;
+  try {
+    await client.getFeaturesForVersion("<script>alert(1)</script>");
+  } catch (err) {
+    caught = true;
+    equal((err as Error).message.includes("Invalid milestone"), true);
+  }
+  equal(caught, true);
+});

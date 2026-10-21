@@ -42,10 +42,17 @@ export class ChromeStatusAPI {
   // The old `/features_v2.json` no longer carries a usable `milestone`
   // field, so we use the milestone query on the v0 API which groups
   // features by type server-side.
-  public async getFeaturesForVersion(version: number): Promise<any> {
-    const data = await this.fetchJson(
-      `/api/v0/features?milestone=${version}`
-    );
+  // Callers pass user-influenced strings as well as numbers, so the value is
+  // coerced to a canonical integer milestone before it feeds either the
+  // upstream query or the shared LRU key: a raw string could append upstream
+  // parameters ("120&num=1") or mint unbounded cache entries.
+  public async getFeaturesForVersion(version: number | string): Promise<any> {
+    const milestone = Number.parseInt(String(version), 10);
+    if (!Number.isFinite(milestone)) {
+      throw new Error(`Invalid milestone: ${version}`);
+    }
+    const params = new URLSearchParams({ milestone: String(milestone) });
+    const data = await this.fetchJson(`/api/v0/features?${params}`);
     return (data as any).features_by_type || {};
   }
 
