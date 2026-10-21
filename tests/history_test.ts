@@ -229,28 +229,71 @@ Deno.test("KvSnapshotStore keeps only the newest snapshots per feature", async (
   equal((await store.latest("kvtrim"))!.at, "2026-01-08T00:00:00.000Z");
 });
 
-Deno.test("KvSnapshotStore drops captures past the tracked-feature cap with a structured log", async () => {
+Deno.test("KvSnapshotStore evicts the least-recently-captured feature when the tracked-feature cap is full", async () => {
   const store = new KvSnapshotStore(":memory:", { maxTrackedFeatures: 2 });
   equal(await store.add("f1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } }), true);
-  equal(await store.add("f2", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "b" } }), true);
+  equal(await store.add("f2", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } }), true);
 
   const warnings: string[] = [];
   const originalWarn = console.warn;
   console.warn = (msg: unknown) => warnings.push(String(msg));
   try {
-    equal(await store.add("f3", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "c" } }), false);
+    // The cap reclaims instead of denying history to new features forever.
+    equal(await store.add("f3", { at: "2026-01-03T00:00:00.000Z", data: { Summary: "c" } }), true);
   } finally {
     console.warn = originalWarn;
   }
-  equal((await store.list("f3")).length, 0);
+  // f1 was least-recently-captured: its snapshots and marker are gone.
+  equal((await store.list("f1")).length, 0);
+  equal((await store.list("f2")).length, 1);
+  equal((await store.list("f3")).length, 1);
   equal(warnings.length, 1);
   const event = JSON.parse(warnings[0]);
-  equal(event.event, "snapshot_capture_dropped");
+  equal(event.event, "snapshot_feature_evicted");
   equal(event.reason, "tracked_feature_cap");
-  equal(event.featureId, "f3");
+  equal(event.evictedFeatureId, "f1");
+  equal(event.trackedFeatures, 2);
+});
 
-  // Existing features are never dropped by the cap.
-  equal(await store.add("f1", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "a2" } }), true);
+Deno.test("KvSnapshotStore eviction follows recency: a fresh capture protects its feature", async () => {
+  const store = new KvSnapshotStore(":memory:", { maxTrackedFeatures: 2 });
+  await store.add("f1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } });
+  await store.add("f2", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } });
+  // f1 captured again most recently; f2 is now the eviction candidate.
+  await store.add("f1", { at: "2026-01-03T00:00:00.000Z", data: { Summary: "a2" } });
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    equal(await store.add("f3", { at: "2026-01-04T00:00:00.000Z", data: { Summary: "c" } }), true);
+  } finally {
+    console.warn = originalWarn;
+  }
+  equal((await store.list("f1")).length, 2);
+  equal((await store.list("f2")).length, 0);
+  equal((await store.list("f3")).length, 1);
+});
+
+Deno.test("KvSnapshotStore trims by snapshot timestamp, not insertion or iteration order", async () => {
+  const store = new KvSnapshotStore(":memory:", { maxSnapshotsPerFeature: 2 });
+  await store.add("ord", { at: "2026-03-01T00:00:00.000Z", data: { Summary: "new" } });
+  await store.add("ord", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "old" } });
+  // A late-arriving backdated snapshot must not evict newer history.
+  await store.add("ord", { at: "2026-02-01T00:00:00.000Z", data: { Summary: "mid" } });
+  const listed = await store.list("ord");
+  equal(listed.length, 2);
+  equal(listed[0].at, "2026-03-01T00:00:00.000Z");
+  equal(listed[1].at, "2026-02-01T00:00:00.000Z");
+});
+
+Deno.test("MemorySnapshotStore enforces the tracked-feature cap with the same recency eviction", async () => {
+  const store = new MemorySnapshotStore({ maxTrackedFeatures: 2 });
+  await store.add("m1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } });
+  await store.add("m2", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } });
+  await store.add("m1", { at: "2026-01-03T00:00:00.000Z", data: { Summary: "a2" } });
+  equal(await store.add("m3", { at: "2026-01-04T00:00:00.000Z", data: { Summary: "c" } }), true);
+  equal((await store.list("m1")).length, 2);
+  equal((await store.list("m2")).length, 0);
+  equal((await store.list("m3")).length, 1);
 });
 
 Deno.test("MemorySnapshotStore enforces the same per-feature cap", async () => {

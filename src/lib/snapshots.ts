@@ -96,33 +96,62 @@ export class KvSnapshotStore implements SnapshotStore {
         kv.list({ prefix: [FEATURE_INDEX_KEY] }, { batchSize: 500 }),
       );
       if (existing.length >= this.#maxTrackedFeatures) {
-        // Dropped, not failed: the store is deliberately full. Log it as a
-        // structured event so the degradation is observable, not silent.
-        console.warn(JSON.stringify({
-          event: "snapshot_capture_dropped",
-          reason: "tracked_feature_cap",
-          featureId,
-          maxTrackedFeatures: this.#maxTrackedFeatures,
-        }));
-        return false;
+        // The cap is a bound, not a one-way switch (chrome-status-lite-579):
+        // evict the least-recently-captured feature - all its snapshot keys,
+        // its latest pointer and its index marker - so a full index reclaims
+        // slots instead of denying history to every new feature forever.
+        let oldest: { featureId: string; key: Deno.KvKey; at: string } | null = null;
+        for (const entry of existing) {
+          const at = typeof (entry.value as any)?.lastCaptureAt === "string"
+            ? (entry.value as any).lastCaptureAt
+            : ""; // legacy `true` markers evict first
+          if (!oldest || at < oldest.at) {
+            oldest = { featureId: String(entry.key[entry.key.length - 1]), key: entry.key, at };
+          }
+        }
+        if (oldest) {
+          const evict = kv.atomic();
+          for (const e of await Array.fromAsync(
+            kv.list({ prefix: ["feature", oldest.featureId] }),
+          )) {
+            evict.delete(e.key);
+          }
+          evict.delete(oldest.key);
+          await evict.commit();
+          console.warn(JSON.stringify({
+            event: "snapshot_feature_evicted",
+            reason: "tracked_feature_cap",
+            evictedFeatureId: oldest.featureId,
+            lastCaptureAt: oldest.at,
+            trackedFeatures: existing.length,
+            maxTrackedFeatures: this.#maxTrackedFeatures,
+          }));
+        }
       }
     }
-    // Snapshot keys are ["feature", id, <ISO at>]; ISO timestamps sort
-    // chronologically as strings, so the oldest keys list first. Keys past
-    // the cap are deleted in the same atomic op as the add. Concurrent adds
-    // may each trim independently: deleting an already-deleted key is a
-    // no-op, so the worst case is a snapshot fewer kept, never corruption.
+    // Snapshot keys are ["feature", id, <ISO at>]. Never trust backend
+    // iteration order (the embedded backend already broke prefix-list
+    // ordering once, per the LATEST_KEY comment above): sort by the ISO
+    // timestamp key part so the trim always deletes the OLDEST snapshots
+    // (chrome-status-lite-03h). Keys past the cap are deleted in the same
+    // atomic op as the add. Concurrent adds may each compute the same trim
+    // set: the cap can be transiently exceeded by the number of concurrent
+    // captures and is re-trimmed on the next add; deleting an
+    // already-deleted key is a no-op.
     const existingKeys = (await Array.fromAsync(
       kv.list({ prefix: ["feature", featureId] }),
     ))
       .map((e) => e.key)
-      .filter((key) => key[key.length - 1] !== LATEST_KEY);
+      .filter((key) => key[key.length - 1] !== LATEST_KEY)
+      .sort((a, b) =>
+        String(a[a.length - 1]).localeCompare(String(b[b.length - 1]))
+      );
     const excess = existingKeys.length + 1 - this.#maxSnapshotsPerFeature;
     const staleKeys = excess > 0 ? existingKeys.slice(0, excess) : [];
     const op = kv.atomic()
       .set(["feature", featureId, snapshot.at], snapshot)
       .set(["feature", featureId, LATEST_KEY], snapshot)
-      .set([FEATURE_INDEX_KEY, featureId], true);
+      .set([FEATURE_INDEX_KEY, featureId], { lastCaptureAt: snapshot.at });
     for (const key of staleKeys) op.delete(key);
     await op.commit();
     return true;
@@ -133,10 +162,13 @@ export class KvSnapshotStore implements SnapshotStore {
 export class MemorySnapshotStore implements SnapshotStore {
   #byFeature = new Map<string, FeatureSnapshot[]>();
   #maxSnapshotsPerFeature: number;
+  #maxTrackedFeatures: number;
 
   constructor(options: KvSnapshotStoreOptions = {}) {
     this.#maxSnapshotsPerFeature =
       options.maxSnapshotsPerFeature ?? MAX_SNAPSHOTS_PER_FEATURE;
+    this.#maxTrackedFeatures =
+      options.maxTrackedFeatures ?? MAX_TRACKED_FEATURES;
   }
 
   async list(featureId: string): Promise<FeatureSnapshot[]> {
@@ -145,6 +177,24 @@ export class MemorySnapshotStore implements SnapshotStore {
   }
 
   async add(featureId: string, snapshot: FeatureSnapshot): Promise<boolean> {
+    if (
+      !this.#byFeature.has(featureId) &&
+      this.#byFeature.size >= this.#maxTrackedFeatures
+    ) {
+      // Same reclaim story as the KV store: evict the least-recently-captured
+      // feature (arrays are kept sorted ascending, so the last entry is the
+      // newest capture) instead of denying history to new features forever.
+      let oldest: string | null = null;
+      let oldestAt = "";
+      for (const [id, snaps] of this.#byFeature) {
+        const at = snaps[snaps.length - 1]?.at ?? "";
+        if (!oldest || at < oldestAt) {
+          oldest = id;
+          oldestAt = at;
+        }
+      }
+      if (oldest !== null) this.#byFeature.delete(oldest);
+    }
     const all = this.#byFeature.get(featureId) ?? [];
     all.push(snapshot);
     all.sort((a, b) => a.at.localeCompare(b.at));
