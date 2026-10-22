@@ -469,6 +469,76 @@ Deno.test("a re-capture holding a stale marker cannot resurrect it past the cap"
   }
 });
 
+Deno.test("evicting a victim re-captured mid-flight deletes its newest keys too", async () => {
+  // Deterministic chrome-status-lite-2pm (r83 remedy (b)): a re-capture of
+  // the eviction victim commits between the victim-key list and the eviction
+  // commit. The eviction must notice the victim marker's versionstamp change
+  // and retry - without that check it deletes only the keys it listed and
+  // the re-capture's newest snapshot key is left orphaned under no marker.
+  const baseKv = await Deno.openKv(":memory:");
+  let armed = false;
+  let inject: () => Promise<void> = () => Promise.resolve();
+  const kv = new Proxy(baseKv, {
+    get(t, p) {
+      if (p === "list") {
+        return (selector: { prefix?: unknown[] }, options?: unknown) => {
+          const iter = t.list(selector as never, options as never);
+          if (
+            !armed || !Array.isArray(selector?.prefix) ||
+            selector.prefix[0] !== "feature" || selector.prefix[1] !== "V"
+          ) {
+            return iter;
+          }
+          armed = false; // fire once: a retry must list the fresh keys
+          const action = inject;
+          return (async function* () {
+            // Drain the real iterator (the pre-re-capture key list), commit
+            // the racing re-capture, then hand back the stale entries.
+            const drained: Deno.KvEntry<unknown>[] = [];
+            for await (const entry of iter) drained.push(entry);
+            await action();
+            yield* drained;
+          })();
+        };
+      }
+      const v = Reflect.get(t, p);
+      return typeof v === "function" ? v.bind(t) : v;
+    },
+  });
+  const store = new KvSnapshotStore(undefined, {
+    maxTrackedFeatures: 1,
+    openKv: async () => kv,
+  });
+  // The racing re-capture runs against the raw KV, like a concurrent
+  // request's store would.
+  const racingStore = new KvSnapshotStore(undefined, {
+    maxTrackedFeatures: 1,
+    openKv: async () => baseKv,
+  });
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    await store.add("V", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "v1" } });
+    armed = true;
+    inject = () =>
+      racingStore.add("V", { at: "2026-01-05T00:00:00.000Z", data: { Summary: "v2" } })
+        .then(() => {});
+    await store.add("F", { at: "2026-01-03T00:00:00.000Z", data: { Summary: "f" } });
+    // V must be fully gone: marker AND every snapshot key, including the one
+    // the re-capture wrote after the eviction listed its keys.
+    equal((await baseKv.get(["feature_index", "V"])).value, null);
+    let vKeys = 0;
+    for await (const _entry of baseKv.list({ prefix: ["feature", "V"] })) vKeys++;
+    equal(vKeys, 0);
+    // F took V's slot and the counter still accounts for exactly one feature.
+    equal((await baseKv.get(["feature_index", "F"])).value !== null, true);
+    equal((await store.list("F")).length, 1);
+    equal((await baseKv.get(["feature_count"])).value, 1);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
 Deno.test("KvSnapshotStore trim keeps the newest snapshots even when the backend lists keys in reverse", async () => {
   // The embedded backend only lists ascending, so the call-site use of the
   // sorted trim can only be pinned by a non-ascending backend (yrn). Inject

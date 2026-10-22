@@ -164,18 +164,24 @@ export class KvSnapshotStore implements SnapshotStore {
     // either adds one marker or swaps one, so bursts cannot ratchet the
     // index. A commit that loses the race fails its check (ok: false) and
     // retries against a fresh scan; contention beyond MAX_EVICTION_ATTEMPTS
-    // degrades to an observable drop. Victim snapshot keys are listed before
-    // the commit, so a victim recaptured mid-eviction can leave up to the
-    // per-feature cap of orphaned keys with no marker; the next eviction of
-    // a recaptured marker cleans them.
+    // degrades to an observable drop. A victim re-captured mid-eviction
+    // changes its marker's versionstamp, which fails the victim-marker check
+    // in the eviction branch (chrome-status-lite-2pm): the retry lists the
+    // victim's keys fresh, so the re-capture's snapshots are deleted with
+    // the marker instead of being stranded as orphans.
     for (let attempt = 1; ; attempt++) {
       const ownMarker = await kv.get([FEATURE_INDEX_KEY, featureId]);
-      let victim: { featureId: string; key: Deno.KvKey; at: string } | null = null;
+      let victim: {
+        featureId: string;
+        key: Deno.KvKey;
+        at: string;
+        versionstamp: string;
+      } | null = null;
       let counter: Deno.KvEntryMaybe<number> | null = null;
       let count = 0;
       if (ownMarker.value === null) {
         counter = await kv.get<number>([FEATURE_COUNT_KEY]);
-        let entries: Deno.KvEntryMaybe<unknown>[] | null = null;
+        let entries: Deno.KvEntry<unknown>[] | null = null;
         count = typeof counter.value === "number"
           ? counter.value
           // Bootstrap for pre-counter indexes: derive the count once from
@@ -196,6 +202,7 @@ export class KvSnapshotStore implements SnapshotStore {
                 featureId: String(entry.key[entry.key.length - 1]),
                 key: entry.key,
                 at,
+                versionstamp: entry.versionstamp,
               };
             }
           }
@@ -223,6 +230,13 @@ export class KvSnapshotStore implements SnapshotStore {
       if (ownMarker.value === null && counter) {
         op.check({ key: [FEATURE_COUNT_KEY], versionstamp: counter.versionstamp });
         if (victim) {
+          // r83 remedy (b) / chrome-status-lite-2pm: fail the eviction when
+          // the victim was re-captured after the marker scan - its marker's
+          // versionstamp changed, and committing would delete only the keys
+          // listed before the re-capture, stranding its newest snapshot key
+          // under no marker. The failed check re-enters the retry loop,
+          // which lists the victim's keys fresh.
+          op.check({ key: victim.key, versionstamp: victim.versionstamp });
           for (const e of await Array.fromAsync(
             kv.list({ prefix: ["feature", victim.featureId] }),
           )) {
