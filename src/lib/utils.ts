@@ -4,18 +4,49 @@ import LRU from "https://deno.land/x/lru_cache@6.0.0-deno.4/mod.ts";
 const CHROMESTATUS_API_ENDPOINT = "https://chromestatus.com";
 const CACHE_MAX_ITEMS = 100;
 const CACHE_MAX_AGE = 1000 * 60 * 60; // 1 hour.
+// Upstream bounds: chromestatus.com has accepted connections and then stalled
+// in the past, and Deno's fetch has no default timeout, so without these a
+// single hung upstream parks every awaiting route handler (and its buffered
+// memory) forever. Errors from either bound are rethrown as plain Errors so
+// the existing error-notice / .catch(() => ({})) fallbacks engage.
+const FETCH_TIMEOUT_MS = 15_000;
+const FETCH_MAX_BODY_BYTES = 16 * 1024 * 1024; // 16 MB.
+
+// Fails the stream once more than `limit` bytes have flowed through it, so a
+// never-ending upstream body cannot grow the buffered text without bound.
+function byteLimitStream(limit: number): TransformStream<Uint8Array, Uint8Array> {
+  let seen = 0;
+  return new TransformStream({
+    transform(chunk, controller) {
+      seen += chunk.byteLength;
+      if (seen > limit) {
+        controller.error(
+          new Error(`Upstream body exceeded ${limit} bytes`),
+        );
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+}
 
 export class ChromeStatusAPI {
   private static instance: null | ChromeStatusAPI = null;
 
   private cache: Pick<LRU<string, any>, "get" | "set">;
   private fetcher: typeof fetch;
+  private timeoutMs: number;
+  private maxBodyBytes: number;
 
   constructor(options: {
     fetcher?: typeof fetch;
     cache?: Pick<LRU<string, any>, "get" | "set">;
+    timeoutMs?: number;
+    maxBodyBytes?: number;
   } = {}) {
     this.fetcher = options.fetcher ?? fetch;
+    this.timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
+    this.maxBodyBytes = options.maxBodyBytes ?? FETCH_MAX_BODY_BYTES;
     this.cache = options.cache ?? new LRU<string, any>({
       max: CACHE_MAX_ITEMS,
       maxAge: CACHE_MAX_AGE,
@@ -86,17 +117,48 @@ export class ChromeStatusAPI {
     return this.fetchJson(`/api/v0/features/${id}`);
   }
 
-  private async fetchJson<T>(path: string): Promise<T> {
+  private async fetchJson<T>(
+    path: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<T> {
     let json = this.cache.get(path);
 
     if (!json) {
-      console.log(CHROMESTATUS_API_ENDPOINT + path);
-      const response = await this.fetcher(CHROMESTATUS_API_ENDPOINT + path);
+      const url = CHROMESTATUS_API_ENDPOINT + path;
+      console.log(url);
+      // Bound the upstream wait even when no caller signal is available; a
+      // caller's signal (e.g. the incoming request's) aborts the fetch too.
+      const signals = [AbortSignal.timeout(this.timeoutMs)];
+      if (options.signal) signals.push(options.signal);
+      const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+      let response: Response;
+      try {
+        response = await this.fetcher(url, { signal });
+      } catch (err) {
+        throw new Error(
+          `Upstream fetch failed for ${path}: ${(err as Error).message}`,
+        );
+      }
       if (!response.ok) {
         throw new Error(`Upstream HTTP ${response.status} from ${path}`);
       }
-      const strippedResponse = new Response(response.body?.pipeThrough(new StripStream()));
-      const text = await strippedResponse.text();
+      let body = response.body;
+      if (body == null) {
+        throw new Error(`Upstream returned no body for ${path}`);
+      }
+      const strippedResponse = new Response(
+        body
+          .pipeThrough(new StripStream())
+          .pipeThrough(byteLimitStream(this.maxBodyBytes)),
+      );
+      let text: string;
+      try {
+        text = await strippedResponse.text();
+      } catch (err) {
+        throw new Error(
+          `Upstream body read failed for ${path}: ${(err as Error).message}`,
+        );
+      }
       json = JSON.parse(text);
       this.cache.set(path, json);
     }

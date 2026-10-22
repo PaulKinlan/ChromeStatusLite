@@ -88,3 +88,74 @@ Deno.test("getFeaturesForVersion rejects milestones that are not integers", asyn
   }
   equal(caught, true);
 });
+
+Deno.test("fetchJson passes an AbortSignal to the fetcher", async () => {
+  let seenSignal: AbortSignal | undefined;
+  const client = new ChromeStatusAPI({
+    fetcher: async (_input, init) => {
+      seenSignal = init?.signal ?? undefined;
+      return new Response(`)]}'\n{}`);
+    },
+  });
+  await client.getFeature(1);
+  equal(seenSignal instanceof AbortSignal, true);
+});
+
+Deno.test("a stalled upstream times out and surfaces as a thrown error, not a hang", async () => {
+  // A fetcher that accepts the connection and then stalls forever, only
+  // settling when the passed signal aborts — the chromestatus.com failure
+  // mode that used to park route handlers indefinitely.
+  const started = Date.now();
+  const client = new ChromeStatusAPI({
+    timeoutMs: 5,
+    fetcher: (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("The operation timed out", "TimeoutError"))
+        );
+      }),
+  });
+  let caught: Error | undefined;
+  try {
+    await client.getFeature(123);
+  } catch (err) {
+    caught = err as Error;
+  }
+  const elapsed = Date.now() - started;
+  equal(caught instanceof Error, true);
+  equal(caught!.message.includes("Upstream fetch failed"), true);
+  // Generous bound: must be far below the production default (15 s), proving
+  // the configured timeout fired rather than the test merely racing it.
+  equal(elapsed < 5000, true);
+});
+
+Deno.test("an upstream body past the byte cap is rejected", async () => {
+  const big = "x".repeat(1024);
+  const client = new ChromeStatusAPI({
+    maxBodyBytes: 64,
+    fetcher: async () => new Response(`)]}'\n${big}`),
+  });
+  let caught: Error | undefined;
+  try {
+    await client.getFeature(123);
+  } catch (err) {
+    caught = err as Error;
+  }
+  equal(caught instanceof Error, true);
+  equal(caught!.message.includes("Upstream body read failed"), true);
+  equal(caught!.message.includes("exceeded 64 bytes"), true);
+});
+
+Deno.test("an upstream response with no body throws instead of hanging", async () => {
+  const client = new ChromeStatusAPI({
+    fetcher: async () => new Response(null),
+  });
+  let caught: Error | undefined;
+  try {
+    await client.getFeature(123);
+  } catch (err) {
+    caught = err as Error;
+  }
+  equal(caught instanceof Error, true);
+  equal(caught!.message.includes("no body"), true);
+});
