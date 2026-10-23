@@ -159,3 +159,67 @@ Deno.test("an upstream response with no body throws instead of hanging", async (
   equal(caught instanceof Error, true);
   equal(caught!.message.includes("no body"), true);
 });
+
+Deno.test("getVersions returns a bounded descending list for a well-formed channels payload", async () => {
+  const client = new ChromeStatusAPI({
+    fetcher: async (input) => {
+      equal(String(input), "https://chromestatus.com/api/v0/channels");
+      return new Response(
+        `)]}'\n${
+          JSON.stringify({ dev: { version: "5" }, stable: { version: "3" } })
+        }`,
+      );
+    },
+  });
+  equal(
+    JSON.stringify(await client.getVersions()),
+    JSON.stringify([4, 3, 2, 1, 0]),
+  );
+});
+
+Deno.test("getVersions rejects malformed dev.version with a plain error, not a RangeError", async () => {
+  // Missing, non-numeric, negative and null-payload variants all used to hit
+  // an unguarded Array(NaN | -3) and throw an uncatchable-shaped RangeError.
+  const payloads = [
+    {},
+    { dev: {} },
+    { dev: { version: "not-a-number" } },
+    { dev: { version: "-3" } },
+    null,
+  ];
+  for (const payload of payloads) {
+    const client = new ChromeStatusAPI({
+      fetcher: async () =>
+        new Response(`)]}'\n${JSON.stringify(payload)}`),
+    });
+    let caught = false;
+    try {
+      await client.getVersions();
+    } catch (err) {
+      caught = true;
+      equal(
+        (err as Error).message.includes("implausible dev.version"),
+        true,
+      );
+      equal(err instanceof RangeError, false);
+    }
+    equal(caught, true, `payload ${JSON.stringify(payload)} must reject`);
+  }
+});
+
+Deno.test("getVersions rejects an implausibly large dev.version instead of materialising it", async () => {
+  // Array(1e9) used to be materialised (~8 GB) before .reverse() — an OOM the
+  // route-level try/catch can never run in.
+  const client = new ChromeStatusAPI({
+    fetcher: async () =>
+      new Response(`)]}'\n${JSON.stringify({ dev: { version: 1e9 } })}`),
+  });
+  let caught = false;
+  try {
+    await client.getVersions();
+  } catch (err) {
+    caught = true;
+    equal((err as Error).message.includes("implausible dev.version"), true);
+  }
+  equal(caught, true);
+});
