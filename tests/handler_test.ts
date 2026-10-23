@@ -147,6 +147,25 @@ Deno.test("feed and apiVersion route modules execute directly with injected clie
   equal(data.version, 120);
 });
 
+Deno.test("feed.xml omits pubDate for an unparseable stable_date", async () => {
+  const handler = createHandler(fixtureClient({
+    getVersions: async () => [120, 119],
+    getChannels: async () => ({
+      "120": { stable_date: "unknown" },
+      "119": { stable_date: "2024-03-01T00:00:00Z" },
+    }),
+    getFeaturesForVersion: async (v) => ({ "Enabled by default": [{ id: v, name: `Feature ${v}` }] }),
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/feed.xml?limit=2"));
+  equal(res.status, 200);
+  const xml = await res.text();
+  equal(xml.includes("Invalid Date"), false);
+  includes(xml, "<pubDate>Fri, 01 Mar 2024 00:00:00 GMT</pubDate>");
+  // The unparseable milestone item renders without any pubDate element.
+  const item120 = xml.split("<item>").find((s) => s.includes("Chrome 120")) || "";
+  equal(item120.includes("<pubDate>"), false);
+});
+
 Deno.test("feed.xml includes all dynamic upstream buckets like Stepped rollout", async () => {
   const client = fixtureClient({
     getVersions: async () => [157],

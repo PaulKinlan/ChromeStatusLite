@@ -1,5 +1,6 @@
 import type { StatusClient } from "../handler.ts";
 import { hasValidBuckets } from "../lib/buckets.ts";
+import { parseStableDate } from "../lib/utils.ts";
 
 function escapeXml(unsafe: string): string {
   return unsafe
@@ -122,9 +123,9 @@ export default async function feed(
     }
 
     const channelData = channels?.[String(version)] ?? channels?.[version];
-    const stableDate = channelData?.stable_date;
+    const stableDate = parseStableDate(channelData?.stable_date);
     const pubDateTag = stableDate
-      ? `      <pubDate>${new Date(stableDate).toUTCString()}</pubDate>\n`
+      ? `      <pubDate>${stableDate.toUTCString()}</pubDate>\n`
       : "";
 
     const descriptionHtml = milestone.ok

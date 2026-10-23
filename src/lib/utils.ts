@@ -2,14 +2,21 @@ import { StripStream } from "../stream-utils.ts";
 import LRU from "https://deno.land/x/lru_cache@6.0.0-deno.4/mod.ts";
 import { format as formatDateTime } from "https://deno.land/std@0.152.0/datetime/mod.ts";
 
-// Renders an upstream stable_date as "yyyy-MM-dd", or null when the value is
-// absent or unparseable. std datetime's format renders an Invalid Date as
-// "NaN-NaN-NaN" rather than throwing, so validate before formatting.
-export function formatStableDate(value: unknown): string | null {
+// Parses an upstream stable_date, or null when the value is absent or
+// unparseable. Callers must validate before formatting: std datetime's
+// format renders an Invalid Date as "NaN-NaN-NaN" and Date.toUTCString()
+// renders it as "Invalid Date" rather than throwing.
+export function parseStableDate(value: unknown): Date | null {
   if (typeof value !== "string" || value === "") return null;
   const date = new Date(value);
-  if (isNaN(date.getTime())) return null;
-  return formatDateTime(date, "yyyy-MM-dd");
+  return isNaN(date.getTime()) ? null : date;
+}
+
+// Renders an upstream stable_date as "yyyy-MM-dd", or null when the value is
+// absent or unparseable.
+export function formatStableDate(value: unknown): string | null {
+  const date = parseStableDate(value);
+  return date ? formatDateTime(date, "yyyy-MM-dd") : null;
 }
 
 const CHROMESTATUS_API_ENDPOINT = "https://chromestatus.com";
