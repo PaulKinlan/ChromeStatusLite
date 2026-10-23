@@ -2,6 +2,9 @@ import { StripStream } from "../stream-utils.ts";
 import LRU from "https://deno.land/x/lru_cache@6.0.0-deno.4/mod.ts";
 
 const CHROMESTATUS_API_ENDPOINT = "https://chromestatus.com";
+// Single-sourced because it is also the cache key getVersions() must evict
+// when it finds the cached body malformed (chrome-status-lite-8uv).
+const CHANNELS_PATH = "/api/v0/channels";
 const CACHE_MAX_ITEMS = 100;
 const CACHE_MAX_AGE = 1000 * 60 * 60; // 1 hour.
 // Upstream bounds: chromestatus.com has accepted connections and then stalled
@@ -40,14 +43,21 @@ function byteLimitStream(limit: number): TransformStream<Uint8Array, Uint8Array>
 export class ChromeStatusAPI {
   private static instance: null | ChromeStatusAPI = null;
 
-  private cache: Pick<LRU<string, any>, "get" | "set">;
+  // `del` is optional so get/set-only test doubles keep working; the real
+  // LRU implements it (that is its delete-by-key name), and only the
+  // malformed-channels eviction path needs it.
+  private cache: Pick<LRU<string, any>, "get" | "set"> & {
+    del?: (key: string) => void;
+  };
   private fetcher: typeof fetch;
   private timeoutMs: number;
   private maxBodyBytes: number;
 
   constructor(options: {
     fetcher?: typeof fetch;
-    cache?: Pick<LRU<string, any>, "get" | "set">;
+    cache?: Pick<LRU<string, any>, "get" | "set"> & {
+      del?: (key: string) => void;
+    };
     timeoutMs?: number;
     maxBodyBytes?: number;
   } = {}) {
@@ -72,7 +82,7 @@ export class ChromeStatusAPI {
     if (start != undefined && end != undefined) {
       queryString = `?start=${start}&end=${end}`;
     }
-    return this.fetchJson(`/api/v0/channels${queryString}`);
+    return this.fetchJson(`${CHANNELS_PATH}${queryString}`);
   }
 
   // Returns features for a milestone grouped by status, e.g.
@@ -102,6 +112,13 @@ export class ChromeStatusAPI {
       !Number.isFinite(lastVersion) || lastVersion <= 0 ||
       lastVersion > MAX_PLAUSIBLE_VERSION
     ) {
+      // fetchJson() has already cached the parsed body, so without this the
+      // same malformed payload would be re-served from cache — and re-thrown
+      // — for up to CACHE_MAX_AGE (1h). Every other malformed-upstream shape
+      // throws before the cache write and recovers on the next request; drop
+      // the poisoned entry (del: the LRU's delete-by-key) so this shape does
+      // too.
+      this.cache.del?.(CHANNELS_PATH);
       throw new Error(
         `Upstream returned an implausible dev.version: ${
           JSON.stringify(rawVersion)

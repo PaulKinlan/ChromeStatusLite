@@ -223,3 +223,52 @@ Deno.test("getVersions rejects an implausibly large dev.version instead of mater
   }
   equal(caught, true);
 });
+
+Deno.test("getVersions evicts a malformed cached channels body so the next request re-fetches", async () => {
+  // A malformed-but-parseable body used to stay cached for CACHE_MAX_AGE (1h),
+  // so every version route stayed in error notices long after upstream fixed
+  // itself. The invalid payload must be evicted: fetch #2 must actually happen
+  // and a recovered payload must be served.
+  let fetches = 0;
+  const client = new ChromeStatusAPI({
+    fetcher: async () => {
+      fetches++;
+      const payload = fetches === 1
+        ? { dev: { version: "not-a-number" } }
+        : { dev: { version: "120" } };
+      return new Response(`)]}'\n${JSON.stringify(payload)}`);
+    },
+  });
+  let caught = false;
+  try {
+    await client.getVersions();
+  } catch {
+    caught = true;
+  }
+  equal(caught, true);
+  const versions = await client.getVersions();
+  equal(fetches, 2);
+  equal(versions.length, 120);
+});
+
+Deno.test("getVersions still rejects with a plain error on a cache without del", async () => {
+  // get/set-only doubles (older fixtures) must keep working: eviction is
+  // best-effort (the real LRU's delete-by-key is named `del`), the guard
+  // itself is not conditional on it.
+  const client = new ChromeStatusAPI({
+    cache: {
+      get: () => undefined,
+      set: () => {},
+    },
+    fetcher: async () =>
+      new Response(`)]}'\n${JSON.stringify({ dev: {} })}`),
+  });
+  let caught = false;
+  try {
+    await client.getVersions();
+  } catch (err) {
+    caught = true;
+    equal((err as Error).message.includes("implausible dev.version"), true);
+  }
+  equal(caught, true);
+});
