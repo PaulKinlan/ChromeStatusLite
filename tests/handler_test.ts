@@ -248,6 +248,39 @@ Deno.test("breaking view renders breaking changes timeline and badges", async ()
   includes(html, 'href="/origin-trials"');
 });
 
+Deno.test("breaking and origin-trials render sections without a date for unparseable stable_date", async () => {
+  const client = fixtureClient({
+    getVersions: async () => [120],
+    getChannels: async () => ({
+      stable: { version: "120" },
+      dev: { version: "121" },
+      "120": { stable_date: "unknown" },
+    }),
+    getFeaturesForVersion: async () => ({
+      "Deprecated": [{ id: 101, name: "Deprecated API" }],
+      "Origin trial": [{ id: 301, name: "Trial API" }],
+    }),
+    getFeaturesByType: async () => ({ features: [] }),
+  });
+  const handler = createHandler(client);
+
+  const breakingRes = await handler(new Request("https://chromestatuslite.com/breaking"));
+  equal(breakingRes.status, 200);
+  const breakingHtml = await breakingRes.text();
+  includes(breakingHtml, "Chrome 120");
+  includes(breakingHtml, "Deprecated API");
+  equal(breakingHtml.includes("milestone-date"), false);
+  equal(breakingHtml.includes("NaN-NaN-NaN"), false);
+
+  const otRes = await handler(new Request("https://chromestatuslite.com/origin-trials"));
+  equal(otRes.status, 200);
+  const otHtml = await otRes.text();
+  includes(otHtml, "Chrome 120");
+  includes(otHtml, "Trial API");
+  equal(otHtml.includes("milestone-date"), false);
+  equal(otHtml.includes("NaN-NaN-NaN"), false);
+});
+
 Deno.test("origin-trials view renders active trials tracker", async () => {
   const client = fixtureClient({
     getVersions: async () => [120, 119],

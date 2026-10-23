@@ -1,6 +1,6 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
+import { formatStableDate } from "../lib/utils.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
@@ -86,14 +86,7 @@ const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
 const renderDeprecation = (deprecation, channels) => {
   const desktopVersion = deprecation?.browsers?.chrome?.desktop;
   let channel = (channels && desktopVersion) ? channels[desktopVersion] : undefined;
-  let date = 'N/A';
-  if (channel && channel.stable_date) {
-    try {
-      date = format(new Date(channel.stable_date), 'yyyy-MM-dd');
-    } catch {
-      date = 'N/A';
-    }
-  }
+  let date = formatStableDate(channel?.stable_date) ?? 'N/A';
 
   let name = escapeHtml(deprecation?.name || 'Unnamed feature');
   let id = deprecation?.id ? encodeURIComponent(String(deprecation.id)) : '';
