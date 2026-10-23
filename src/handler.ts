@@ -19,6 +19,26 @@ export type StatusClient = Pick<ChromeStatusAPI,
 
 const CANONICAL_ORIGIN = "https://chromestatuslite.com";
 
+// Baseline hardening applied to every outgoing response. The markup uses no
+// inline scripts or styles and loads assets only from this origin; the only
+// exception is the stylesheet's inline data: SVG used for the select arrow.
+const SECURITY_HEADERS: Record<string, string> = {
+  "content-security-policy": "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "x-frame-options": "DENY",
+};
+
+function withSecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 // Constructing the handler never starts a listener or fetches upstream data.
 // Tests supply a fresh client; production keeps the shared cached singleton.
 export function createHandler(
@@ -26,7 +46,7 @@ export function createHandler(
   staticRoot = join(Deno.cwd(), "static"),
   store: SnapshotStore | null = null,
 ): (request: Request) => Promise<Response> {
-  return async (request: Request): Promise<Response> => {
+  const route = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (url.hostname.endsWith(".deno.net") || url.hostname.endsWith(".deno.dev")) {
       return new Response(null, {
@@ -69,4 +89,5 @@ export function createHandler(
       return new Response("Not found", { status: 404 });
     }
   };
+  return async (request: Request): Promise<Response> => withSecurityHeaders(await route(request));
 }

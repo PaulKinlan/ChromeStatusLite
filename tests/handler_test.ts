@@ -15,6 +15,24 @@ Deno.test("import-safe handler redirects Deno hosts without querying upstream", 
   }
 });
 
+Deno.test("every response carries baseline security headers", async () => {
+  const handler = createHandler(fixtureClient());
+  const cases: Array<[string, number]> = [
+    ["/", 200], // HTML route
+    ["/styles/index.css", 200], // static asset
+    ["/unknown", 404], // 404 path
+  ];
+  for (const [path, status] of cases) {
+    const res = await handler(new Request(`https://chromestatuslite.com${path}`));
+    equal(res.status, status);
+    equal(res.headers.get("content-security-policy"), "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'");
+    equal(res.headers.get("x-content-type-options"), "nosniff");
+    equal(res.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+    equal(res.headers.get("x-frame-options"), "DENY");
+    await res.body?.cancel();
+  }
+});
+
 Deno.test("static assets and unknown paths", async () => {
   const handler = createHandler(fixtureClient());
   const asset = await handler(new Request("https://chromestatuslite.com/styles/index.css"));
