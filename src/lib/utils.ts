@@ -11,6 +11,13 @@ const CACHE_MAX_AGE = 1000 * 60 * 60; // 1 hour.
 // the existing error-notice / .catch(() => ({})) fallbacks engage.
 const FETCH_TIMEOUT_MS = 15_000;
 const FETCH_MAX_BODY_BYTES = 16 * 1024 * 1024; // 16 MB.
+// Sanity bound for the dev-channel version: real Chrome milestones are two
+// digits, so anything past this is malformed upstream data. Allocating the
+// version list before validating would throw Array(NaN) RangeErrors or
+// materialise an Array(1e9) (~8 GB) that OOMs the whole process — one bad
+// /api/v0/channels payload must not do that, it must fail like any other
+// malformed upstream body: a thrown error the routes render as an error notice.
+const MAX_PLAUSIBLE_VERSION = 2000;
 
 // Fails the stream once more than `limit` bytes have flowed through it, so a
 // never-ending upstream body cannot grow the buffered text without bound.
@@ -89,9 +96,20 @@ export class ChromeStatusAPI {
 
   public async getVersions(): Promise<any> {
     const versionData = await this.getChannels();
-    const lastVersion = Number.parseInt(versionData.dev.version);
+    const rawVersion = versionData?.dev?.version;
+    const lastVersion = Number.parseInt(rawVersion);
+    if (
+      !Number.isFinite(lastVersion) || lastVersion <= 0 ||
+      lastVersion > MAX_PLAUSIBLE_VERSION
+    ) {
+      throw new Error(
+        `Upstream returned an implausible dev.version: ${
+          JSON.stringify(rawVersion)
+        }`,
+      );
+    }
 
-    return [...Array(lastVersion).keys()].reverse();
+    return Array.from({ length: lastVersion }, (_, i) => lastVersion - 1 - i);
   }
 
   public async getFeaturesByType(type: number): Promise<any> {
