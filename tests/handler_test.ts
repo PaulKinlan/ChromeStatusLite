@@ -15,6 +15,24 @@ Deno.test("import-safe handler redirects Deno hosts without querying upstream", 
   }
 });
 
+Deno.test("every response carries baseline security headers", async () => {
+  const handler = createHandler(fixtureClient());
+  const cases: Array<[string, number]> = [
+    ["/", 200], // HTML route
+    ["/styles/index.css", 200], // static asset
+    ["/unknown", 404], // 404 path
+  ];
+  for (const [path, status] of cases) {
+    const res = await handler(new Request(`https://chromestatuslite.com${path}`));
+    equal(res.status, status);
+    equal(res.headers.get("content-security-policy"), "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'");
+    equal(res.headers.get("x-content-type-options"), "nosniff");
+    equal(res.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+    equal(res.headers.get("x-frame-options"), "DENY");
+    await res.body?.cancel();
+  }
+});
+
 Deno.test("static assets and unknown paths", async () => {
   const handler = createHandler(fixtureClient());
   const asset = await handler(new Request("https://chromestatuslite.com/styles/index.css"));
@@ -129,6 +147,25 @@ Deno.test("feed and apiVersion route modules execute directly with injected clie
   equal(data.version, 120);
 });
 
+Deno.test("feed.xml omits pubDate for an unparseable stable_date", async () => {
+  const handler = createHandler(fixtureClient({
+    getVersions: async () => [120, 119],
+    getChannels: async () => ({
+      "120": { stable_date: "unknown" },
+      "119": { stable_date: "2024-03-01T00:00:00Z" },
+    }),
+    getFeaturesForVersion: async (v) => ({ "Enabled by default": [{ id: v, name: `Feature ${v}` }] }),
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/feed.xml?limit=2"));
+  equal(res.status, 200);
+  const xml = await res.text();
+  equal(xml.includes("Invalid Date"), false);
+  includes(xml, "<pubDate>Fri, 01 Mar 2024 00:00:00 GMT</pubDate>");
+  // The unparseable milestone item renders without any pubDate element.
+  const item120 = xml.split("<item>").find((s) => s.includes("Chrome 120")) || "";
+  equal(item120.includes("<pubDate>"), false);
+});
+
 Deno.test("feed.xml includes all dynamic upstream buckets like Stepped rollout", async () => {
   const client = fixtureClient({
     getVersions: async () => [157],
@@ -228,6 +265,39 @@ Deno.test("breaking view renders breaking changes timeline and badges", async ()
   includes(html, 'href="/diff"');
   includes(html, 'href="/breaking"');
   includes(html, 'href="/origin-trials"');
+});
+
+Deno.test("breaking and origin-trials render sections without a date for unparseable stable_date", async () => {
+  const client = fixtureClient({
+    getVersions: async () => [120],
+    getChannels: async () => ({
+      stable: { version: "120" },
+      dev: { version: "121" },
+      "120": { stable_date: "unknown" },
+    }),
+    getFeaturesForVersion: async () => ({
+      "Deprecated": [{ id: 101, name: "Deprecated API" }],
+      "Origin trial": [{ id: 301, name: "Trial API" }],
+    }),
+    getFeaturesByType: async () => ({ features: [] }),
+  });
+  const handler = createHandler(client);
+
+  const breakingRes = await handler(new Request("https://chromestatuslite.com/breaking"));
+  equal(breakingRes.status, 200);
+  const breakingHtml = await breakingRes.text();
+  includes(breakingHtml, "Chrome 120");
+  includes(breakingHtml, "Deprecated API");
+  equal(breakingHtml.includes("milestone-date"), false);
+  equal(breakingHtml.includes("NaN-NaN-NaN"), false);
+
+  const otRes = await handler(new Request("https://chromestatuslite.com/origin-trials"));
+  equal(otRes.status, 200);
+  const otHtml = await otRes.text();
+  includes(otHtml, "Chrome 120");
+  includes(otHtml, "Trial API");
+  equal(otHtml.includes("milestone-date"), false);
+  equal(otHtml.includes("NaN-NaN-NaN"), false);
 });
 
 Deno.test("origin-trials view renders active trials tracker", async () => {

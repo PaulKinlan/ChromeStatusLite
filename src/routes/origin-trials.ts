@@ -1,7 +1,7 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
 import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
-import { format } from "https://deno.land/std@0.152.0/datetime/mod.ts";
+import { formatStableDate } from "../lib/utils.ts";
 
 import { sanitizeUrl } from "../lib/url.ts";
 import nav from "../ui-components/nav.ts";
@@ -130,9 +130,7 @@ export default async function render(
   const renderMilestoneSection = (milestone: number) => {
     const trials = trialsByMilestone.get(milestone) || [];
     const channelData = channelsData?.[String(milestone)] ?? channelsData?.[milestone];
-    const stableDate = channelData?.stable_date
-      ? format(new Date(channelData.stable_date), "yyyy-MM-dd")
-      : null;
+    const stableDate = formatStableDate(channelData?.stable_date);
 
     const isCurrentActive = milestone >= stableVersion && milestone <= devVersion;
     const isUpcoming = milestone > devVersion;
