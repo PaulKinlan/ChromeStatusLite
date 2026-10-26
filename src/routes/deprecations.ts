@@ -95,7 +95,7 @@ const renderDeprecation = (deprecation, channels) => {
   return template`
         <tr>
             <td>${date}</td>
-            <td><a href="https://chromestatus.com/feature/${id}">${name}</a></td>
+            <td><a href="/feature/${id}">${name}</a></td>
             <td>${intentStage}</td>
             <td><a href="/?version=${versionStr}">${versionStr}</a></td>
         </tr>

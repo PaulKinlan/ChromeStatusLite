@@ -24,8 +24,8 @@ tagged-template renderer.
   Defaults to the latest dev milestone. Use `?version=N` to view any release (e.g. `/?version=120`).
 
 - **`/deprecations`** — A deprecation calendar: every feature flagged for deprecation/removal,
-  sorted by Chrome version with its estimated stable date, intent stage, and a link back to
-  chromestatus.com.
+  sorted by Chrome version with its estimated stable date and intent stage; each feature name links
+  to the local `/feature/:id` page (which itself links out to chromestatus.com).
 
 - **`/feature/:id`** — Detail page for a single feature: summary, motivation, standards position,
   cross-browser signals (Firefox, Safari, web developers), tracking bug, and links to docs,
