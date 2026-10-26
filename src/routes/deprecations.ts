@@ -35,17 +35,22 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
   try {
     const deprecationsSort = (a, b) => {
+      const aDesktop = a?.browsers?.chrome?.desktop;
+      const bDesktop = b?.browsers?.chrome?.desktop;
+
       // Move features without versions to end of list.
-      if (!b.browsers.chrome.desktop) {
+      if (!aDesktop && !bDesktop) {
+        return 0;
+      }
+      if (!bDesktop) {
         return -1;
       }
-
-      if (!a.browsers.chrome.desktop) {
+      if (!aDesktop) {
         return 1;
       }
 
       // Sort by most recent feature.
-      return parseInt(b.browsers.chrome.desktop) - parseInt(a.browsers.chrome.desktop);
+      return parseInt(bDesktop) - parseInt(aDesktop);
     };
 
     const res = await chromeStatusAPI.getFeaturesByType(3);
