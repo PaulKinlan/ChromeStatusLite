@@ -23,13 +23,6 @@ const renderData = async (version, featuresByType) => {
   const removed = getSafeBucket("Removed");
   const deprecated = getSafeBucket("Deprecated");
 
-  console.log(
-    enabled.length,
-    originTrials.length,
-    flaggedFeatures.length,
-    removed.length,
-    deprecated.length
-  );
   return template`
   <h1>Chrome ${escapeHtml(String(version))}</h1>
   <a href="#enabled">Enabled (${enabled.length})</a> |

@@ -178,7 +178,6 @@ export class ChromeStatusAPI {
 
     if (!json) {
       const url = CHROMESTATUS_API_ENDPOINT + path;
-      console.log(url);
       // Bound the upstream wait even when no caller signal is available; a
       // caller's signal (e.g. the incoming request's) aborts the fetch too.
       const signals = [AbortSignal.timeout(this.timeoutMs)];

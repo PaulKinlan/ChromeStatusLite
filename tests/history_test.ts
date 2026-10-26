@@ -115,6 +115,39 @@ Deno.test("the feature page links to its history only when a store is configured
   equal(storeless.includes("/history"), false);
 });
 
+Deno.test("history and diff pages render a self-referential canonical link", async () => {
+  const store = new MemorySnapshotStore();
+  await captureSnapshot(
+    store,
+    "88",
+    { name: "Canonical", summary: "v1" },
+    new Date("2026-01-01T00:00:00Z"),
+  );
+  await captureSnapshot(
+    store,
+    "88",
+    { name: "Canonical", summary: "v2" },
+    new Date("2026-02-01T00:00:00Z"),
+  );
+  const handler = createHandler(fixtureClient(), undefined, store);
+
+  const history = await (await handler(
+    new Request("https://chromestatuslite.com/feature/88/history"),
+  )).text();
+  includes(
+    history,
+    '<link rel="canonical" href="https://chromestatuslite.com/feature/88/history">',
+  );
+
+  const diff = await (await handler(
+    new Request("https://chromestatuslite.com/feature/88/diff?from=2026-01-01T00:00:00.000Z&to=2026-02-01T00:00:00.000Z"),
+  )).text();
+  includes(
+    diff,
+    '<link rel="canonical" href="https://chromestatuslite.com/feature/88/diff?from=2026-01-01T00:00:00.000Z&amp;to=2026-02-01T00:00:00.000Z">',
+  );
+});
+
 Deno.test("without a store the history and diff routes say so instead of failing", async () => {
   const handler = createHandler(fixtureClient());
   for (const path of ["/feature/123/history", "/feature/123/diff"]) {

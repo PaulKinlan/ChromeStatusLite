@@ -8,7 +8,7 @@ import {
 } from "../lib/snapshots.ts";
 import nav from "../ui-components/nav.ts";
 
-const page = (title: string, content) =>
+const page = (title: string, content, canonical: string) =>
   template`
   <!doctype html>
 <html>
@@ -17,6 +17,7 @@ const page = (title: string, content) =>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} — Chrome Platform Status</title>
+  <link rel="canonical" href="${canonical}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 
@@ -38,7 +39,7 @@ const fieldChanges = (from?: FeatureSnapshot, to?: FeatureSnapshot) => {
 };
 
 export async function renderHistory(
-  _request: Request,
+  request: Request,
   match: URLPatternResult,
   _chromeStatusAPI: StatusClient,
   store: SnapshotStore | null,
@@ -47,12 +48,17 @@ export async function renderHistory(
   if (!id || /\D/.test(id)) {
     return new Response("Not found", { status: 404 });
   }
+  const canonicalUrl = new URL(request.url);
+  const canonical = `https://chromestatuslite.com${
+    escapeHtml(canonicalUrl.pathname + canonicalUrl.search)
+  }`;
   if (!store) {
     return page(
       `Feature ${id} history`,
       template`<p><a href="/feature/${id}">&larr; Back to feature</a></p>
       <h1>Feature history</h1>
       <p class="error-notice">Snapshot history is not configured on this deployment.</p>`,
+      canonical,
     ).then((data) => respond(data));
   }
 
@@ -66,6 +72,7 @@ export async function renderHistory(
       template`<p><a href="/feature/${id}">&larr; Back to feature</a></p>
       <h1>Feature history</h1>
       <p class="error-notice">Snapshot history is temporarily unavailable. Please try again later.</p>`,
+      canonical,
     ).then((data) => respond(data));
   }
   // Refresh eviction recency for readers who only ever visit the history
@@ -80,6 +87,7 @@ export async function renderHistory(
       <h1>${escapeHtml(name)}: history</h1>
       <p>No snapshots captured yet. History builds up as readers view this
       feature; check back after the feature's details change.</p>`,
+      canonical,
     ).then((data) => respond(data));
   }
 
@@ -111,7 +119,8 @@ export async function renderHistory(
     tracked fields as they were when a reader viewed the feature.</p>
     <ul class="snapshot-history">${shown.map((_, i) => entries[i])}</ul>
     ${older > 0 ? template`<p>${older} older capture(s) not shown.</p>` : template``}`,
-  ).then((data) => respond(data));
+      canonical,
+    ).then((data) => respond(data));
 }
 
 export async function renderDiff(
@@ -124,12 +133,17 @@ export async function renderDiff(
   if (!id || /\D/.test(id)) {
     return new Response("Not found", { status: 404 });
   }
+  const url = new URL(request.url);
+  const canonical = `https://chromestatuslite.com${
+    escapeHtml(url.pathname + url.search)
+  }`;
   if (!store) {
     return page(
       `Feature ${id} diff`,
       template`<p><a href="/feature/${id}">&larr; Back to feature</a></p>
       <h1>Feature diff</h1>
       <p class="error-notice">Snapshot history is not configured on this deployment.</p>`,
+      canonical,
     ).then((data) => respond(data));
   }
 
@@ -142,12 +156,12 @@ export async function renderDiff(
       template`<p><a href="/feature/${id}">&larr; Back to feature</a></p>
       <h1>Feature diff</h1>
       <p class="error-notice">Snapshot history is temporarily unavailable. Please try again later.</p>`,
+      canonical,
     ).then((data) => respond(data));
   }
   // Same recency refresh as the history page (chrome-status-lite-3fn).
   await store.touch?.(id).catch(() => {});
   const name = snapshots[0]?.data["Name"] ?? `Feature ${id}`;
-  const url = new URL(request.url);
   const fromAt = url.searchParams.get("from");
   const toAt = url.searchParams.get("to");
   let from = (fromAt && snapshots.find((s) => s.at === fromAt)) ??
@@ -168,6 +182,7 @@ export async function renderDiff(
       template`<p><a href="/feature/${id}/history">&larr; Back to history</a></p>
       <h1>${escapeHtml(name)}: diff</h1>
       <p>Two different snapshots are needed for a diff. <a href="/feature/${id}/history">View the history</a> to pick a pair.</p>`,
+      canonical,
     ).then((data) => respond(data));
   }
 
@@ -196,5 +211,6 @@ export async function renderDiff(
     ${paramNotice}
     <p>${from.at.replace("T", " ").slice(0, 16)}Z → ${to.at.replace("T", " ").slice(0, 16)}Z</p>
     <div class="diff">${rows}</div>`,
-  ).then((data) => respond(data));
+      canonical,
+    ).then((data) => respond(data));
 }
