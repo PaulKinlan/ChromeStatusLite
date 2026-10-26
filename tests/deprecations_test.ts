@@ -11,6 +11,32 @@ Deno.test("deprecation calendar renders sorted fixture and stable date", async (
   includes(html, "Intent to Deprecate");
 });
 
+Deno.test("deprecation calendar renders features without a browsers property instead of serving the error notice", async () => {
+  const client = fixtureClient({
+    getFeaturesByType: async () => ({
+      features: [
+        { id: 1, name: "Feature 1", intent_stage: "Stage 1", browsers: { chrome: { desktop: "120" } } },
+        { id: 2, name: "Feature 2", intent_stage: "Stage 2" },
+        { id: 3, name: "Feature 3", intent_stage: "Stage 3" },
+      ],
+    }),
+  });
+  const response = await createHandler(client)(new Request("https://chromestatuslite.com/deprecations"));
+  equal(response.status, 200);
+  const html = await response.text();
+  equal(html.includes("error-notice"), false);
+  includes(html, "Feature 1");
+  includes(html, "Feature 2");
+  includes(html, "Feature 3");
+  // Features without a desktop version sort to the end of the table.
+  const feature1 = html.indexOf("Feature 1");
+  const feature2 = html.indexOf("Feature 2");
+  const feature3 = html.indexOf("Feature 3");
+  if (!(feature1 < feature2 && feature1 < feature3)) {
+    throw new Error(`Expected versioned feature first; got order at ${feature1}, ${feature2}, ${feature3}`);
+  }
+});
+
 Deno.test("deprecation calendar falls back to N/A for an unparseable stable_date", async () => {
   const client = fixtureClient({
     getChannels: async () => ({ "120": { stable_date: "unknown" } }),
