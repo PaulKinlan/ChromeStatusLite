@@ -1,4 +1,5 @@
 import { createHandler } from "../src/handler.ts";
+import type { SnapshotStore } from "../src/lib/snapshots.ts";
 import template from "../src/flora.ts";
 import feed from "../src/routes/feed.ts";
 import apiVersion from "../src/routes/api-version.ts";
@@ -25,12 +26,41 @@ Deno.test("every response carries baseline security headers", async () => {
   for (const [path, status] of cases) {
     const res = await handler(new Request(`https://chromestatuslite.com${path}`));
     equal(res.status, status);
-    equal(res.headers.get("content-security-policy"), "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'");
+    const csp = res.headers.get("content-security-policy") || "";
+    equal(csp, "default-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'");
+    // Pin the hardening directives explicitly so a future header edit cannot silently drop them.
+    for (const directive of ["base-uri 'none'", "object-src 'none'", "form-action 'self'", "frame-ancestors 'none'"]) {
+      includes(csp, directive);
+    }
     equal(res.headers.get("x-content-type-options"), "nosniff");
     equal(res.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
     equal(res.headers.get("x-frame-options"), "DENY");
     await res.body?.cancel();
   }
+});
+
+Deno.test("non-GET/HEAD verbs are rejected with 405 and Allow before dispatch", async () => {
+  const client = fixtureClient({
+    getVersions: () => { throw Error("must not touch upstream"); },
+    getFeaturesForVersion: () => { throw Error("must not touch upstream"); },
+    getFeature: () => { throw Error("must not touch upstream"); },
+  });
+  const store = new Proxy({} as SnapshotStore, {
+    get: () => () => { throw Error("must not touch the snapshot store"); },
+  });
+  const handler = createHandler(client, undefined, store);
+
+  for (const method of ["POST", "PUT", "DELETE"]) {
+    for (const path of ["/", "/feature/123", "/api/version/120"]) {
+      const res = await handler(new Request(`https://chromestatuslite.com${path}`, { method }));
+      equal(res.status, 405);
+      equal(res.headers.get("allow"), path.startsWith("/api/version/") ? "GET, HEAD, OPTIONS" : "GET, HEAD");
+      equal(await res.text(), "");
+    }
+  }
+  // OPTIONS preflight still reaches the API route (204, not 405).
+  const preflight = await handler(new Request("https://chromestatuslite.com/api/version/120", { method: "OPTIONS" }));
+  equal(preflight.status, 204);
 });
 
 Deno.test("static assets and unknown paths", async () => {

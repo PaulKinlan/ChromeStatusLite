@@ -23,7 +23,7 @@ const CANONICAL_ORIGIN = "https://chromestatuslite.com";
 // inline scripts or styles and loads assets only from this origin; the only
 // exception is the stylesheet's inline data: SVG used for the select arrow.
 const SECURITY_HEADERS: Record<string, string> = {
-  "content-security-policy": "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'",
   "x-content-type-options": "nosniff",
   "referrer-policy": "strict-origin-when-cross-origin",
   "x-frame-options": "DENY",
@@ -52,6 +52,18 @@ export function createHandler(
       return new Response(null, {
         status: 301,
         headers: { location: `${CANONICAL_ORIGIN}${url.pathname}${url.search}` },
+      });
+    }
+
+    // Read-only site: only GET/HEAD dispatch. /api/version/:version handles its
+    // own OPTIONS preflight; every other verb gets a clear 405 with Allow, so a
+    // cross-origin form POST can never reach the KV snapshot writes or caches.
+    const isApiVersion = /^\/api\/version\/[^/]+$/.test(url.pathname);
+    if (request.method !== "GET" && request.method !== "HEAD" &&
+        !(isApiVersion && request.method === "OPTIONS")) {
+      return new Response(null, {
+        status: 405,
+        headers: { allow: isApiVersion ? "GET, HEAD, OPTIONS" : "GET, HEAD" },
       });
     }
 
