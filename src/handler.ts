@@ -23,7 +23,7 @@ const CANONICAL_ORIGIN = "https://chromestatuslite.com";
 // inline scripts or styles and loads assets only from this origin; the only
 // exception is the stylesheet's inline data: SVG used for the select arrow.
 const SECURITY_HEADERS: Record<string, string> = {
-  "content-security-policy": "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'",
   "x-content-type-options": "nosniff",
   "referrer-policy": "strict-origin-when-cross-origin",
   "x-frame-options": "DENY",

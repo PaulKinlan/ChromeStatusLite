@@ -25,7 +25,12 @@ Deno.test("every response carries baseline security headers", async () => {
   for (const [path, status] of cases) {
     const res = await handler(new Request(`https://chromestatuslite.com${path}`));
     equal(res.status, status);
-    equal(res.headers.get("content-security-policy"), "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'");
+    const csp = res.headers.get("content-security-policy") || "";
+    equal(csp, "default-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'");
+    // Pin the hardening directives explicitly so a future header edit cannot silently drop them.
+    for (const directive of ["base-uri 'none'", "object-src 'none'", "form-action 'self'", "frame-ancestors 'none'"]) {
+      includes(csp, directive);
+    }
     equal(res.headers.get("x-content-type-options"), "nosniff");
     equal(res.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
     equal(res.headers.get("x-frame-options"), "DENY");
