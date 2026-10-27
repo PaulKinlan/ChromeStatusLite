@@ -1,4 +1,5 @@
 import { createHandler } from "../src/handler.ts";
+import type { SnapshotStore } from "../src/lib/snapshots.ts";
 import template from "../src/flora.ts";
 import feed from "../src/routes/feed.ts";
 import apiVersion from "../src/routes/api-version.ts";
@@ -36,6 +37,30 @@ Deno.test("every response carries baseline security headers", async () => {
     equal(res.headers.get("x-frame-options"), "DENY");
     await res.body?.cancel();
   }
+});
+
+Deno.test("non-GET/HEAD verbs are rejected with 405 and Allow before dispatch", async () => {
+  const client = fixtureClient({
+    getVersions: () => { throw Error("must not touch upstream"); },
+    getFeaturesForVersion: () => { throw Error("must not touch upstream"); },
+    getFeature: () => { throw Error("must not touch upstream"); },
+  });
+  const store = new Proxy({} as SnapshotStore, {
+    get: () => () => { throw Error("must not touch the snapshot store"); },
+  });
+  const handler = createHandler(client, undefined, store);
+
+  for (const method of ["POST", "PUT", "DELETE"]) {
+    for (const path of ["/", "/feature/123", "/api/version/120"]) {
+      const res = await handler(new Request(`https://chromestatuslite.com${path}`, { method }));
+      equal(res.status, 405);
+      equal(res.headers.get("allow"), path.startsWith("/api/version/") ? "GET, HEAD, OPTIONS" : "GET, HEAD");
+      equal(await res.text(), "");
+    }
+  }
+  // OPTIONS preflight still reaches the API route (204, not 405).
+  const preflight = await handler(new Request("https://chromestatuslite.com/api/version/120", { method: "OPTIONS" }));
+  equal(preflight.status, 204);
 });
 
 Deno.test("static assets and unknown paths", async () => {

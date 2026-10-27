@@ -55,6 +55,18 @@ export function createHandler(
       });
     }
 
+    // Read-only site: only GET/HEAD dispatch. /api/version/:version handles its
+    // own OPTIONS preflight; every other verb gets a clear 405 with Allow, so a
+    // cross-origin form POST can never reach the KV snapshot writes or caches.
+    const isApiVersion = /^\/api\/version\/[^/]+$/.test(url.pathname);
+    if (request.method !== "GET" && request.method !== "HEAD" &&
+        !(isApiVersion && request.method === "OPTIONS")) {
+      return new Response(null, {
+        status: 405,
+        headers: { allow: isApiVersion ? "GET, HEAD, OPTIONS" : "GET, HEAD" },
+      });
+    }
+
     if (url.pathname === "/") return index(request, client);
     if (url.pathname === "/deprecations") return deprecations(request, client);
     if (url.pathname === "/diff") return diff(request, client);
