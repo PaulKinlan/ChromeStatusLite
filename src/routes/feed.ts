@@ -2,8 +2,21 @@ import type { StatusClient } from "../handler.ts";
 import { hasValidBuckets } from "../lib/buckets.ts";
 import { parseStableDate } from "../lib/utils.ts";
 
+// XML 1.0 forbids most C0 controls, U+FFFE/U+FFFF and lone surrogates —
+// even inside CDATA. Upstream chromestatus.com JSON can legally carry those
+// codepoints (they survive JSON.parse), and a single one anywhere in the
+// document makes the entire feed unparseable for every reader, so strip them
+// before any markup escaping. Valid surrogate pairs (astral chars) are kept;
+// only unpaired halves match the surrogate alternatives.
+const XML_ILLEGAL_CHARS =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+function stripIllegalXmlChars(text: string): string {
+  return text.replaceAll(XML_ILLEGAL_CHARS, "");
+}
+
 function escapeXml(unsafe: string): string {
-  return unsafe
+  return stripIllegalXmlChars(unsafe)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -12,7 +25,7 @@ function escapeXml(unsafe: string): string {
 }
 
 function cdata(content: string): string {
-  return `<![CDATA[${content.replaceAll("]]>", "]]]]><![CDATA[>")}]]>`;
+  return `<![CDATA[${stripIllegalXmlChars(content).replaceAll("]]>", "]]]]><![CDATA[>")}]]>`;
 }
 
 export default async function feed(
