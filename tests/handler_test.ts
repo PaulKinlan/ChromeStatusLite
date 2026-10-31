@@ -5,7 +5,7 @@ import feed from "../src/routes/feed.ts";
 import apiVersion from "../src/routes/api-version.ts";
 import breaking from "../src/routes/breaking.ts";
 import originTrials from "../src/routes/origin-trials.ts";
-import { equal, fixtureClient, includes } from "./fixture.ts";
+import { equal, fixtureClient, includes, sampleFeature } from "./fixture.ts";
 
 Deno.test("import-safe handler redirects Deno hosts without querying upstream", async () => {
   const handler = createHandler(fixtureClient({ getVersions: () => { throw Error("unexpected fetch"); } }));
@@ -103,6 +103,26 @@ Deno.test("feed.xml serves valid RSS 2.0 with milestones and feature summaries",
   includes(xml, "Enabled by default (1)");
   includes(xml, "Fixture feature");
   includes(xml, "https://chromestatuslite.com/feature/123");
+});
+
+Deno.test("feed.xml strips XML-1.0-illegal chars from upstream names and summaries", async () => {
+  const client = fixtureClient({
+    getFeaturesForVersion: async () => ({
+      "Enabled by default": [{ ...sampleFeature, name: "Bad\u0001Na\u000Bme\uFFFEMid\uD800End", summary: "Summary\u000C with\u001F controls\uFFFF" }],
+    }),
+  });
+  const res = await createHandler(client)(new Request("https://chromestatuslite.com/feed.xml"));
+  equal(res.status, 200);
+  const xml = await res.text();
+  // Control chars, noncharacters and lone surrogates are all legal in JSON
+  // (so they survive JSON.parse upstream) but illegal in XML 1.0 — and one
+  // illegal codepoint anywhere makes every parser reject the whole feed, so
+  // scan the entire document, not just the item.
+  const illegal = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  equal(illegal.test(xml), false);
+  // The legible text around the stripped chars survives.
+  includes(xml, "BadNameMidEnd");
+  includes(xml, "Summary with controls");
 });
 
 Deno.test("api/version/:version returns clean JSON for milestone", async () => {
