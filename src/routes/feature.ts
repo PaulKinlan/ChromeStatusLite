@@ -4,6 +4,7 @@ import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import linkify from "../lib/linkify.ts";
 import { sanitizeUrl } from "../lib/url.ts";
 import { captureSnapshot, type SnapshotStore } from "../lib/snapshots.ts";
+import { isValidFeatureId } from "../lib/utils.ts";
 
 import nav from "../ui-components/nav.ts";
 import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
@@ -274,7 +275,10 @@ const renderFeature = (feature, showHistory = false) => {
 export default async function render(request: Request, match: URLPatternResult, chromeStatusAPI: StatusClient, store: SnapshotStore | null = null): Response {
   const id = match?.pathname?.groups?.id;
 
-  if (!id || /\D/.test(id)) {
+  // Bounded at the seam (chrome-status-lite-s9w): an id longer than a real
+  // chromestatus id cannot exist, so it 404s without an upstream call and
+  // without minting an oversized LRU/store key.
+  if (!isValidFeatureId(id)) {
     return new Response("Not found", { status: 404 });
   }
 

@@ -142,6 +142,30 @@ Deno.test("api/version/:version returns clean JSON for milestone", async () => {
   equal(data.features[0].status_type, "Enabled by default");
 });
 
+Deno.test("api/version rejects out-of-range and overlong milestones at the seam (chrome-status-lite-s9w)", async () => {
+  // Every distinct accepted milestone mints two LRU keys and two upstream
+  // calls, so implausible milestones must be rejected before any client
+  // method runs: milestone 0 and past-2000 values are not Chrome releases,
+  // and an overlong digit string is not a milestone at all.
+  let clientCalls = 0;
+  const handler = createHandler(fixtureClient({
+    getFeaturesForVersion: async () => {
+      clientCalls++;
+      return {};
+    },
+    getChannels: async () => {
+      clientCalls++;
+      return {};
+    },
+  }));
+  for (const version of ["0", "2001", "999999", "1".repeat(25)]) {
+    const res = await handler(new Request(`https://chromestatuslite.com/api/version/${version}`));
+    equal(res.status, 400);
+    includes(await res.text(), "Invalid version parameter");
+  }
+  equal(clientCalls, 0);
+});
+
 Deno.test("api/version/latest resolves to newest milestone", async () => {
   const handler = createHandler(fixtureClient());
   const res = await handler(new Request("https://chromestatuslite.com/api/version/latest"));
@@ -168,7 +192,8 @@ Deno.test("api/version/:version validation, preflight, and 404 behavior", async 
   const badParamData = JSON.parse(await badParam.text());
   includes(badParamData.error, "Invalid version parameter");
 
-  // Milestone not found (e.g. 99999)
+  // Milestone not found: in the plausible range (seam-bound, so it reaches
+  // the upstream query) but absent from the upstream version list.
   const customHandler = createHandler(
     fixtureClient({
       getVersions: async () => [120, 119],
@@ -176,7 +201,7 @@ Deno.test("api/version/:version validation, preflight, and 404 behavior", async 
     }),
   );
   const notFound = await customHandler(
-    new Request("https://chromestatuslite.com/api/version/99999"),
+    new Request("https://chromestatuslite.com/api/version/150"),
   );
   equal(notFound.status, 404);
   const notFoundData = JSON.parse(await notFound.text());

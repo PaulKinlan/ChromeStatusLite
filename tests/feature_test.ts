@@ -1,5 +1,5 @@
 import { createHandler } from "../src/handler.ts";
-import { equal, fixtureClient, includes } from "./fixture.ts";
+import { equal, fixtureClient, includes, sampleFeature } from "./fixture.ts";
 
 Deno.test("feature detail renders fixture and canonical URL", async () => {
   const response = await createHandler(fixtureClient())(new Request("https://chromestatuslite.com/feature/123?ref=nav"));
@@ -38,6 +38,26 @@ Deno.test("invalid and absent feature ids return 404 without an upstream call", 
   const missing = await handler(new Request("https://chromestatuslite.com/feature/456"));
   equal(missing.status, 404);
   includes(await missing.text(), "Feature not found");
+});
+
+Deno.test("overlong numeric feature ids are bounded at the seam (chrome-status-lite-s9w)", async () => {
+  // Real chromestatus ids are <= 16 digits; 17 digits cannot exist, so the
+  // id must 404 without an upstream call — and without minting an oversized
+  // LRU/store key.
+  let upstreamCalls = 0;
+  const handler = createHandler(fixtureClient({
+    getFeature: async () => {
+      upstreamCalls++;
+      return sampleFeature;
+    },
+  }));
+  const overlong = "5".repeat(17);
+  equal((await handler(new Request(`https://chromestatuslite.com/feature/${overlong}`))).status, 404);
+  equal(upstreamCalls, 0);
+  // A 16-digit id — the real id shape — still passes the seam.
+  const plausible = await handler(new Request("https://chromestatuslite.com/feature/5082469066604544"));
+  equal(plausible.status, 200);
+  equal(upstreamCalls, 1);
 });
 
 Deno.test("feature detail linkifies URLs in summary, motivation, signals and notes", async () => {

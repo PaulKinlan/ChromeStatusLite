@@ -31,6 +31,17 @@ Deno.test("viewing a feature captures a snapshot and dedupes unchanged views", a
   equal((await store.list("123")).length, 2);
 });
 
+Deno.test("history and diff bound overlong feature ids at the seam (chrome-status-lite-s9w)", async () => {
+  // The id keys snapshot-store lookups; a digit string longer than a real
+  // chromestatus id must 404 without touching the store.
+  const store = new MemorySnapshotStore();
+  const handler = createHandler(fixtureClient(), undefined, store);
+  const overlong = "5".repeat(17);
+  equal((await handler(new Request(`https://chromestatuslite.com/feature/${overlong}/history`))).status, 404);
+  equal((await handler(new Request(`https://chromestatuslite.com/feature/${overlong}/diff`))).status, 404);
+  equal((await store.list(overlong)).length, 0);
+});
+
 Deno.test("history lists snapshots newest-first with changed fields", async () => {
   const store = new MemorySnapshotStore();
   await captureSnapshot(

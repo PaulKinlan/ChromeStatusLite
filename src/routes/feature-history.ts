@@ -6,6 +6,7 @@ import {
   type FeatureSnapshot,
   type SnapshotStore,
 } from "../lib/snapshots.ts";
+import { isValidFeatureId } from "../lib/utils.ts";
 import nav from "../ui-components/nav.ts";
 
 const page = (title: string, content, canonical: string) =>
@@ -45,7 +46,9 @@ export async function renderHistory(
   store: SnapshotStore | null,
 ): Promise<Response> {
   const id = match?.pathname?.groups?.id;
-  if (!id || /\D/.test(id)) {
+  // Same seam bound as /feature/:id (chrome-status-lite-s9w): the id keys
+  // snapshot-store lookups, so it must be a plausible chromestatus id.
+  if (!isValidFeatureId(id)) {
     return new Response("Not found", { status: 404 });
   }
   const canonicalUrl = new URL(request.url);
@@ -130,7 +133,8 @@ export async function renderDiff(
   store: SnapshotStore | null,
 ): Promise<Response> {
   const id = match?.pathname?.groups?.id;
-  if (!id || /\D/.test(id)) {
+  // Same seam bound as /feature/:id (chrome-status-lite-s9w).
+  if (!isValidFeatureId(id)) {
     return new Response("Not found", { status: 404 });
   }
   const url = new URL(request.url);
