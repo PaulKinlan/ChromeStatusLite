@@ -72,3 +72,16 @@ Deno.test("deprecation calendar falls back to N/A for an unparseable stable_date
   includes(html, "N/A");
   equal(html.includes("NaN-NaN-NaN"), false);
 });
+
+Deno.test("deprecation calendar ships no client script: the version picker is gone (chrome-status-lite-3ux)", async () => {
+  // The 2022 removal of the version picker (de73025) left deprecations.js
+  // behind: it queried the removed #version element and threw a TypeError
+  // on every page load. The markup no longer carries any script for this
+  // page, so nothing can query dead elements.
+  const html = await (await createHandler(fixtureClient())(
+    new Request("https://chromestatuslite.com/deprecations"),
+  )).text();
+  equal(html.includes("/scripts/deprecations.js"), false);
+  equal(html.includes("<script"), false);
+  includes(html, "Deprecation Calendar");
+});
