@@ -1,4 +1,4 @@
-import { createHandler } from "../src/handler.ts";
+import { createHandler, stripBodyForHead } from "../src/handler.ts";
 import { MemorySnapshotStore, type SnapshotStore } from "../src/lib/snapshots.ts";
 import template from "../src/flora.ts";
 import feed from "../src/routes/feed.ts";
@@ -93,6 +93,31 @@ Deno.test("HEAD responses carry GET headers, no body, and never mutate the snaps
   const headIndex = await handler(new Request("https://chromestatuslite.com/", { method: "HEAD" }));
   equal(headIndex.status, 200);
   equal(await headIndex.text(), "");
+});
+
+Deno.test("HEAD strip measures body bytes, not decoded text (chrome-status-lite-38e)", async () => {
+  // Non-UTF-8 bodies must not pass through text(): decoding replaces invalid
+  // bytes with U+FFFD (3 bytes each), so the reported content-length would be
+  // larger than the GET representation's actual byte length.
+  const binary = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe]);
+  const stripped = await stripBodyForHead(
+    new Response(binary, { headers: { "content-type": "application/octet-stream" } }),
+  );
+  equal(stripped.headers.get("content-length"), String(binary.byteLength));
+  equal(stripped.headers.get("content-type"), "application/octet-stream");
+  equal(await stripped.text(), "");
+
+  // A streamed body drains to the same byte count (flora templates and the
+  // static route both produce streamed/byte bodies, never in-memory strings).
+  const streamed = await stripBodyForHead(
+    new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(binary);
+        controller.close();
+      },
+    })),
+  );
+  equal(streamed.headers.get("content-length"), String(binary.byteLength));
 });
 
 Deno.test("static assets and unknown paths", async () => {
