@@ -39,6 +39,28 @@ function withSecurityHeaders(response: Response): Response {
   });
 }
 
+// RFC 9110 9.3.2: a HEAD response is a GET response minus the body —
+// same status and headers (chrome-status-lite-rw6). Routes render the
+// full GET representation, so the central gate strips it here; no route
+// has to remember. Route bodies are streams (flora templates return a
+// ReadableStream; the static route serves Deno.readFile bytes), so the
+// byte length is measured on the drained bytes and re-set explicitly: a
+// null-body Response drops content-length, and without it a HEAD could
+// no longer serve as a size probe for the GET representation. Measuring
+// via text() would decode UTF-8 first, corrupting any non-UTF-8 body
+// with U+FFFD replacement characters and reporting a content-length the
+// GET representation does not have.
+export async function stripBodyForHead(response: Response): Promise<Response> {
+  const body = new Uint8Array(await response.arrayBuffer());
+  const headers = new Headers(response.headers);
+  headers.set("content-length", String(body.byteLength));
+  return new Response(null, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 // Constructing the handler never starts a listener or fetches upstream data.
 // Tests supply a fresh client; production keeps the shared cached singleton.
 export function createHandler(
@@ -103,26 +125,7 @@ export function createHandler(
   };
   return async (request: Request): Promise<Response> => {
     const response = withSecurityHeaders(await route(request));
-    // RFC 9110 9.3.2: a HEAD response is a GET response minus the body —
-    // same status and headers (chrome-status-lite-rw6). Routes render the
-    // full GET representation, so the central gate strips it here; no route
-    // has to remember. Route bodies are already in-memory strings, so the
-    // byte length is measured and re-set explicitly: a null-body Response
-    // drops content-length, and without it a HEAD could no longer serve as
-    // a size probe for the GET representation.
-    if (request.method === "HEAD") {
-      const body = await response.text();
-      const headers = new Headers(response.headers);
-      headers.set(
-        "content-length",
-        String(new TextEncoder().encode(body).length),
-      );
-      return new Response(null, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
-    }
+    if (request.method === "HEAD") return stripBodyForHead(response);
     return response;
   };
 }
