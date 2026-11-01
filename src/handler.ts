@@ -101,5 +101,28 @@ export function createHandler(
       return new Response("Not found", { status: 404 });
     }
   };
-  return async (request: Request): Promise<Response> => withSecurityHeaders(await route(request));
+  return async (request: Request): Promise<Response> => {
+    const response = withSecurityHeaders(await route(request));
+    // RFC 9110 9.3.2: a HEAD response is a GET response minus the body —
+    // same status and headers (chrome-status-lite-rw6). Routes render the
+    // full GET representation, so the central gate strips it here; no route
+    // has to remember. Route bodies are already in-memory strings, so the
+    // byte length is measured and re-set explicitly: a null-body Response
+    // drops content-length, and without it a HEAD could no longer serve as
+    // a size probe for the GET representation.
+    if (request.method === "HEAD") {
+      const body = await response.text();
+      const headers = new Headers(response.headers);
+      headers.set(
+        "content-length",
+        String(new TextEncoder().encode(body).length),
+      );
+      return new Response(null, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    }
+    return response;
+  };
 }

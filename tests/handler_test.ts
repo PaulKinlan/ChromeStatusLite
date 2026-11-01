@@ -1,5 +1,5 @@
 import { createHandler } from "../src/handler.ts";
-import type { SnapshotStore } from "../src/lib/snapshots.ts";
+import { MemorySnapshotStore, type SnapshotStore } from "../src/lib/snapshots.ts";
 import template from "../src/flora.ts";
 import feed from "../src/routes/feed.ts";
 import apiVersion from "../src/routes/api-version.ts";
@@ -61,6 +61,38 @@ Deno.test("non-GET/HEAD verbs are rejected with 405 and Allow before dispatch", 
   // OPTIONS preflight still reaches the API route (204, not 405).
   const preflight = await handler(new Request("https://chromestatuslite.com/api/version/120", { method: "OPTIONS" }));
   equal(preflight.status, 204);
+});
+
+Deno.test("HEAD responses carry GET headers, no body, and never mutate the snapshot store (chrome-status-lite-rw6)", async () => {
+  const store = new MemorySnapshotStore();
+  const handler = createHandler(fixtureClient(), undefined, store);
+
+  // HEAD first, on an empty store: RFC 9110 9.3.2 (HEAD = GET minus the
+  // body) and HEAD is safe — it must not capture a snapshot.
+  const head = await handler(
+    new Request("https://chromestatuslite.com/feature/123", { method: "HEAD" }),
+  );
+  equal(head.status, 200);
+  equal(await head.text(), "");
+  equal((await store.list("123")).length, 0);
+
+  // The same view over GET renders fully, captures exactly once, and the
+  // HEAD headers above described exactly this representation (incl. the
+  // byte-accurate content-length).
+  const getRes = await handler(new Request("https://chromestatuslite.com/feature/123"));
+  const getText = await getRes.text();
+  equal(getRes.status, 200);
+  equal(head.headers.get("content-type"), getRes.headers.get("content-type"));
+  equal(
+    head.headers.get("content-length"),
+    String(new TextEncoder().encode(getText).length),
+  );
+  equal((await store.list("123")).length, 1);
+
+  // The central strip covers every route, not just /feature/:id.
+  const headIndex = await handler(new Request("https://chromestatuslite.com/", { method: "HEAD" }));
+  equal(headIndex.status, 200);
+  equal(await headIndex.text(), "");
 });
 
 Deno.test("static assets and unknown paths", async () => {

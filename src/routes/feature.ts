@@ -368,7 +368,9 @@ export default async function render(request: Request, match: URLPatternResult, 
     );
   }
 
-  if (store) {
+  // HEAD is safe (RFC 9110 9.3.2): it must not write the snapshot store
+  // (chrome-status-lite-rw6). Only a real GET view captures history.
+  if (store && request.method !== "HEAD") {
     await captureSnapshot(store, id, feature).catch((err) => {
       console.error(JSON.stringify({
         event: "snapshot_capture_failed",
