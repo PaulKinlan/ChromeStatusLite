@@ -96,23 +96,19 @@ export default async function apiVersion(
   // lookup (getVersions caches under the single channels key for 1h), not
   // two cache-filling upstream calls per bogus value — otherwise a loop
   // over in-range values 1..2000 still evicts the whole working set.
+  //
+  // The whitelist is an optimisation, not a hard dependency (review
+  // chrome-status-lite-j0p): when the version list itself is unavailable,
+  // fall through and fetch the milestone directly - the parent answered
+  // such requests from the features/channels endpoints alone, and the
+  // try/catch below reports a genuine outage of those. An empty or failed
+  // list must never 404 anything: that would state facts about features
+  // during an outage.
   if (versions === null) {
-    try {
-      versions = await chromeStatusAPI.getVersions();
-    } catch {
-      return new Response(
-        JSON.stringify({ error: "Failed to fetch milestone features" }),
-        {
-          status: 500,
-          headers: {
-            "content-type": "application/json; charset=utf-8",
-            ...corsHeaders,
-          },
-        },
-      );
-    }
+    versions = await chromeStatusAPI.getVersions().catch(() => []);
   }
-  if (!Array.isArray(versions) || !versions.includes(milestone)) {
+  if (Array.isArray(versions) && versions.length > 0 &&
+      !versions.includes(milestone)) {
     return new Response(
       JSON.stringify({ error: `Chrome milestone ${milestone} not found` }),
       {

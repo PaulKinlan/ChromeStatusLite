@@ -242,6 +242,22 @@ Deno.test("unknown in-range milestones cost one cached lookup, zero per-mileston
   equal(channelCalls, 1);
 });
 
+Deno.test("a version-list outage degrades to direct fetch, not 500 (chrome-status-lite-j0p)", async () => {
+  // The whitelist is an optimisation: when getVersions is down but the
+  // features/channels endpoints are healthy, a known milestone must still
+  // serve 200 (parent behaviour). An empty list never 404s anything.
+  const handler = createHandler(fixtureClient({
+    getVersions: async () => {
+      throw new Error("channels endpoint down");
+    },
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/api/version/120"));
+  equal(res.status, 200);
+  const data = JSON.parse(await res.text());
+  equal(data.version, 120);
+  equal(data.total_features, 1);
+});
+
 Deno.test("api/version/latest resolves to newest milestone", async () => {
   const handler = createHandler(fixtureClient());
   const res = await handler(new Request("https://chromestatuslite.com/api/version/latest"));
