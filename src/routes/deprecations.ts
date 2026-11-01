@@ -97,12 +97,18 @@ const renderDeprecation = (deprecation, channels) => {
   let id = deprecation?.id ? encodeURIComponent(String(deprecation.id)) : '';
   let intentStage = escapeHtml(deprecation?.intent_stage || '');
   let versionStr = escapeHtml(desktopVersion || '');
+  // A feature with no desktop milestone has nothing to link to (the release
+  // summary defaults to latest), so the cell is plain text, not an empty
+  // dead anchor (chrome-status-lite-5i3). 'N/A' matches the date column.
+  let versionCell = versionStr
+    ? template`<a href="/?version=${versionStr}">${versionStr}</a>`
+    : template`N/A`;
   return template`
         <tr>
             <td>${date}</td>
             <td><a href="/feature/${id}">${name}</a></td>
             <td>${intentStage}</td>
-            <td><a href="/?version=${versionStr}">${versionStr}</a></td>
+            <td>${versionCell}</td>
         </tr>
     `;
 };

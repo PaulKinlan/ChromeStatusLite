@@ -1,4 +1,5 @@
 import type { StatusClient } from "../handler.ts";
+import { parseMilestoneParam } from "../lib/utils.ts";
 
 export default async function apiVersion(
   request: Request,
@@ -61,21 +62,29 @@ export default async function apiVersion(
         },
       );
     }
-  } else if (/^\d+$/.test(versionParam)) {
-    milestone = Number.parseInt(versionParam, 10);
   } else {
-    return new Response(
-      JSON.stringify({
-        error: "Invalid version parameter: expected integer milestone or 'latest'",
-      }),
-      {
-        status: 400,
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          ...corsHeaders,
+    // Bounded at the seam (chrome-status-lite-s9w): an out-of-range or
+    // overlong digit string is not a milestone and must not reach the
+    // upstream query, where every distinct value mints two LRU keys
+    // (features + channels) and two upstream calls before the route can
+    // 404 it.
+    const parsed = parseMilestoneParam(versionParam);
+    if (parsed === null) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "Invalid version parameter: expected integer milestone or 'latest'",
+        }),
+        {
+          status: 400,
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            ...corsHeaders,
+          },
         },
-      },
-    );
+      );
+    }
+    milestone = parsed;
   }
 
   try {

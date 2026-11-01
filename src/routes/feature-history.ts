@@ -6,6 +6,7 @@ import {
   type FeatureSnapshot,
   type SnapshotStore,
 } from "../lib/snapshots.ts";
+import { isValidFeatureId } from "../lib/utils.ts";
 import nav from "../ui-components/nav.ts";
 
 const page = (title: string, content, canonical: string) =>
@@ -45,7 +46,9 @@ export async function renderHistory(
   store: SnapshotStore | null,
 ): Promise<Response> {
   const id = match?.pathname?.groups?.id;
-  if (!id || /\D/.test(id)) {
+  // Same seam bound as /feature/:id (chrome-status-lite-s9w): the id keys
+  // snapshot-store lookups, so it must be a plausible chromestatus id.
+  if (!isValidFeatureId(id)) {
     return new Response("Not found", { status: 404 });
   }
   const canonicalUrl = new URL(request.url);
@@ -77,7 +80,9 @@ export async function renderHistory(
   }
   // Refresh eviction recency for readers who only ever visit the history
   // page (chrome-status-lite-3fn); a touch failure must not break the read.
-  await store.touch?.(id).catch(() => {});
+  // touch() is a durable KV write (the eviction marker), so HEAD never
+  // touches: HEAD is safe (chrome-status-lite-rw6, chrome-status-lite-2cf).
+  if (request.method !== "HEAD") await store.touch?.(id).catch(() => {});
   const name = snapshots[0]?.data["Name"] ?? `Feature ${id}`;
 
   if (snapshots.length === 0) {
@@ -130,7 +135,8 @@ export async function renderDiff(
   store: SnapshotStore | null,
 ): Promise<Response> {
   const id = match?.pathname?.groups?.id;
-  if (!id || /\D/.test(id)) {
+  // Same seam bound as /feature/:id (chrome-status-lite-s9w).
+  if (!isValidFeatureId(id)) {
     return new Response("Not found", { status: 404 });
   }
   const url = new URL(request.url);
@@ -159,8 +165,9 @@ export async function renderDiff(
       canonical,
     ).then((data) => respond(data));
   }
-  // Same recency refresh as the history page (chrome-status-lite-3fn).
-  await store.touch?.(id).catch(() => {});
+  // Same recency refresh as the history page (chrome-status-lite-3fn), and
+  // the same HEAD exclusion: the marker is a durable KV write.
+  if (request.method !== "HEAD") await store.touch?.(id).catch(() => {});
   const name = snapshots[0]?.data["Name"] ?? `Feature ${id}`;
   const fromAt = url.searchParams.get("from");
   const toAt = url.searchParams.get("to");

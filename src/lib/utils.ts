@@ -40,6 +40,40 @@ const FETCH_MAX_BODY_BYTES = 16 * 1024 * 1024; // 16 MB.
 // malformed upstream body: a thrown error the routes render as an error notice.
 const MAX_PLAUSIBLE_VERSION = 2000;
 
+// Route-seam bounds for client-supplied numeric path parameters
+// (chrome-status-lite-s9w). fetchJson() keys the shared LRU on the upstream
+// path, so every distinct accepted value mints a cache entry and costs an
+// upstream call: an unbounded id or milestone lets one unauthenticated
+// client flush the whole cache. Real chromestatus feature ids are at most
+// 16 decimal digits (e.g. 5082469066604544) and real milestones sit far
+// below MAX_PLAUSIBLE_VERSION, so anything outside these bounds cannot be
+// real and is rejected at the route seam — before any upstream call or
+// cache write.
+export const MAX_FEATURE_ID_DIGITS = 16;
+const FEATURE_ID_RE = new RegExp(`^\\d{1,${MAX_FEATURE_ID_DIGITS}}$`);
+const MILESTONE_PARAM_RE = new RegExp(
+  `^\\d{1,${String(MAX_PLAUSIBLE_VERSION).length}}$`,
+);
+
+// A client-supplied feature id is valid only when it is a digit string no
+// longer than a real chromestatus id. Longer values (and anything
+// non-numeric) 404 at the seam instead of flowing into an oversized
+// upstream path and LRU/store key.
+export function isValidFeatureId(id: unknown): id is string {
+  return typeof id === "string" && FEATURE_ID_RE.test(id);
+}
+
+// A client-supplied milestone is parsed only when it is a plausible integer
+// in [1, MAX_PLAUSIBLE_VERSION]; anything else — including a digit string
+// longer than the bound itself, which parseInt would silently truncate —
+// returns null for the route to reject with 400.
+export function parseMilestoneParam(raw: string): number | null {
+  if (!MILESTONE_PARAM_RE.test(raw)) return null;
+  const milestone = Number.parseInt(raw, 10);
+  if (!(milestone >= 1 && milestone <= MAX_PLAUSIBLE_VERSION)) return null;
+  return milestone;
+}
+
 // Fails the stream once more than `limit` bytes have flowed through it, so a
 // never-ending upstream body cannot grow the buffered text without bound.
 function byteLimitStream(limit: number): TransformStream<Uint8Array, Uint8Array> {

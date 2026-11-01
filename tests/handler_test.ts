@@ -1,5 +1,5 @@
 import { createHandler } from "../src/handler.ts";
-import type { SnapshotStore } from "../src/lib/snapshots.ts";
+import { MemorySnapshotStore, type SnapshotStore } from "../src/lib/snapshots.ts";
 import template from "../src/flora.ts";
 import feed from "../src/routes/feed.ts";
 import apiVersion from "../src/routes/api-version.ts";
@@ -61,6 +61,38 @@ Deno.test("non-GET/HEAD verbs are rejected with 405 and Allow before dispatch", 
   // OPTIONS preflight still reaches the API route (204, not 405).
   const preflight = await handler(new Request("https://chromestatuslite.com/api/version/120", { method: "OPTIONS" }));
   equal(preflight.status, 204);
+});
+
+Deno.test("HEAD responses carry GET headers, no body, and never mutate the snapshot store (chrome-status-lite-rw6)", async () => {
+  const store = new MemorySnapshotStore();
+  const handler = createHandler(fixtureClient(), undefined, store);
+
+  // HEAD first, on an empty store: RFC 9110 9.3.2 (HEAD = GET minus the
+  // body) and HEAD is safe — it must not capture a snapshot.
+  const head = await handler(
+    new Request("https://chromestatuslite.com/feature/123", { method: "HEAD" }),
+  );
+  equal(head.status, 200);
+  equal(await head.text(), "");
+  equal((await store.list("123")).length, 0);
+
+  // The same view over GET renders fully, captures exactly once, and the
+  // HEAD headers above described exactly this representation (incl. the
+  // byte-accurate content-length).
+  const getRes = await handler(new Request("https://chromestatuslite.com/feature/123"));
+  const getText = await getRes.text();
+  equal(getRes.status, 200);
+  equal(head.headers.get("content-type"), getRes.headers.get("content-type"));
+  equal(
+    head.headers.get("content-length"),
+    String(new TextEncoder().encode(getText).length),
+  );
+  equal((await store.list("123")).length, 1);
+
+  // The central strip covers every route, not just /feature/:id.
+  const headIndex = await handler(new Request("https://chromestatuslite.com/", { method: "HEAD" }));
+  equal(headIndex.status, 200);
+  equal(await headIndex.text(), "");
 });
 
 Deno.test("static assets and unknown paths", async () => {
@@ -142,6 +174,30 @@ Deno.test("api/version/:version returns clean JSON for milestone", async () => {
   equal(data.features[0].status_type, "Enabled by default");
 });
 
+Deno.test("api/version rejects out-of-range and overlong milestones at the seam (chrome-status-lite-s9w)", async () => {
+  // Every distinct accepted milestone mints two LRU keys and two upstream
+  // calls, so implausible milestones must be rejected before any client
+  // method runs: milestone 0 and past-2000 values are not Chrome releases,
+  // and an overlong digit string is not a milestone at all.
+  let clientCalls = 0;
+  const handler = createHandler(fixtureClient({
+    getFeaturesForVersion: async () => {
+      clientCalls++;
+      return {};
+    },
+    getChannels: async () => {
+      clientCalls++;
+      return {};
+    },
+  }));
+  for (const version of ["0", "2001", "999999", "1".repeat(25)]) {
+    const res = await handler(new Request(`https://chromestatuslite.com/api/version/${version}`));
+    equal(res.status, 400);
+    includes(await res.text(), "Invalid version parameter");
+  }
+  equal(clientCalls, 0);
+});
+
 Deno.test("api/version/latest resolves to newest milestone", async () => {
   const handler = createHandler(fixtureClient());
   const res = await handler(new Request("https://chromestatuslite.com/api/version/latest"));
@@ -168,7 +224,8 @@ Deno.test("api/version/:version validation, preflight, and 404 behavior", async 
   const badParamData = JSON.parse(await badParam.text());
   includes(badParamData.error, "Invalid version parameter");
 
-  // Milestone not found (e.g. 99999)
+  // Milestone not found: in the plausible range (seam-bound, so it reaches
+  // the upstream query) but absent from the upstream version list.
   const customHandler = createHandler(
     fixtureClient({
       getVersions: async () => [120, 119],
@@ -176,7 +233,7 @@ Deno.test("api/version/:version validation, preflight, and 404 behavior", async 
     }),
   );
   const notFound = await customHandler(
-    new Request("https://chromestatuslite.com/api/version/99999"),
+    new Request("https://chromestatuslite.com/api/version/150"),
   );
   equal(notFound.status, 404);
   const notFoundData = JSON.parse(await notFound.text());

@@ -37,6 +37,22 @@ Deno.test("deprecation calendar renders features without a browsers property ins
   }
 });
 
+Deno.test("versionless deprecations render N/A, not an empty ?version= anchor (chrome-status-lite-5i3)", async () => {
+  const client = fixtureClient({
+    getFeaturesByType: async () => ({
+      features: [
+        { id: 1, name: "Versioned", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "120" } } },
+        { id: 2, name: "Versionless", intent_stage: "Intent to Deprecate" },
+      ],
+    }),
+  });
+  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/deprecations"))).text();
+  // The versioned row keeps its release link...
+  includes(html, 'href="/?version=120"');
+  // ...and the versionless row is plain text: no empty anchor may exist.
+  equal(html.includes('href="/?version="'), false);
+});
+
 Deno.test("deprecation calendar feature name links to the local /feature/:id route", async () => {
   const response = await createHandler(fixtureClient())(new Request("https://chromestatuslite.com/deprecations?view=all"));
   equal(response.status, 200);
