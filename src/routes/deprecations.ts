@@ -14,7 +14,6 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="/scripts/deprecations.js" type="module"></script>
   <title>Chrome Deprecation Calendar</title>
   <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
   <link rel="stylesheet" href="/styles/index.css">
