@@ -42,6 +42,30 @@ Deno.test("history and diff bound overlong feature ids at the seam (chrome-statu
   equal((await store.list(overlong)).length, 0);
 });
 
+Deno.test("HEAD on history and diff never touches the recency marker (chrome-status-lite-2cf)", async () => {
+  // touch() is a durable KV write (the retention eviction marker), so a HEAD
+  // probe must not trigger it. A recording store pins the seam.
+  const touched: string[] = [];
+  const store: SnapshotStore = {
+    list: async () => [],
+    add: async () => true,
+    touch: async (id: string) => {
+      touched.push(id);
+    },
+  };
+  const handler = createHandler(fixtureClient(), undefined, store);
+
+  await handler(new Request("https://chromestatuslite.com/feature/123/history", { method: "HEAD" }));
+  await handler(new Request("https://chromestatuslite.com/feature/123/diff", { method: "HEAD" }));
+  equal(touched.length, 0);
+
+  // A real GET read still refreshes recency.
+  await handler(new Request("https://chromestatuslite.com/feature/123/history"));
+  equal(touched.length, 1);
+  await handler(new Request("https://chromestatuslite.com/feature/123/diff"));
+  equal(touched.length, 2);
+});
+
 Deno.test("history lists snapshots newest-first with changed fields", async () => {
   const store = new MemorySnapshotStore();
   await captureSnapshot(

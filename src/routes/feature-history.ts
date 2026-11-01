@@ -80,7 +80,9 @@ export async function renderHistory(
   }
   // Refresh eviction recency for readers who only ever visit the history
   // page (chrome-status-lite-3fn); a touch failure must not break the read.
-  await store.touch?.(id).catch(() => {});
+  // touch() is a durable KV write (the eviction marker), so HEAD never
+  // touches: HEAD is safe (chrome-status-lite-rw6, chrome-status-lite-2cf).
+  if (request.method !== "HEAD") await store.touch?.(id).catch(() => {});
   const name = snapshots[0]?.data["Name"] ?? `Feature ${id}`;
 
   if (snapshots.length === 0) {
@@ -163,8 +165,9 @@ export async function renderDiff(
       canonical,
     ).then((data) => respond(data));
   }
-  // Same recency refresh as the history page (chrome-status-lite-3fn).
-  await store.touch?.(id).catch(() => {});
+  // Same recency refresh as the history page (chrome-status-lite-3fn), and
+  // the same HEAD exclusion: the marker is a durable KV write.
+  if (request.method !== "HEAD") await store.touch?.(id).catch(() => {});
   const name = snapshots[0]?.data["Name"] ?? `Feature ${id}`;
   const fromAt = url.searchParams.get("from");
   const toAt = url.searchParams.get("to");
