@@ -34,9 +34,13 @@ export default async function apiVersion(
   }
 
   let milestone: number;
+  // The upstream version list, once fetched (null = not fetched yet). It is
+  // the whitelist every numeric milestone must pass before any
+  // per-milestone fetch.
+  let versions: any[] | null = null;
   if (versionParam === "latest") {
     try {
-      const versions = await chromeStatusAPI.getVersions();
+      versions = await chromeStatusAPI.getVersions();
       if (!Array.isArray(versions) || versions.length === 0) {
         return new Response(
           JSON.stringify({ error: "No Chrome versions found" }),
@@ -87,6 +91,40 @@ export default async function apiVersion(
     milestone = parsed;
   }
 
+  // Whitelist before any per-milestone fetch (chrome-status-lite-or9): an
+  // unknown milestone is answered 404 for the cost of one shared cached
+  // lookup (getVersions caches under the single channels key for 1h), not
+  // two cache-filling upstream calls per bogus value — otherwise a loop
+  // over in-range values 1..2000 still evicts the whole working set.
+  if (versions === null) {
+    try {
+      versions = await chromeStatusAPI.getVersions();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch milestone features" }),
+        {
+          status: 500,
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            ...corsHeaders,
+          },
+        },
+      );
+    }
+  }
+  if (!Array.isArray(versions) || !versions.includes(milestone)) {
+    return new Response(
+      JSON.stringify({ error: `Chrome milestone ${milestone} not found` }),
+      {
+        status: 404,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          ...corsHeaders,
+        },
+      },
+    );
+  }
+
   try {
     const [featuresByType, channels] = await Promise.all([
       chromeStatusAPI.getFeaturesForVersion(milestone),
@@ -112,23 +150,10 @@ export default async function apiVersion(
       }
     }
 
-    if (features.length === 0) {
-      const versions = await chromeStatusAPI.getVersions().catch(() => []);
-      if (Array.isArray(versions) && !versions.includes(milestone)) {
-        return new Response(
-          JSON.stringify({
-            error: `Chrome milestone ${milestone} not found`,
-          }),
-          {
-            status: 404,
-            headers: {
-              "content-type": "application/json; charset=utf-8",
-              ...corsHeaders,
-            },
-          },
-        );
-      }
-    }
+    // Membership in the version list was verified before the fetches, so an
+    // empty result is upstream data drift for a real milestone and serves
+    // as a zero-feature response (chrome-status-lite-or9 removed the
+    // redundant second getVersions() call here).
 
     const body = {
       version: milestone,
