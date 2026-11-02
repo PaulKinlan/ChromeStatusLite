@@ -40,20 +40,41 @@ function withSecurityHeaders(response: Response): Response {
 }
 
 // RFC 9110 9.3.2: a HEAD response is a GET response minus the body —
-// same status and headers (chrome-status-lite-rw6). Routes render the
-// full GET representation, so the central gate strips it here; no route
-// has to remember. Route bodies are streams (flora templates return a
-// ReadableStream; the static route serves Deno.readFile bytes), so the
+// same status and headers (chrome-status-lite-rw6). Dynamic routes render
+// the full GET representation, so the central gate strips it here; no
+// route has to remember. Route bodies are streams (flora templates return
+// a ReadableStream; the static route serves Deno.readFile bytes), so the
 // byte length is measured on the drained bytes and re-set explicitly: a
-// null-body Response drops content-length, and without it a HEAD could
-// no longer serve as a size probe for the GET representation. Measuring
-// via text() would decode UTF-8 first, corrupting any non-UTF-8 body
-// with U+FFFD replacement characters and reporting a content-length the
-// GET representation does not have.
+// null-body Response does not compute content-length, and without it a
+// HEAD could no longer serve as a size probe for the GET representation.
+// Measuring via text() would decode UTF-8 first, corrupting any non-UTF-8
+// body with U+FFFD replacement characters and reporting a content-length
+// the GET representation does not have.
+//
+// The count drains the stream chunk by chunk rather than arrayBuffer()ing
+// the whole body: same byte-accurate length, but peak memory is one chunk
+// instead of the entire representation (chrome-status-lite-735). A route
+// that can answer HEAD without building the body (the static route, via
+// Deno.stat) returns a null body with an explicit content-length, which
+// is kept as-is; any other null body (redirects, 405s) is genuinely empty.
 export async function stripBodyForHead(response: Response): Promise<Response> {
-  const body = new Uint8Array(await response.arrayBuffer());
   const headers = new Headers(response.headers);
-  headers.set("content-length", String(body.byteLength));
+  if (response.body === null) {
+    if (!headers.has("content-length")) headers.set("content-length", "0");
+  } else {
+    let bytes = 0;
+    const reader = response.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    headers.set("content-length", String(bytes));
+  }
   return new Response(null, {
     status: response.status,
     statusText: response.statusText,
@@ -114,7 +135,23 @@ export function createHandler(
       return new Response("Not found", { status: 404 });
     }
     try {
-      const data = await Deno.readFile(join(staticRoot, url.pathname));
+      const path = join(staticRoot, url.pathname);
+      if (request.method === "HEAD") {
+        // HEAD is a cheap probe: answer from the filesystem metadata
+        // instead of reading the whole file into memory only to discard
+        // it in stripBodyForHead (chrome-status-lite-735), which keeps
+        // this explicit content-length because the body is already null.
+        const stat = await Deno.stat(path);
+        if (!stat.isFile) throw new Error("not a file");
+        return new Response(null, {
+          status: 200,
+          headers: {
+            "content-type": contentType(url.pathname.slice(url.pathname.lastIndexOf("."))) || "application/octet-stream",
+            "content-length": String(stat.size),
+          },
+        });
+      }
+      const data = await Deno.readFile(path);
       return new Response(data, {
         status: 200,
         headers: { "content-type": contentType(url.pathname.slice(url.pathname.lastIndexOf("."))) || "application/octet-stream" },
