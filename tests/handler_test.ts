@@ -120,6 +120,57 @@ Deno.test("HEAD strip measures body bytes, not decoded text (chrome-status-lite-
   equal(streamed.headers.get("content-length"), String(binary.byteLength));
 });
 
+Deno.test("HEAD strip counts a multi-chunk stream and keeps a route-supplied length on a null body (chrome-status-lite-735)", async () => {
+  // A chunked stream is drained piece by piece: the content-length is the
+  // sum of every chunk, and no single buffer ever holds the whole body.
+  const chunks = [new Uint8Array([1, 2, 3]), new Uint8Array([4, 5]), new Uint8Array([6, 7, 8, 9])];
+  const total = chunks.reduce((n, c) => n + c.byteLength, 0);
+  const counted = await stripBodyForHead(
+    new Response(new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk);
+        controller.close();
+      },
+    })),
+  );
+  equal(counted.headers.get("content-length"), String(total));
+  equal(await counted.text(), "");
+
+  // A route that answered HEAD directly (static route via Deno.stat) has a
+  // null body and an explicit content-length: keep it, don't overwrite to 0.
+  const kept = await stripBodyForHead(
+    new Response(null, { headers: { "content-length": "42", "content-type": "text/css" } }),
+  );
+  equal(kept.headers.get("content-length"), "42");
+  equal(kept.headers.get("content-type"), "text/css");
+
+  // Any other null body (redirects, 405s) is genuinely empty.
+  const empty = await stripBodyForHead(new Response(null));
+  equal(empty.headers.get("content-length"), "0");
+});
+
+Deno.test("HEAD on a static asset answers from file metadata with the GET byte length (chrome-status-lite-735)", async () => {
+  const handler = createHandler(fixtureClient());
+  const getRes = await handler(new Request("https://chromestatuslite.com/styles/index.css"));
+  equal(getRes.status, 200);
+  const getBytes = new Uint8Array(await getRes.arrayBuffer());
+
+  const head = await handler(new Request("https://chromestatuslite.com/styles/index.css", { method: "HEAD" }));
+  equal(head.status, 200);
+  equal(await head.text(), "");
+  // The probe reports exactly the GET representation's byte length and type.
+  equal(head.headers.get("content-length"), String(getBytes.byteLength));
+  includes(head.headers.get("content-type") || "", "text/css");
+
+  // The stat fast path stays behind the same whitelist: unknown and
+  // traversal paths still 404 on HEAD.
+  for (const path of ["/unknown", "/scripts/missing.js", "/scripts/%2e%2e%2fmain.ts"]) {
+    const res = await handler(new Request(`https://chromestatuslite.com${path}`, { method: "HEAD" }));
+    equal(res.status, 404);
+    equal(await res.text(), "");
+  }
+});
+
 Deno.test("static assets and unknown paths", async () => {
   const handler = createHandler(fixtureClient());
   const asset = await handler(new Request("https://chromestatuslite.com/styles/index.css"));
