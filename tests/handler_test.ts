@@ -171,6 +171,69 @@ Deno.test("HEAD on a static asset answers from file metadata with the GET byte l
   }
 });
 
+Deno.test("static HEAD never reads the file: a stat-only filesystem still answers (chrome-status-lite-70n)", async () => {
+  // Discriminator for the stat fast path: inject a filesystem whose readFile
+  // always throws. HEAD must answer from stat metadata alone; if the HEAD
+  // branch regresses to Deno.readFile (the pre-735 code), it throws and this
+  // goes red. GET keeps using readFile, so it 404s here — proving the seam.
+  const statOnlyFs = {
+    stat: async () => ({ isFile: true, size: 4321 }) as Deno.FileInfo,
+    readFile: async () => { throw new Error("readFile must not be called for HEAD"); },
+  };
+  const handler = createHandler(fixtureClient(), "/nonexistent-static-root", null, statOnlyFs);
+
+  const head = await handler(new Request("https://chromestatuslite.com/styles/index.css", { method: "HEAD" }));
+  equal(head.status, 200);
+  equal(head.headers.get("content-length"), "4321");
+  includes(head.headers.get("content-type") || "", "text/css");
+  equal(await head.text(), "");
+
+  // A directory-shaped stat result is not a file: 404, and readFile unused.
+  const dirFs = {
+    stat: async () => ({ isFile: false, size: 0 }) as Deno.FileInfo,
+    readFile: async () => { throw new Error("readFile must not be called for HEAD"); },
+  };
+  const dirHandler = createHandler(fixtureClient(), "/nonexistent-static-root", null, dirFs);
+  const dirHead = await dirHandler(new Request("https://chromestatuslite.com/styles/index.css", { method: "HEAD" }));
+  equal(dirHead.status, 404);
+
+  // GET on the stat-only fs proves readFile is the GET path (and that the
+  // injected seam, not real disk, answered the HEAD above).
+  const getRes = await handler(new Request("https://chromestatuslite.com/styles/index.css"));
+  equal(getRes.status, 404);
+});
+
+Deno.test("HEAD strip holds peak memory to a chunk, not the whole body (chrome-status-lite-70n)", async () => {
+  // Discriminator for the streaming drain: measure RSS growth across the
+  // strip of a 256 MiB stream. An arrayBuffer() drain materialises the whole
+  // body, so RSS ends >= 256 MiB higher; chunk-by-chunk counting discards as
+  // it goes and allocation-driven GC keeps the residue small (reviewer
+  // measured 559 MiB peak old vs 105 MiB new on this size). The 64 MiB delta
+  // threshold sits far from both outcomes, so GC noise cannot flip it.
+  const chunks = 256;
+  const chunk = new Uint8Array(1024 * 1024); // 1 MiB
+  const baselineRss = Deno.memoryUsage().rss;
+  let pulled = 0;
+  const stripped = await stripBodyForHead(
+    new Response(new ReadableStream({
+      pull(controller) {
+        pulled++;
+        controller.enqueue(chunk);
+        if (pulled === chunks) controller.close();
+      },
+    })),
+  );
+  equal(stripped.headers.get("content-length"), String(chunks * chunk.byteLength));
+  equal(pulled, chunks); // the whole stream was measured, not truncated
+  const retainedMiB = (Deno.memoryUsage().rss - baselineRss) / (1024 * 1024);
+  if (retainedMiB >= 64) {
+    throw new Error(
+      `HEAD strip grew RSS by ~${retainedMiB.toFixed(0)} MiB draining a 256 MiB stream — ` +
+      "the drain buffers the whole body instead of counting chunks",
+    );
+  }
+});
+
 Deno.test("static assets and unknown paths", async () => {
   const handler = createHandler(fixtureClient());
   const asset = await handler(new Request("https://chromestatuslite.com/styles/index.css"));
