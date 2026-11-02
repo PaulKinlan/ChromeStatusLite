@@ -82,12 +82,19 @@ export async function stripBodyForHead(response: Response): Promise<Response> {
   });
 }
 
+// The static file system seam (Deno by default). Tests inject a stat-only
+// implementation to prove the HEAD fast path never reads the file
+// (chrome-status-lite-70n): with a throwing readFile, HEAD must still
+// answer from stat metadata while GET fails.
+export type StaticFileSystem = Pick<typeof Deno, "stat" | "readFile">;
+
 // Constructing the handler never starts a listener or fetches upstream data.
 // Tests supply a fresh client; production keeps the shared cached singleton.
 export function createHandler(
   client: StatusClient = ChromeStatusAPI.getInstance(),
   staticRoot = join(Deno.cwd(), "static"),
   store: SnapshotStore | null = null,
+  staticFs: StaticFileSystem = Deno,
 ): (request: Request) => Promise<Response> {
   const route = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -141,7 +148,7 @@ export function createHandler(
         // instead of reading the whole file into memory only to discard
         // it in stripBodyForHead (chrome-status-lite-735), which keeps
         // this explicit content-length because the body is already null.
-        const stat = await Deno.stat(path);
+        const stat = await staticFs.stat(path);
         if (!stat.isFile) throw new Error("not a file");
         return new Response(null, {
           status: 200,
@@ -151,7 +158,7 @@ export function createHandler(
           },
         });
       }
-      const data = await Deno.readFile(path);
+      const data = await staticFs.readFile(path);
       return new Response(data, {
         status: 200,
         headers: { "content-type": contentType(url.pathname.slice(url.pathname.lastIndexOf("."))) || "application/octet-stream" },
