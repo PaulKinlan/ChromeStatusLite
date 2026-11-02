@@ -129,12 +129,30 @@ export class ChromeStatusAPI {
     return ChromeStatusAPI.instance;
   }
 
-  public async getChannels(start?: number, end?: number): Promise<any> {
-    let queryString = "";
-    if (start != undefined && end != undefined) {
-      queryString = `?start=${start}&end=${end}`;
+  // Both bounds are coerced to canonical integers before they feed either
+  // the upstream query or the shared LRU key (chrome-status-lite-3tl): raw
+  // values are interpolated into the key, so a non-canonical upstream
+  // string ("120&num=1") could append upstream parameters and mint an
+  // unbounded number of distinct cache entries. Same hazard and fix as
+  // getFeaturesForVersion() below; callers pass upstream-derived strings
+  // (src/routes/deprecations.ts) as well as numbers.
+  public async getChannels(
+    start?: number | string,
+    end?: number | string,
+  ): Promise<any> {
+    if (start == undefined || end == undefined) {
+      return this.fetchJson(CHANNELS_PATH);
     }
-    return this.fetchJson(`${CHANNELS_PATH}${queryString}`);
+    const from = Number.parseInt(String(start), 10);
+    const to = Number.parseInt(String(end), 10);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) {
+      throw new Error(`Invalid channel range: ${start}..${end}`);
+    }
+    const params = new URLSearchParams({
+      start: String(from),
+      end: String(to),
+    });
+    return this.fetchJson(`${CHANNELS_PATH}?${params}`);
   }
 
   // Returns features for a milestone grouped by status, e.g.
