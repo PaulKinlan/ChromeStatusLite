@@ -77,6 +77,72 @@ Deno.test("getFeaturesForVersion canonicalises the cache key per integer milesto
   equal(calls, 1);
 });
 
+Deno.test("getChannels sends the range as two encoded upstream parameters", async () => {
+  const seen: string[] = [];
+  const client = new ChromeStatusAPI({
+    fetcher: async (input) => {
+      seen.push(String(input));
+      return new Response(`)]}'\n${JSON.stringify({})}`);
+    },
+  });
+  await client.getChannels("120&num=1&q=foo", "121");
+  equal(seen[0], "https://chromestatus.com/api/v0/channels?start=120&end=121");
+});
+
+Deno.test("getChannels canonicalises the cache key per integer range", async () => {
+  // Raw upstream-derived strings used to be interpolated into the shared LRU
+  // key, so "120&num=1" and 120 minted two entries and an unbounded number
+  // of distinct strings could flush the whole cache (chrome-status-lite-3tl).
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    fetcher: async () => {
+      calls++;
+      return new Response(`)]}'\n{}`);
+    },
+  });
+  await client.getChannels("120&num=1", "121");
+  await client.getChannels(120, 121);
+  equal(calls, 1);
+});
+
+Deno.test("getChannels rejects bounds that are not integers", async () => {
+  const client = new ChromeStatusAPI({ fetcher: async () => new Response("{}") });
+  let caught = false;
+  try {
+    await client.getChannels("<script>alert(1)</script>", "121");
+  } catch (err) {
+    caught = true;
+    equal((err as Error).message.includes("Invalid channel range"), true);
+  }
+  equal(caught, true);
+});
+
+Deno.test("getChannels without both bounds keeps requesting the bare channels path", async () => {
+  const urlFor = async (
+    run: (client: ChromeStatusAPI) => Promise<unknown>,
+  ): Promise<string> => {
+    const seen: string[] = [];
+    const client = new ChromeStatusAPI({
+      fetcher: async (input) => {
+        seen.push(String(input));
+        return new Response(`)]}'\n${JSON.stringify({ dev: { version: "5" } })}`);
+      },
+    });
+    await run(client);
+    return seen[0];
+  };
+  // Missing bounds (getVersions(), origin-trials' unbounded call) and a
+  // single bound must both keep the bare path, never a partial query.
+  equal(
+    await urlFor((client) => client.getChannels()),
+    "https://chromestatus.com/api/v0/channels",
+  );
+  equal(
+    await urlFor((client) => client.getChannels(120, undefined)),
+    "https://chromestatus.com/api/v0/channels",
+  );
+});
+
 Deno.test("getFeaturesForVersion rejects milestones that are not integers", async () => {
   const client = new ChromeStatusAPI({ fetcher: async () => new Response("{}") });
   let caught = false;
