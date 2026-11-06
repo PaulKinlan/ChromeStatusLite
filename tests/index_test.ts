@@ -118,7 +118,10 @@ Deno.test("release page upstream urls cannot break out of their href attributes"
   }) });
   const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/?version=120"))).text();
   equal(html.includes('onmouseover="'), false);
-  includes(html, "&quot; onmouseover=&quot;alert(1)");
+  // The URL parser percent-encodes the quote (chrome-status-lite-2df); the
+  // emitted href is the serialization that passed the scheme check.
+  includes(html, 'href="https://example.com/x%22%20onmouseover=%22alert(1)"');
+  equal(html.includes('&quot;'), false);
 });
 
 Deno.test("release page drops non-http(s) hrefs in resources, bug and spec fields", async () => {
