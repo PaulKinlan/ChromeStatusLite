@@ -1,4 +1,5 @@
 import { createHandler } from "../src/handler.ts";
+import { sanitizeUrl } from "../src/lib/url.ts";
 import { equal, fixtureClient, includes, sampleFeature } from "./fixture.ts";
 
 Deno.test("feature detail renders fixture and canonical URL", async () => {
@@ -144,10 +145,28 @@ Deno.test("upstream urls cannot break out of their href attributes", async () =>
     explainer_links: [evil],
   }) });
   const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/feature/129"))).text();
-  // A raw quote inside the attribute would start a new attribute; the escaped
-  // form keeps the whole value inside the quoted href.
+  // A raw quote inside the attribute would start a new attribute; the URL
+  // parser percent-encodes it (chrome-status-lite-2df) and escapeHtml covers
+  // whatever remains, so the emitted href is the serialization that passed
+  // the scheme check and nothing else.
   equal(html.includes('onmouseover="'), false);
-  includes(html, "&quot; onmouseover=&quot;alert(1)");
+  includes(html, 'href="https://example.com/x%22%20onmouseover=%22alert(1)"');
+  equal(html.includes('&quot;'), false);
+});
+
+Deno.test("sanitizeUrl emits the serialization it validated, not the raw input (chrome-status-lite-2df)", () => {
+  // The scheme check sees parsed.protocol; the emitted href is parsed.href,
+  // so padding, case and unsafe characters are normalized away rather than
+  // interpolated verbatim.
+  equal(sanitizeUrl(" https://example.com/a b"), "https://example.com/a%20b");
+  equal(sanitizeUrl("HTTPS://Example.COM/A"), "https://example.com/A");
+  equal(sanitizeUrl("https:\\evil.com"), "https://evil.com/");
+  // Still only http(s): everything else stays null so callers drop the link.
+  equal(sanitizeUrl("javascript:alert(1)"), null);
+  equal(sanitizeUrl("data:text/html,<script>alert(1)</script>"), null);
+  equal(sanitizeUrl("/relative/path"), null);
+  equal(sanitizeUrl(""), null);
+  equal(sanitizeUrl(undefined), null);
 });
 
 Deno.test("feature detail drops non-http(s) hrefs in every upstream url field", async () => {
