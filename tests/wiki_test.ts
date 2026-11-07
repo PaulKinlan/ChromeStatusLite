@@ -11,7 +11,7 @@ import {
   tagFeature,
   timeline,
 } from "../src/lib/wiki.ts";
-import { getTopicData } from "../src/lib/wiki-data.ts";
+import { CONTINUATION_POOL_SIZE, TOPIC_RETRY_TTL, getTopicData } from "../src/lib/wiki-data.ts";
 
 const gpuFeature = {
   id: 1,
@@ -503,12 +503,15 @@ Deno.test("getTopicData unions every query, deduped, with failure flags (review 
   equal(allDown.features.length, 0);
 });
 
-Deno.test("getTopicData does not cache a partial assembly (review chrome-status-lite-3mh)", async () => {
-  // Reviewer repro: one query rejects once, then recovers. The partial
-  // result must NOT be pinned for the TTL - the next call retries upstream.
+Deno.test("getTopicData re-dates a partial assembly to a short retry TTL (review chrome-status-lite-3mh, revised chrome-status-lite-9nh)", async () => {
+  // Originally (3mh) the partial was dropped so the very next call retried
+  // upstream - which made every anonymous visit re-run the whole fan-out
+  // (9nh). Now the partial is kept for the short retry window: shared across
+  // callers inside it, refetched after it, never pinned for the full TTL.
   const topic = getTopic("device")!;
   let bluetoothDown = true;
   let calls = 0;
+  let t = 0;
   const client = fixtureClient({
     getFeaturesByQuery: async (query: string) => {
       calls++;
@@ -523,17 +526,27 @@ Deno.test("getTopicData does not cache a partial assembly (review chrome-status-
       return { total_count: 0, features: [] };
     },
   });
-  const first = await getTopicData(topic, client);
+  const first = await getTopicData(topic, client, () => t);
   equal(first.features.length, 2); // bluetooth down: only webusb's pair
   equal(first.complete, false);
   const callsAfterFirst = calls;
-  const second = await getTopicData(topic, client);
-  if (calls === callsAfterFirst) throw new Error("partial assembly was served from cache");
+  // Inside the retry window the partial is shared, not re-fanned-out.
+  const withinWindow = await getTopicData(topic, client, () => t);
+  equal(withinWindow.features.length, 2);
+  equal(withinWindow.complete, false);
+  equal(calls, callsAfterFirst);
+  // After the window the assembly is refetched and picks up the recovery.
+  t += TOPIC_RETRY_TTL + 1;
+  const second = await getTopicData(topic, client, () => t);
+  if (calls === callsAfterFirst) throw new Error("retry window outlived the TTL");
   equal(second.features.length, 3); // recovered bluetooth adds WebBluetooth; id 2 still deduped
   equal(second.complete, true);
-  // The recovered, complete assembly IS cached: a third call refetches nothing.
-  const third = await getTopicData(topic, client);
+  // The recovered, complete assembly IS cached for the full TTL: another
+  // call after another retry window refetches nothing.
+  t += TOPIC_RETRY_TTL + 1;
+  const third = await getTopicData(topic, client, () => t);
   equal(third.complete, true);
+  equal(calls, callsAfterFirst + 4); // device has 4 queries: one refetch each, nothing more
 });
 
 Deno.test("fetchQueryFeatures treats a 200 with no total_count as incomplete (review chrome-status-lite-i11)", async () => {
@@ -544,8 +557,10 @@ Deno.test("fetchQueryFeatures treats a 200 with no total_count as incomplete (re
   equal(result.complete, false); // unknown inventory size is not "complete"
   equal(result.features.length, 0);
 
-  // And getTopicData therefore does not pin the empty assembly for the TTL.
+  // And getTopicData keeps the empty partial only for the short retry
+  // window (9nh): shared inside it, refetched after it, never full-TTL.
   let empty = true;
+  let t = 0;
   const recovering = fixtureClient({
     getFeaturesByQuery: async () => {
       if (empty) {
@@ -556,9 +571,12 @@ Deno.test("fetchQueryFeatures treats a 200 with no total_count as incomplete (re
     },
   });
   const topic = getTopic("webgpu")!;
-  const first = await getTopicData(topic, recovering);
+  const first = await getTopicData(topic, recovering, () => t);
   equal(first.complete, false);
-  const second = await getTopicData(topic, recovering);
+  const withinWindow = await getTopicData(topic, recovering, () => t);
+  equal(withinWindow.complete, false); // retry window serves the partial
+  t += TOPIC_RETRY_TTL + 1;
+  const second = await getTopicData(topic, recovering, () => t);
   equal(second.complete, true);
   equal(second.features.length, 1);
 });
@@ -591,8 +609,10 @@ Deno.test("fetchQueryFeatures treats a null total_count as incomplete (review ch
   const result = await fetchQueryFeatures("webgpu", client);
   equal(result.complete, false);
 
-  // And the empty assembly is not pinned: recovery is picked up next call.
+  // And the empty partial is kept only for the short retry window (9nh):
+  // shared inside it with no new upstream calls, refetched after it.
   let calls = 0;
+  let t = 0;
   const recovering = fixtureClient({
     getFeaturesByQuery: async () =>
       ++calls === 1
@@ -600,9 +620,13 @@ Deno.test("fetchQueryFeatures treats a null total_count as incomplete (review ch
         : { total_count: 1, features: [{ id: 9, name: "Recovered" }] },
   });
   const topic = getTopic("webgpu")!;
-  const first = await getTopicData(topic, recovering);
+  const first = await getTopicData(topic, recovering, () => t);
   equal(first.complete, false);
-  const second = await getTopicData(topic, recovering);
+  const withinWindow = await getTopicData(topic, recovering, () => t);
+  equal(withinWindow.complete, false);
+  equal(calls, 1); // no upstream fan-out inside the retry window
+  t += TOPIC_RETRY_TTL + 1;
+  const second = await getTopicData(topic, recovering, () => t);
   equal(second.complete, true);
   equal(second.features.length, 1);
   // A numeric total_count still works (and numeric strings coerce).
@@ -615,4 +639,95 @@ Deno.test("fetchQueryFeatures treats a null total_count as incomplete (review ch
 Deno.test("getTopic resolves slugs", () => {
   equal(getTopic("webgpu")?.title, "WebGPU");
   equal(getTopic("nope"), undefined);
+});
+
+Deno.test("fetchQueryFeatures bounds continuation concurrency with a pool shared across queries (chrome-status-lite-9nh)", async () => {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  let continuationCalls = 0;
+  const client = fixtureClient({
+    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
+      const start = options.start ?? 0;
+      if (options.start !== undefined) { // first pages are not pooled (avm)
+        continuationCalls++;
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (options.start !== undefined) inFlight--;
+      return {
+        total_count: 300,
+        features: Array.from({ length: 100 }, (_, i) => ({ id: `${query}-${start + i}`, name: `F${start + i}` })),
+      };
+    },
+  });
+  // Three queries fetched concurrently through ONE client (one pool):
+  // unpooled, their six continuation pages would all be in flight together.
+  const results = await Promise.all([
+    fetchQueryFeatures("a", client),
+    fetchQueryFeatures("b", client),
+    fetchQueryFeatures("c", client),
+  ]);
+  for (const result of results) {
+    equal(result.features.length, 300);
+    equal(result.complete, true);
+  }
+  equal(continuationCalls, 6); // two continuation pages per query, no retries
+  // Bounded by the pool cap, but genuinely overlapping (a serialized pool
+  // would observe 1 and multiply a capped topic's load time).
+  if (maxInFlight > CONTINUATION_POOL_SIZE) {
+    throw new Error(`unbounded fan-out: ${maxInFlight} continuation pages in flight`);
+  }
+  if (maxInFlight < 2) throw new Error("pool serialized the continuation pages");
+});
+
+Deno.test("cold /wiki with a capped topic pins the upstream call count (chrome-status-lite-9nh)", async () => {
+  let calls = 0;
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
+      calls++;
+      if (query === "webgpu") {
+        const start = options.start ?? 0;
+        // Over the 1000 cap: one first page + 9 continuations, then the
+        // assembly is flagged incomplete and capped at 1000.
+        return {
+          total_count: 1200,
+          features: Array.from({ length: 100 }, (_, i) => ({ id: `gpu-${start + i}`, name: `GPU feature ${start + i}` })),
+        };
+      }
+      return { total_count: 0, features: [] };
+    },
+  }));
+  const html = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  // webgpu's single query costs 10 calls (1 + 9 continuations); every other
+  // query costs exactly its first page. Derived from the topic table so the
+  // pin survives topic definitions changing.
+  const totalQueries = WIKI_TOPICS.reduce((n, topic) => n + topic.queries.length, 0);
+  equal(calls, totalQueries - 1 + 10); // 29 queries: 28 first pages + capped webgpu's 10
+  includes(html, '<a href="/wiki/webgpu">1000+ features</a>'); // capped lower bound
+});
+
+Deno.test("two consecutive /wiki renders after a failed continuation share one retry window (chrome-status-lite-9nh)", async () => {
+  let calls = 0;
+  const handler = createHandler(fixtureClient({
+    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
+      calls++;
+      if (query !== "javascript") return { total_count: 0, features: [] };
+      const start = options.start ?? 0;
+      if (start === 100) throw new Error("503 page 2"); // both attempts, every time
+      return {
+        total_count: 250,
+        features: Array.from({ length: start === 200 ? 50 : 100 }, (_, i) => ({ id: `js-${start + i}`, name: `JS feature ${start + i}` })),
+      };
+    },
+  }));
+  const first = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  const afterFirst = calls;
+  includes(first, '<a href="/wiki/javascript">150+ features</a>'); // partial, marked
+  // Before 9nh this second anonymous render re-ran the whole fan-out
+  // (including the failing continuation). The partial assembly now stays
+  // cached for the retry window: zero additional upstream calls.
+  const second = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  equal(calls, afterFirst);
+  includes(second, '<a href="/wiki/javascript">150+ features</a>');
 });
