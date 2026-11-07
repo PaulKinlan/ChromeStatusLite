@@ -222,19 +222,16 @@ export class ChromeStatusAPI {
     return this.fetchJson(`/api/v0/features/${id}`);
   }
 
-  private async fetchJson<T>(
-    path: string,
-    options: { signal?: AbortSignal } = {},
-  ): Promise<T> {
+  private async fetchJson<T>(path: string): Promise<T> {
     let json = this.cache.get(path);
 
     if (!json) {
       const url = CHROMESTATUS_API_ENDPOINT + path;
-      // Bound the upstream wait even when no caller signal is available; a
-      // caller's signal (e.g. the incoming request's) aborts the fetch too.
-      const signals = [AbortSignal.timeout(this.timeoutMs)];
-      if (options.signal) signals.push(options.signal);
-      const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+      // Bound the upstream wait: Deno's fetch has no default timeout and no
+      // cancellation reaches us from the incoming request, so an abandoned
+      // render keeps reading upstream until this timeout or the body byte
+      // cap below fires.
+      const signal = AbortSignal.timeout(this.timeoutMs);
       let response: Response;
       try {
         response = await this.fetcher(url, { signal });
