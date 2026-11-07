@@ -17,6 +17,53 @@ import { collectTopicFeatures, type WikiTopic } from "./wiki.ts";
 const PAGE_SIZE = 100;
 const MAX_FEATURES_PER_QUERY = 1000;
 
+// Continuation pages share one small per-client pool instead of launching
+// every start offset at once: a cold /wiki can otherwise hold hundreds of
+// upstream fetches and their buffers open inside a single anonymous request
+// (chrome-status-lite-9nh). Four in flight keeps pages overlapping (a
+// serialized pool would multiply a capped topic's load time) while capping
+// the worst case. The pool is keyed by client like the topic cache, so the
+// production singleton bounds concurrency across concurrent requests while
+// tests with fresh fixture clients stay isolated.
+export const CONTINUATION_POOL_SIZE = 4;
+
+// Runs job() as soon as a slot is free; slots are handed to queued callers
+// in FIFO order as earlier jobs settle.
+class Semaphore {
+  private inFlight = 0;
+  private readonly limit: number;
+  private readonly waiters: (() => void)[] = [];
+
+  constructor(limit: number) {
+    this.limit = limit;
+  }
+
+  run<T>(job: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const start = () => {
+        this.inFlight++;
+        job().then(resolve, reject).finally(() => {
+          this.inFlight--;
+          this.waiters.shift()?.();
+        });
+      };
+      if (this.inFlight < this.limit) start();
+      else this.waiters.push(start);
+    });
+  }
+}
+
+const continuationPools = new WeakMap<StatusClient, Semaphore>();
+
+const continuationPoolFor = (chromeStatusAPI: StatusClient): Semaphore => {
+  let pool = continuationPools.get(chromeStatusAPI);
+  if (!pool) {
+    pool = new Semaphore(CONTINUATION_POOL_SIZE);
+    continuationPools.set(chromeStatusAPI, pool);
+  }
+  return pool;
+};
+
 export const fetchQueryFeatures = async (
   query: string,
   chromeStatusAPI: StatusClient,
@@ -38,10 +85,15 @@ export const fetchQueryFeatures = async (
     for (let start = features.length; start < wanted; start += PAGE_SIZE) {
       starts.push(start);
     }
+    // Continuations queue on the shared pool; the one retry per page
+    // re-queues rather than bypassing the cap.
+    const pool = continuationPoolFor(chromeStatusAPI);
+    const attempt = (start: number) =>
+      chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE, start });
     const fetchPage = (start: number) =>
-      chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE, start })
+      pool.run(() => attempt(start))
         // One retry for transient upstream failures before giving up.
-        .catch(() => chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE, start }))
+        .catch(() => pool.run(() => attempt(start)))
         .catch(() => null);
     for (const page of await Promise.all(starts.map(fetchPage))) {
       if (Array.isArray(page?.features)) {
@@ -81,6 +133,15 @@ export interface TopicData {
 // so a TTL refetch is assembly work, not necessarily network work.
 const TOPIC_CACHE_TTL = 15 * 60 * 1000;
 
+// An incomplete assembly is kept only briefly instead of being deleted: the
+// short retry window rate-limits and shares retries across callers, so the
+// next anonymous visit inside the window does not re-run the whole
+// continuation fan-out (chrome-status-lite-9nh) — while a partial inventory
+// still expires quickly enough never to masquerade as the full TTL answer
+// (chrome-status-lite-3mh). Total failures are still dropped: there is no
+// data to show, so the next visit retries immediately.
+export const TOPIC_RETRY_TTL = 45 * 1000;
+
 interface CacheEntry {
   expires: number;
   promise: Promise<TopicData>;
@@ -105,31 +166,42 @@ const assembleTopicData = async (
 
 // Returns the assembled feature set for a topic, serving from the shared
 // per-client cache when fresh. Concurrent callers share one in-flight
-// assembly (single-flight). Only COMPLETE assemblies are cached: a partial
-// inventory (a query failed, a continuation page was lost, or the cap bit)
-// or a total failure must not pin a stale count for the whole TTL, so the
-// next visit retries upstream instead (chrome-status-lite-3mh).
+// assembly (single-flight). Complete assemblies keep the full TTL. A partial
+// inventory (a continuation page was lost, or the cap bit) is re-dated to the
+// short retry TTL so callers within the window share one partial answer
+// instead of each re-running the fan-out (chrome-status-lite-9nh), while a
+// total failure is dropped so the next visit retries immediately (4p4).
+// Neither partial ever pins a stale count for the whole TTL. `now` is
+// injectable so tests can cross the retry window without sleeping.
 export const getTopicData = (
   topic: WikiTopic,
   chromeStatusAPI: StatusClient,
+  now: () => number = Date.now,
 ): Promise<TopicData> => {
   let cache = topicCaches.get(chromeStatusAPI);
   if (!cache) {
     cache = new Map();
     topicCaches.set(chromeStatusAPI, cache);
   }
-  const now = Date.now();
+  const requestedAt = now();
   const hit = cache.get(topic.slug);
-  if (hit && hit.expires > now) return hit.promise;
+  if (hit && hit.expires > requestedAt) return hit.promise;
   const promise = assembleTopicData(topic, chromeStatusAPI);
   // Cache the in-flight promise immediately so concurrent directory/topic
-  // renders share one assembly, then drop the entry unless the assembled
-  // data is the complete inventory.
-  cache.set(topic.slug, { expires: now + TOPIC_CACHE_TTL, promise });
+  // renders share one assembly; the entry's expiry is then corrected for
+  // the assembled outcome below.
+  cache.set(topic.slug, { expires: requestedAt + TOPIC_CACHE_TTL, promise });
   promise.then((data) => {
-    if (!data.complete && cache.get(topic.slug)?.promise === promise) {
+    const entry = cache.get(topic.slug);
+    if (entry?.promise !== promise) return; // superseded by a newer assembly
+    if (data.complete) return; // full TTL stands
+    if (data.failed) {
       cache.delete(topic.slug);
+      return;
     }
+    // Partial: re-date to the retry window, anchored at resolution so a
+    // slow assembly does not leave an already-expired entry behind.
+    entry.expires = now() + TOPIC_RETRY_TTL;
   });
   return promise;
 };
