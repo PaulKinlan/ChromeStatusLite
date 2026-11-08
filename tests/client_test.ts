@@ -52,6 +52,110 @@ Deno.test("fetchJson throws on non-2xx HTTP responses", async () => {
   equal(caught, true);
 });
 
+Deno.test("retryable upstream failures are negative-cached: N requests make one upstream call", async () => {
+  // A 5xx during an upstream outage used to be re-issued by every incoming
+  // request, amplifying traffic 1:1 onto chromestatus.com. Inside the
+  // negative-cache window the remembered error must be rethrown instead.
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    negativeCacheMaxAge: 60_000,
+    fetcher: async () => {
+      calls++;
+      return new Response("boom", { status: 503 });
+    },
+  });
+  for (let i = 0; i < 5; i++) {
+    let caught: Error | undefined;
+    try {
+      await client.getFeature(123);
+    } catch (err) {
+      caught = err as Error;
+    }
+    equal(caught instanceof Error, true);
+    equal(caught!.message.includes("Upstream HTTP 503"), true);
+  }
+  equal(calls, 1);
+});
+
+Deno.test("fetch-throw (network/timeout) failures are negative-cached too", async () => {
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    negativeCacheMaxAge: 60_000,
+    fetcher: async () => {
+      calls++;
+      throw new Error("connection refused");
+    },
+  });
+  for (let i = 0; i < 3; i++) {
+    let caught = false;
+    try {
+      await client.getFeature(123);
+    } catch (err) {
+      caught = true;
+      equal((err as Error).message.includes("Upstream fetch failed"), true);
+    }
+    equal(caught, true);
+  }
+  equal(calls, 1);
+});
+
+Deno.test("a negative-cache entry expires and the path is re-fetched upstream", async () => {
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    negativeCacheMaxAge: 30,
+    fetcher: async () => {
+      calls++;
+      if (calls === 1) return new Response("boom", { status: 500 });
+      return new Response(`)]}'\n${JSON.stringify({ id: 123 })}`);
+    },
+  });
+  let caught = false;
+  try {
+    await client.getFeature(123);
+  } catch {
+    caught = true;
+  }
+  equal(caught, true);
+  // Still inside the window: remembered error, no new upstream call.
+  caught = false;
+  try {
+    await client.getFeature(123);
+  } catch {
+    caught = true;
+  }
+  equal(caught, true);
+  equal(calls, 1);
+  // Past the TTL the entry must expire: the next request re-fetches and a
+  // recovered upstream is served.
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  equal((await client.getFeature(123)).id, 123);
+  equal(calls, 2);
+});
+
+Deno.test("client errors (404) are not negative-cached", async () => {
+  // A 404 reflects the path, not upstream health: every request must reach
+  // upstream so a resource that appears later is picked up immediately.
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    negativeCacheMaxAge: 60_000,
+    fetcher: async () => {
+      calls++;
+      return new Response("not found", { status: 404 });
+    },
+  });
+  for (let i = 0; i < 3; i++) {
+    let caught = false;
+    try {
+      await client.getFeature(123);
+    } catch (err) {
+      caught = true;
+      equal((err as Error).message.includes("Upstream HTTP 404"), true);
+    }
+    equal(caught, true);
+  }
+  equal(calls, 3);
+});
+
 Deno.test("getFeaturesForVersion sends the milestone as one encoded upstream parameter", async () => {
   const seen: string[] = [];
   const client = new ChromeStatusAPI({
