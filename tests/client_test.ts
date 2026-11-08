@@ -156,6 +156,51 @@ Deno.test("client errors (404) are not negative-cached", async () => {
   equal(calls, 3);
 });
 
+Deno.test("concurrent requests to one failing path share one upstream call (chrome-status-lite-9da)", async () => {
+  // Before coalescing, a burst overlapping the slow first attempt all missed
+  // the (negative) cache and each issued its own upstream call: 20
+  // concurrent requests during an outage made 20 upstream calls.
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    fetcher: async () => {
+      calls++;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return new Response("down", { status: 503 });
+    },
+  });
+  const results = await Promise.allSettled(
+    Array.from({ length: 20 }, () => client.getFeature(123)),
+  );
+  equal(calls, 1);
+  for (const result of results) equal(result.status, "rejected");
+  // The shared rejection is also the negative-cached one: the next
+  // sequential request is served from the negative cache.
+  let caught = false;
+  try {
+    await client.getFeature(123);
+  } catch {
+    caught = true;
+  }
+  equal(caught, true);
+  equal(calls, 1);
+});
+
+Deno.test("concurrent requests to one healthy path share one upstream call", async () => {
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    fetcher: async () => {
+      calls++;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return new Response(`)]}'\n${JSON.stringify({ id: 123 })}`);
+    },
+  });
+  const results = await Promise.all(
+    Array.from({ length: 10 }, () => client.getFeature(123)),
+  );
+  equal(calls, 1);
+  for (const result of results) equal(result.id, 123);
+});
+
 Deno.test("getFeaturesForVersion sends the milestone as one encoded upstream parameter", async () => {
   const seen: string[] = [];
   const client = new ChromeStatusAPI({

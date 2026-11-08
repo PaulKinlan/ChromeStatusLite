@@ -124,6 +124,11 @@ export class ChromeStatusAPI {
   private timeoutMs: number;
   private maxBodyBytes: number;
   private negativeCacheMaxAge: number;
+  // Concurrent cache misses for the same path share one upstream call
+  // (singleflight): without it, an outage burst overlapping the slow (up to
+  // 15s) first attempt amplifies 1:1 before the negative cache entry exists
+  // (chrome-status-lite-9da). The same coalescing applies to successes.
+  private inFlight: Map<string, Promise<any>> = new Map();
 
   constructor(options: {
     fetcher?: typeof fetch;
@@ -269,69 +274,86 @@ export class ChromeStatusAPI {
       json = undefined;
     }
 
-    if (!json) {
-      const url = CHROMESTATUS_API_ENDPOINT + path;
-      // Bound the upstream wait: Deno's fetch has no default timeout and no
-      // cancellation reaches us from the incoming request, so an abandoned
-      // render keeps reading upstream until this timeout or the body byte
-      // cap below fires.
-      const signal = AbortSignal.timeout(this.timeoutMs);
-      let response: Response;
-      try {
-        response = await this.fetcher(url, { signal });
-      } catch (err) {
-        // Network failure or timeout: retryable, so remember it briefly
-        // rather than letting every incoming request re-issue the call.
-        this.fail(
-          path,
-          new Error(
-            `Upstream fetch failed for ${path}: ${(err as Error).message}`,
-          ),
-        );
-      }
-      if (!response.ok) {
-        // 5xx and 429 are upstream/transient and negative-cached; other 4xx
-        // reflect the path itself and are not (a 404 must be re-asked, in
-        // case the resource appears upstream later).
-        const status = response.status;
-        const error = new Error(`Upstream HTTP ${status} from ${path}`);
-        if (status >= 500 || status === 429) {
-          this.fail(path, error);
-        }
-        throw error;
-      }
-      const body = response.body;
-      if (body == null) {
-        this.fail(path, new Error(`Upstream returned no body for ${path}`));
-      }
-      const strippedResponse = new Response(
-        body
-          .pipeThrough(new StripStream())
-          .pipeThrough(byteLimitStream(this.maxBodyBytes)),
-      );
-      let text: string;
-      try {
-        text = await strippedResponse.text();
-      } catch (err) {
-        this.fail(
-          path,
-          new Error(
-            `Upstream body read failed for ${path}: ${(err as Error).message}`,
-          ),
-        );
-      }
-      try {
-        json = JSON.parse(text);
-      } catch (err) {
-        this.fail(
-          path,
-          new Error(
-            `Upstream JSON parse failed for ${path}: ${(err as Error).message}`,
-          ),
-        );
-      }
-      this.cache.set(path, json);
+    if (json) return json;
+
+    let pending = this.inFlight.get(path);
+    if (!pending) {
+      pending = this.fetchUpstream(path);
+      this.inFlight.set(path, pending);
+      // Bookkeeping on both branches so this derived promise never rejects;
+      // the shared promise itself still rejects for every awaiting caller.
+      const clear = () => this.inFlight.delete(path);
+      pending.then(clear, clear);
     }
+    return pending;
+  }
+
+  // One upstream round-trip for `path`, caching the parsed body on success
+  // and a NegativeCacheEntry on retryable failure. Never call directly from
+  // outside fetchJson: it must run at most once per path at a time.
+  private async fetchUpstream<T>(path: string): Promise<T> {
+    const url = CHROMESTATUS_API_ENDPOINT + path;
+    // Bound the upstream wait: Deno's fetch has no default timeout and no
+    // cancellation reaches us from the incoming request, so an abandoned
+    // render keeps reading upstream until this timeout or the body byte
+    // cap below fires.
+    const signal = AbortSignal.timeout(this.timeoutMs);
+    let response: Response;
+    try {
+      response = await this.fetcher(url, { signal });
+    } catch (err) {
+      // Network failure or timeout: retryable, so remember it briefly
+      // rather than letting every incoming request re-issue the call.
+      this.fail(
+        path,
+        new Error(
+          `Upstream fetch failed for ${path}: ${(err as Error).message}`,
+        ),
+      );
+    }
+    if (!response.ok) {
+      // 5xx and 429 are upstream/transient and negative-cached; other 4xx
+      // reflect the path itself and are not (a 404 must be re-asked, in
+      // case the resource appears upstream later).
+      const status = response.status;
+      const error = new Error(`Upstream HTTP ${status} from ${path}`);
+      if (status >= 500 || status === 429) {
+        this.fail(path, error);
+      }
+      throw error;
+    }
+    const body = response.body;
+    if (body == null) {
+      this.fail(path, new Error(`Upstream returned no body for ${path}`));
+    }
+    const strippedResponse = new Response(
+      body
+        .pipeThrough(new StripStream())
+        .pipeThrough(byteLimitStream(this.maxBodyBytes)),
+    );
+    let text: string;
+    try {
+      text = await strippedResponse.text();
+    } catch (err) {
+      this.fail(
+        path,
+        new Error(
+          `Upstream body read failed for ${path}: ${(err as Error).message}`,
+        ),
+      );
+    }
+    let json: T;
+    try {
+      json = JSON.parse(text);
+    } catch (err) {
+      this.fail(
+        path,
+        new Error(
+          `Upstream JSON parse failed for ${path}: ${(err as Error).message}`,
+        ),
+      );
+    }
+    this.cache.set(path, json);
     return json;
   }
 }
