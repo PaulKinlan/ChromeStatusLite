@@ -1,4 +1,4 @@
-import { createHandler } from "../src/handler.ts";
+import { createHandler, type StatusClient } from "../src/handler.ts";
 import wiki from "../src/routes/wiki.ts";
 import wikiTopic, { fetchQueryFeatures } from "../src/routes/wiki-topic.ts";
 import { equal, fixtureClient, includes } from "./fixture.ts";
@@ -233,6 +233,38 @@ Deno.test("fetchQueryFeatures paginates past the 100-result default page (review
   equal(calls[1].options.start, 100);
   equal(calls[2].options.start, 200);
   for (const call of calls) equal(call.options.num, 100);
+});
+
+Deno.test("a synchronously throwing continuation leaks no pool slot (chrome-status-lite-1qp)", async () => {
+  // StatusClient is structural, so a non-async double whose
+  // getFeaturesByQuery throws synchronously is legal. The continuation pool
+  // used to increment inFlight and then call job() directly, so a sync throw
+  // skipped the .finally decrement: 300 total here means two continuation
+  // starts x two attempts = four sync throws = four leaked slots, after
+  // which every later fetchQueryFeatures on this client queued forever.
+  const client = fixtureClient({
+    getFeaturesByQuery: ((_query: string, options: { num?: number; start?: number } = {}) => {
+      if (options.start !== undefined) {
+        throw new Error("sync throw from continuation");
+      }
+      return Promise.resolve({
+        total_count: 300,
+        features: Array.from({ length: 100 }, (_, i) => ({ id: i, name: `F${i}` })),
+      });
+    }) as StatusClient["getFeaturesByQuery"],
+  });
+  const first = await fetchQueryFeatures("q", client);
+  equal(first.complete, false);
+  // The pool must still have capacity: a second query settles (and likewise
+  // reports incomplete) instead of hanging.
+  const second = await Promise.race([
+    fetchQueryFeatures("q", client),
+    new Promise((resolve) => setTimeout(() => resolve("HUNG"), 1500)),
+  ]);
+  if (second === "HUNG") {
+    throw new Error("pool wedged: second fetchQueryFeatures never settled");
+  }
+  equal(second.complete, false);
 });
 
 Deno.test("fetchQueryFeatures reports incomplete when a continuation fails twice (review chrome-status-lite-lmj)", async () => {

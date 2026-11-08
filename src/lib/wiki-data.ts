@@ -42,7 +42,13 @@ class Semaphore {
     return new Promise<T>((resolve, reject) => {
       const start = () => {
         this.inFlight++;
-        job().then(resolve, reject).finally(() => {
+        // job() may throw SYNCHRONOUSLY: StatusClient is structural, so a
+        // non-async double or future implementation is legal. Invoking it
+        // through .then turns a sync throw into a rejection, so the finally
+        // below always releases the slot — a direct job() call would skip it
+        // and leak slots until every pool.run() queued forever
+        // (chrome-status-lite-1qp).
+        Promise.resolve().then(job).then(resolve, reject).finally(() => {
           this.inFlight--;
           this.waiters.shift()?.();
         });
