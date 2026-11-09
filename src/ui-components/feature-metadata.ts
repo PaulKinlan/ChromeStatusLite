@@ -1,5 +1,4 @@
 import template from "../flora.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 // The milestone API returns a summary (including impact and maturity), while
 // flag_name and WPT are normally only present in the individual feature API.
@@ -47,9 +46,7 @@ export const renderFeatureMetadata = (
   if (!visibleRows.length) return template``;
   return template`<ul class="feature-metadata">${
     visibleRows.map(([label, value]) =>
-      template`<li><strong>${escapeHtml(label)}:</strong> ${
-        escapeHtml(value)
-      }</li>`
+      template`<li><strong>${label}:</strong> ${value}</li>`
     )
   }</ul>`;
 };

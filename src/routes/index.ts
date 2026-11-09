@@ -1,6 +1,5 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
 import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
@@ -24,7 +23,7 @@ const renderData = async (version, featuresByType) => {
   const deprecated = getSafeBucket("Deprecated");
 
   return template`
-  <h1>Chrome ${escapeHtml(String(version))}</h1>
+  <h1>Chrome ${version}</h1>
   <a href="#enabled">Enabled (${enabled.length})</a> |
   <a href="#origin-trial">Origin Trial (${originTrials.length})</a> |
   <a href="#flagged">Behind a flag (${flaggedFeatures.length})</a> |
@@ -107,7 +106,7 @@ const renderFeature = (item, tag = "h3") => {
   const bug = sanitizeUrl(item.browsers?.chrome?.bug);
   const spec = sanitizeUrl(item.standards?.spec);
   const id = item.id !== undefined ? encodeURIComponent(String(item.id)) : "";
-  const name = escapeHtml(item.name || "Unnamed feature");
+  const name = item.name || "Unnamed feature";
   const summary = linkify(item.summary || "");
   return template`<${tag}><a href="/feature/${id}">${name}</a></${tag}>
       <p>${summary}${
@@ -116,10 +115,10 @@ const renderFeature = (item, tag = "h3") => {
       ${
         "motivation" in item && item.motivation
           ? template`<p>${
-              escapeHtml(item.creator || "A contributor")
-            } created this feature because: <blockquote>${escapeHtml(
+              item.creator || "A contributor"
+            } created this feature because: <blockquote>${
               item.motivation
-            )}</blockquote></p>`
+            }</blockquote></p>`
           : template``
       }
       ${
@@ -132,29 +131,29 @@ const renderFeature = (item, tag = "h3") => {
 };
 
 const renderEnabled = (enabled, version) => template`
-    <h2 id="enabled">Enabled by default in ${escapeHtml(String(version))}</h2>
+    <h2 id="enabled">Enabled by default in ${version}</h2>
     <p>This release of Chrome had ${enabled.length} new features.</p>
     ${enabled.map((item) => renderFeature(item, "h3"))}`;
 
 const renderOriginTrials = (ot, version) => template`
-    <h2 id="origin-trial">Origin Trials in-progress in ${escapeHtml(String(version))}</h2>
+    <h2 id="origin-trial">Origin Trials in-progress in ${version}</h2>
     <p>This release of Chrome had ${ot.length} new origin trials.</p>
     ${ot.map((item) => renderFeature(item, "h3"))}`;
 
 const renderFlaggedFeatures = (flagged, version) => template`
-    <h2 id="flagged">Flagged features in ${escapeHtml(String(version))}</h2>
+    <h2 id="flagged">Flagged features in ${version}</h2>
     <p>This release of Chrome had ${
       flagged.length
     } are available behind a flag.</p>
     ${flagged.map((item) => renderFeature(item, "h3"))}`;
 
 const renderDeprecatedFeatures = (deprecated, version) => template`
-    <h3 id="deprecated">Deprecated features in ${escapeHtml(String(version))}</h3>
+    <h3 id="deprecated">Deprecated features in ${version}</h3>
     <p>This release of Chrome had ${deprecated.length} features deprecated.</p>
     ${deprecated.map((item) => renderFeature(item, "h4"))}`;
 
 const renderRemovedFeatures = (removed, version) => template`
-    <h3 id="removed">Removed features in ${escapeHtml(String(version))}</h3>
+    <h3 id="removed">Removed features in ${version}</h3>
     <p>This release of Chrome had ${removed.length} features removed.</p>
     ${removed.map((item) => renderFeature(item, "h4"))}`;
 
@@ -203,12 +202,19 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
     if (sel !== undefined) recent.unshift(sel);
   }
   const rest = versions.filter((v) => !recent.includes(v));
-  const chip = (item) =>
-    `<a href="?version=${encodeURIComponent(String(item))}"${
-      String(item) === String(version) ? ` class="current" aria-current="page"` : ""
-    }>${escapeHtml(String(item))}</a>`;
-  const recentHtml = recent.map(chip).join(" ");
-  const restHtml = rest.map(chip).join(" ");
+  // Each chip is a nested template (flora escapes the label at
+  // interpolation); the current-marker attribute is authored static markup
+  // inside its own template, never a raw string.
+  const chip = (item) => {
+    const current = String(item) === String(version);
+    return template`<a href="?version=${encodeURIComponent(String(item))}"${
+      current ? template` class="current" aria-current="page"` : ""
+    }>${String(item)}</a>`;
+  };
+  // flora arrays get no separator, so interleave the spaces the old
+  // join(" ") produced (the anchors are inline and need the whitespace).
+  const chips = (list) =>
+    list.flatMap((item, index) => index ? [" ", chip(item)] : [chip(item)]);
 
   const contentBody = upstreamError
     ? template`<p class="error-notice">Unable to load release data from chromestatus.com. Please try again later.</p>`
@@ -222,8 +228,8 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="/scripts/index.js" type="module"></script>
-  <title>Chrome Release ${escapeHtml(version)}</title>
-  <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
+  <title>Chrome Release ${version}</title>
+  <link rel="canonical" href="https://chromestatuslite.com${url.pathname + url.search}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 
@@ -231,10 +237,10 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   ${nav()}
   <h1>Chrome Release Summary</h1>
   <div class="versions">Chrome version:
-    <span class="version-list">${template`${recentHtml}`}</span>
+    <span class="version-list">${chips(recent)}</span>
     ${
     rest.length
-      ? template`<details class="more-versions"><summary title="Show ${rest.length} earlier versions" aria-label="Show ${rest.length} earlier versions">+${rest.length}</summary><div class="version-list">${template`${restHtml}`}</div></details>`
+      ? template`<details class="more-versions"><summary title="Show ${rest.length} earlier versions" aria-label="Show ${rest.length} earlier versions">+${rest.length}</summary><div class="version-list">${chips(rest)}</div></details>`
       : template``
   }
   </div>

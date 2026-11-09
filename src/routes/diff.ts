@@ -1,6 +1,5 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import nav from "../ui-components/nav.ts";
 
 const STATUSES = [
@@ -17,25 +16,25 @@ const STATUSES = [
 const renderMilestone = (version: string, groups: Record<string, any[]>) =>
   template`
   <section class="diff-milestone" aria-label="Chrome ${
-    escapeHtml(version)
+    version
   } release notes">
-    <h2>Chrome ${escapeHtml(version)}</h2>
+    <h2>Chrome ${version}</h2>
     ${
     STATUSES.map((status) => {
       const items = groups[status] || [];
       return template`<section>
-        <h3>${escapeHtml(status)} (${items.length})</h3>
+        <h3>${status} (${items.length})</h3>
         ${
         items.length
           ? template`<ul>${
             items.map((item) =>
               template`<li>
           <a href="/feature/${encodeURIComponent(String(item.id))}">${
-                escapeHtml(item.name)
+                item.name
               }</a>
           ${
                 item.summary
-                  ? template`<p>${escapeHtml(item.summary)}</p>`
+                  ? template`<p>${item.summary}</p>`
                   : template``
               }
         </li>`
@@ -83,12 +82,12 @@ export default async function render(
   const fromGroups = groups[0] || {};
   const toGroups = from === to ? fromGroups : groups[1] || {};
   const canonical = `https://chromestatuslite.com${
-    escapeHtml(url.pathname + url.search)
+    url.pathname + url.search
   }`;
   const option = (version: string, selected: string) =>
-    template`<option value="${escapeHtml(version)}"${
+    template`<option value="${version}"${
       version === selected ? " selected" : ""
-    }>Chrome ${escapeHtml(version)}</option>`;
+    }>Chrome ${version}</option>`;
 
   let diffContent;
   if (upstreamError) {
@@ -100,7 +99,7 @@ export default async function render(
       ${
         from === to
           ? template`<p>Both selections are Chrome ${
-            escapeHtml(from)
+            from
           }. Choose different milestones to compare releases.</p>`
           : template``
       }

@@ -1,4 +1,19 @@
+import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
+
 const encoder = new TextEncoder();
+
+// Intentional markup produced outside a template (already-rendered HTML) that
+// must be emitted verbatim. Every plain string interpolated into a template is
+// HTML-escaped by the engine; wrapping in raw() is the only way to emit markup
+// from a string, and it is explicit at the call site.
+class RawMarkup {
+  value: string;
+  constructor(value: string) {
+    this.value = value;
+  }
+}
+
+export const raw = (value: unknown): RawMarkup => new RawMarkup(String(value));
 
 const pipeInto = async (from, controller) => {
   const reader = from.getReader();
@@ -46,11 +61,33 @@ const enqueueItem = async (val, controller) => {
         await enqueueItem(item, controller);
       }
     } else if (val !== undefined && val !== null) {
-      controller.enqueue(encoder.encode(val));
+      // Safe by default: plain strings are untrusted text and are escaped
+      // here, so a forgotten escapeHtml at a call site can no longer become
+      // XSS. Nested template results are ReadableStreams (already-rendered
+      // markup) and pass through above; only an explicit raw() wrapper emits
+      // a string verbatim. Non-strings (numbers, booleans) stringify as
+      // before.
+      if (val instanceof RawMarkup) {
+        controller.enqueue(encoder.encode(val.value));
+      } else if (typeof val === "string") {
+        controller.enqueue(encoder.encode(escapeHtml(val)));
+      } else {
+        // Objects with a custom toString (URL instances, String wrappers,
+        // domain objects) stringify through ToString — without escaping here
+        // they would emit raw markup, the same unsafe direction the engine
+        // default exists to remove. escapeHtml(String(...)) is
+        // output-identical for numbers and booleans (chrome-status-lite-d9n).
+        controller.enqueue(encoder.encode(escapeHtml(String(val))));
+      }
     }
   }
 };
 
+// Tagged-template HTML streamer. The static string parts are authored markup
+// and are emitted verbatim; interpolated values are safe by default: plain
+// strings are HTML-escaped, arrays/promises recurse, nested template results
+// (ReadableStreams) pass through as already-rendered markup, and raw() is the
+// explicit opt-out for intentional markup in a string.
 export default async (strings, ...values): ReadableStream => {
   return new ReadableStream({
     start(controller) {

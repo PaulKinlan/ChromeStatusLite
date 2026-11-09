@@ -1,5 +1,4 @@
 import template from "../flora.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 // Trackers and code hosts whose references turn up in chromestatus prose
 // without a scheme (e.g. "crbug.com/500967896", "github.com/whatwg/html/pull/123").
@@ -29,10 +28,11 @@ const URL_RE = new RegExp(
 const TRAILING_PUNCTUATION = ".,;:!?)\u005d";
 
 // Converts plain text into flora template nodes with URLs turned into
-// clickable anchors. All non-URL text stays escaped plain text, and URL
-// display text is escaped too, so upstream data can never inject markup
-// through this path. A scheme-less reference is displayed as written and
-// linked with an explicit https scheme.
+// clickable anchors. All non-URL text is interpolated as plain strings, which
+// flora escapes at interpolation, and URL display text is escaped the same
+// way, so upstream data can never inject markup through this path. A
+// scheme-less reference is displayed as written and linked with an explicit
+// https scheme.
 export default function linkify(text: string) {
   const nodes = [];
   let last = 0;
@@ -49,17 +49,17 @@ export default function linkify(text: string) {
       }
       if (end === start) continue;
       if (start > last) {
-        nodes.push(template`${escapeHtml(text.slice(last, start))}`);
+        nodes.push(template`${text.slice(last, start)}`);
       }
       nodes.push(
-        template`<a href="${href.startsWith("http") ? href : `https://${href}`}" rel="noopener noreferrer">${escapeHtml(
-          href,
-        )}</a>`,
+        template`<a href="${href.startsWith("http") ? href : `https://${href}`}" rel="noopener noreferrer">${
+          href
+        }</a>`,
       );
       last = end;
     }
     if (last < text.length) {
-      nodes.push(template`${escapeHtml(text.slice(last))}`);
+      nodes.push(template`${text.slice(last)}`);
     }
   }
   if (nodes.length === 0) return template``;

@@ -1,6 +1,5 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
 import {
@@ -32,7 +31,7 @@ const renderNotFound = (slug: string, canonical: string) =>
 <body>
   ${nav()}
   <h1>Topic not found</h1>
-  <p>No wiki topic <code>${escapeHtml(slug)}</code> exists. Browse the
+  <p>No wiki topic <code>${slug}</code> exists. Browse the
      <a href="/wiki">topic directory</a>.</p>
 </body>
 
@@ -46,17 +45,17 @@ const renderNotFound = (slug: string, canonical: string) =>
 
 const renderFeature = (feature, crossTags: string[]) => {
   const id = encodeURIComponent(String(feature.id));
-  const name = escapeHtml(feature.name || "Unnamed feature");
-  const summary = escapeHtml(feature.summary || "");
+  const name = feature.name || "Unnamed feature";
+  const summary = feature.summary || "";
   return template`
     <article class="wiki-feature">
       <h3><a href="/feature/${id}">${name}</a></h3>
       <p>${summary}</p>
       ${crossTags.length > 0
         ? template`<p><small>Also tagged: ${crossTags.map((slug) =>
-            template`<a href="/wiki/${escapeHtml(slug)}">${escapeHtml(
+            template`<a href="/wiki/${slug}">${
               getTopic(slug)?.title || slug
-            )}</a> `
+            }</a> `
           )}</small></p>`
         : template``}
     </article>`;
@@ -76,8 +75,8 @@ const renderConsensus = (features) => {
   return template`
   <h2>Cross-browser consensus</h2>
   <ul class="wiki-consensus">${rows.map(({ label, entries }) =>
-    template`<li><strong>${escapeHtml(label)}:</strong> ${entries.map(([text, count], index) =>
-      template`${index > 0 ? ", " : ""}${escapeHtml(text)} (${count})`
+    template`<li><strong>${label}:</strong> ${entries.map(([text, count], index) =>
+      template`${index > 0 ? ", " : ""}${text} (${count})`
     )}</li>`
   )}</ul>`;
 };
@@ -89,7 +88,7 @@ const renderStages = (features, tagsById: Map<string, string[]>, topicSlug: stri
   <h2>Features by stage</h2>
   ${groups.map(({ stage, features: groupFeatures }) => template`
     <section class="wiki-stage">
-      <h3>${escapeHtml(stage)} (${groupFeatures.length})</h3>
+      <h3>${stage} (${groupFeatures.length})</h3>
       ${groupFeatures.map((feature) =>
         renderFeature(
           feature,
@@ -107,7 +106,7 @@ const renderTimeline = (features) => {
   <ul class="wiki-timeline">
     ${entries.map(({ milestone, feature }) => template`
       <li>Chrome <a href="/?version=${milestone}">${milestone}</a> —
-        <a href="/feature/${encodeURIComponent(String(feature.id))}">${escapeHtml(feature.name || "Unnamed feature")}</a></li>`)}
+        <a href="/feature/${encodeURIComponent(String(feature.id))}">${feature.name || "Unnamed feature"}</a></li>`)}
   </ul>`;
 };
 
@@ -117,7 +116,7 @@ export default async function render(
   chromeStatusAPI: StatusClient,
 ): Promise<Response> {
   const url = new URL(request.url);
-  const canonical = `https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}`;
+  const canonical = `https://chromestatuslite.com${url.pathname + url.search}`;
   const slug = match?.pathname?.groups?.topic || "";
   const topic = getTopic(slug);
   if (!topic) return renderNotFound(slug, canonical);
@@ -160,7 +159,7 @@ export default async function render(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(topic.title)} — Web Platform Topic Wiki</title>
+  <title>${topic.title} — Web Platform Topic Wiki</title>
   <link rel="canonical" href="${canonical}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
@@ -168,8 +167,8 @@ export default async function render(
 <body>
   ${nav()}
   <p><a href="/wiki">&larr; Topic directory</a></p>
-  <h1>${escapeHtml(topic.title)}</h1>
-  <p>${escapeHtml(topic.description)}</p>
+  <h1>${topic.title}</h1>
+  <p>${topic.description}</p>
   <div id="output">
     ${contentBody}
   </div>

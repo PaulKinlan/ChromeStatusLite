@@ -1,6 +1,5 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import { formatStableDate } from "../lib/utils.ts";
 
 import { sanitizeUrl } from "../lib/url.ts";
@@ -103,9 +102,9 @@ export default async function render(
 
   const renderTrialItem = (item: OriginTrialFeature, milestone: number) => {
     const safeId = encodeURIComponent(String(item.id));
-    const name = escapeHtml(item.name || "Unnamed origin trial");
-    const summary = item.summary ? escapeHtml(item.summary) : "";
-    const stage = item.intent_stage ? escapeHtml(item.intent_stage) : "Origin trial";
+    const name = item.name || "Unnamed origin trial";
+    const summary = item.summary ? item.summary : "";
+    const stage = item.intent_stage ? item.intent_stage : "Origin trial";
     const spec = sanitizeUrl(item.standards?.spec);
 
     let statusBadge = template`<span class="badge ot">Active in ${milestone}</span>`;
@@ -123,7 +122,7 @@ export default async function render(
       </h3>
       <p>${summary}</p>
       <p><small>Stage: ${stage}</small>${spec ? template` | <small><a href="${spec}">Specification</a></small>` : template``}</p>
-      ${item.motivation ? template`<blockquote><small>${escapeHtml(item.motivation)}</small></blockquote>` : template``}
+      ${item.motivation ? template`<blockquote><small>${item.motivation}</small></blockquote>` : template``}
     </article>`;
   };
 
@@ -170,7 +169,7 @@ export default async function render(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chrome Origin Trials Tracker</title>
-  <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
+  <link rel="canonical" href="https://chromestatuslite.com${url.pathname + url.search}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 
