@@ -53,6 +53,48 @@ Deno.test("versionless deprecations render N/A, not an empty ?version= anchor (c
   equal(html.includes('href="/?version="'), false);
 });
 
+Deno.test("deprecation with an empty desktop milestone renders N/A instead of the error notice (chrome-status-lite-b6s)", async () => {
+  // desktop: "" passes the undefined filter but parseInts to NaN; if it
+  // reaches getChannels' bounds it throws on the strict coercion and the
+  // catch block replaces the whole calendar with the error notice.
+  const client = fixtureClient({
+    getFeaturesByType: async () => ({
+      features: [
+        { id: 1, name: "Normal", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "120" } } },
+        { id: 2, name: "Pending", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "" } } },
+      ],
+    }),
+  });
+  const response = await createHandler(client)(new Request("https://chromestatuslite.com/deprecations"));
+  equal(response.status, 200);
+  const html = await response.text();
+  equal(html.includes("error-notice"), false);
+  includes(html, "Normal");
+  includes(html, "Pending");
+  includes(html, 'href="/?version=120"');
+  equal(html.includes('href="/?version="'), false);
+});
+
+Deno.test("calendar of only empty-desktop deprecations renders every row without the error notice (chrome-status-lite-b6s)", async () => {
+  // With no valid milestone at all the channel-range bounds fall back to
+  // the unbounded getChannels() call, exactly as when no feature has a
+  // desktop field.
+  const client = fixtureClient({
+    getFeaturesByType: async () => ({
+      features: [
+        { id: 1, name: "Pending A", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "" } } },
+        { id: 2, name: "Pending B", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "" } } },
+      ],
+    }),
+  });
+  const response = await createHandler(client)(new Request("https://chromestatuslite.com/deprecations"));
+  equal(response.status, 200);
+  const html = await response.text();
+  equal(html.includes("error-notice"), false);
+  includes(html, "Pending A");
+  includes(html, "Pending B");
+});
+
 Deno.test("deprecation calendar feature name links to the local /feature/:id route", async () => {
   const response = await createHandler(fixtureClient())(new Request("https://chromestatuslite.com/deprecations?view=all"));
   equal(response.status, 200);
