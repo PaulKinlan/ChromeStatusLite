@@ -11,11 +11,26 @@ html{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ox
    spaces, so without this they force the page wider than the screen on mobile.
    Let any long link or word wrap instead of overflowing horizontally. */
 a,dd,li,p,blockquote{overflow-wrap:break-word;word-break:break-word}
+/* Keyboard focus visibility (chrome-status-lite-2x9). The vendored awsm.css
+   block above zeroes the ring on every interactive control (button, select,
+   textarea, input[type=...] {outline:0}) and replaces it with a 1px border
+   colour swap on :focus, which looks the same as :hover, so a keyboard user
+   cannot see where they are (WCAG 2.1 AA 2.4.7). :is() keeps the element-list
+   selector at its strongest member's specificity and :focus-visible adds
+   0,1,0 on top, so these rules outrank the vendor's element/attribute rules
+   without !important - the minified awsm.css line stays untouched and
+   re-generatable. */
+:is(a,button,summary,select,input,textarea,[tabindex]):focus-visible{outline:2px solid #0064c1;outline-offset:2px;border-radius:4px}
+/* The vendored 'target:focus' rule drops the ring on the '§' heading anchor
+   after a jump; keep a visible one when the focus came from the keyboard. */
+:is(h1,h2,h3,h4,h5,h6)>a[href^="#"][id]:empty:target:focus-visible{outline:2px solid #0064c1;outline-offset:2px}
+
 /* The version picker is a long list of release-number links. Render them as
    spaced, tappable chips that wrap, instead of a dense comma-separated run. */
 .versions{line-height:2;margin:1em 0}
 .versions a{display:inline-block;min-width:2em;padding:.2em .5em;margin:.12em .12em 0 0;text-align:center;border:1px solid #e2e2e2;border-radius:4px;line-height:1.3;text-decoration:none}
 .versions a:hover{border-color:#f00000}
+.versions a:focus-visible{border-color:#f00000}
 .versions a.current{border-color:#0064c1;background:#eaf2fb;font-weight:700}
 /* The long tail of older versions lives in a native <details> disclosure that
    flows inline with the recent chips; the expanded list drops below it. */
