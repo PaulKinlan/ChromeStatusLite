@@ -6,6 +6,121 @@
  */
 html{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,"PT Sans","Open Sans","Fira Sans","Droid Sans","Helvetica Neue",Helvetica,Arial,sans-serif;font-size:100%;line-height:1.4;background:#fff;color:#000;-webkit-overflow-scrolling:touch}body{margin:1.2em;font-size:1rem}@media (min-width:20rem){body{font-size:calc(1rem + .00625*(100vw - 20rem))}}@media (min-width:40rem){body{font-size:1.125rem}}body article,body footer,body header,body main{position:relative;max-width:40rem;margin:0 auto}body>header{margin-bottom:3.5em}body>header h1{margin:0;font-size:1.5em}body>header p{margin:0;font-size:.85em}body>footer{margin-top:6em;padding-bottom:1.5em;text-align:center;font-size:.8rem;color:#aaa}details,nav{margin:1em 0}nav ul{list-style:none;margin:0;padding:0}nav li{display:inline-block;margin-right:1em;margin-bottom:.25em}nav li:last-child{margin-right:0}a,nav a:visited{color:#0064c1}article header h1 a:visited:hover,article header h2 a:visited:hover,nav a:hover{color:#f00000}ol,ul{margin-top:0;padding-top:0;padding-left:2.5em}article header h1+p,article header h2+p,ol li+li,ul li+li{margin-top:.25em}ol li>details,ul li>details{margin:0}p{margin:1em 0;-webkit-hyphens:auto;-ms-hyphens:auto;hyphens:auto}aside:first-child,form legend:first-child+label,p:first-child{margin-top:0}aside:last-child,p:last-child{margin-bottom:0}p+ol,p+ul{margin-top:-.75em}p img,p picture{float:right;margin-bottom:.5em;margin-left:.5em}p picture img{float:none;margin:0}blockquote,dd{padding-left:2.5em}dd{margin-bottom:1em;margin-left:0}dt{font-weight:700}blockquote{margin:0}aside{margin:.5em 0;font-style:italic;color:#aaa}@media (min-width:65rem){aside{position:absolute;right:-12.5rem;width:9.375rem;max-width:9.375rem;margin:0;padding-left:.5em;font-size:.8em;border-left:1px solid #f2f2f2}}section+section{margin-top:2em}h1,h2,h3,h4,h5,h6{margin:1.25em 0 0;line-height:1.2}h1:focus>a[href^="#"][id]:empty,h1:hover>a[href^="#"][id]:empty,h2:focus>a[href^="#"][id]:empty,h2:hover>a[href^="#"][id]:empty,h3:focus>a[href^="#"][id]:empty,h3:hover>a[href^="#"][id]:empty,h4:focus>a[href^="#"][id]:empty,h4:hover>a[href^="#"][id]:empty,h5:focus>a[href^="#"][id]:empty,h5:hover>a[href^="#"][id]:empty,h6:focus>a[href^="#"][id]:empty,h6:hover>a[href^="#"][id]:empty{opacity:1}figure+p,h1+details,h1+p,h2+details,h2+p,h3+details,h3+p,h4+details,h4+p,h5+details,h5+p,h6+details,h6+p{margin-top:.5em}h1>a[href^="#"][id]:empty,h2>a[href^="#"][id]:empty,h3>a[href^="#"][id]:empty,h4>a[href^="#"][id]:empty,h5>a[href^="#"][id]:empty,h6>a[href^="#"][id]:empty{position:absolute;left:-.65em;opacity:0;text-decoration:none;font-weight:400;line-height:1;color:#aaa}@media (min-width:40rem){h1>a[href^="#"][id]:empty,h2>a[href^="#"][id]:empty,h3>a[href^="#"][id]:empty,h4>a[href^="#"][id]:empty,h5>a[href^="#"][id]:empty,h6>a[href^="#"][id]:empty{left:-.8em}}h1>a[href^="#"][id]:empty:focus,h1>a[href^="#"][id]:empty:hover,h1>a[href^="#"][id]:empty:target,h2>a[href^="#"][id]:empty:focus,h2>a[href^="#"][id]:empty:hover,h2>a[href^="#"][id]:empty:target,h3>a[href^="#"][id]:empty:focus,h3>a[href^="#"][id]:empty:hover,h3>a[href^="#"][id]:empty:target,h4>a[href^="#"][id]:empty:focus,h4>a[href^="#"][id]:empty:hover,h4>a[href^="#"][id]:empty:target,h5>a[href^="#"][id]:empty:focus,h5>a[href^="#"][id]:empty:hover,h5>a[href^="#"][id]:empty:target,h6>a[href^="#"][id]:empty:focus,h6>a[href^="#"][id]:empty:hover,h6>a[href^="#"][id]:empty:target{opacity:1;box-shadow:none;color:#000}h1>a[href^="#"][id]:empty:target:focus,h2>a[href^="#"][id]:empty:target:focus,h3>a[href^="#"][id]:empty:target:focus,h4>a[href^="#"][id]:empty:target:focus,h5>a[href^="#"][id]:empty:target:focus,h6>a[href^="#"][id]:empty:target:focus{outline:0}h1>a[href^="#"][id]:empty::before,h2>a[href^="#"][id]:empty::before,h3>a[href^="#"][id]:empty::before,h4>a[href^="#"][id]:empty::before,h5>a[href^="#"][id]:empty::before,h6>a[href^="#"][id]:empty::before{content:"§ "}h1{font-size:2.5em}h2{font-size:1.75em}h3{font-size:1.25em}h4{font-size:1.15em}a abbr,h5,h6{font-size:1em}h6{margin-top:1em}article+article{margin-top:4em}article header p{font-size:.6em;color:#aaa}article header p+h1,article header p+h2{margin-top:-.25em}article header h1 a,article header h2 a{color:#000}article header h1 a:visited,article header h2 a:visited,h6,legend{color:#aaa}article>footer{margin-top:1.5em;font-size:.85em}a:visited{color:#8d39d0}a:active,a:hover{outline-width:0}a:hover{color:#f00000}abbr{margin-right:-.075em;text-decoration:none;-webkit-hyphens:none;-ms-hyphens:none;hyphens:none;letter-spacing:.075em;font-size:.9em}img,picture{display:block;max-width:100%;margin:0 auto}audio,video{width:100%;max-width:100%}figure{margin:1em 0 .5em;padding:0}figure figcaption{opacity:.65;font-size:.85em}table{display:inline-block;border-spacing:0;border-collapse:collapse;overflow-x:auto;max-width:100%;text-align:left;vertical-align:top;background:linear-gradient(rgba(0,0,0,.15) 0%,rgba(0,0,0,.15) 100%) 0 0,linear-gradient(rgba(0,0,0,.15) 0%,rgba(0,0,0,.15) 100%) 100% 0;background-attachment:scroll,scroll;background-size:1px 100%,1px 100%;background-repeat:no-repeat,no-repeat}table caption{font-size:.9em;background:#fff}table td,table th{padding:.35em .75em;vertical-align:top;font-size:.9em;border:1px solid #f2f2f2;border-top:0;border-left:0}table td:first-child,table th:first-child{padding-left:0;background-image:linear-gradient(to right,#fff 50%,rgba(255,255,255,0) 100%);background-size:2px 100%;background-repeat:no-repeat}table td:last-child,table th:last-child{padding-right:0;border-right:0;background-image:linear-gradient(to left,#fff 50%,rgba(255,255,255,0) 100%);background-position:100% 0;background-size:2px 100%;background-repeat:no-repeat}table td:only-child,table th:only-child{background-image:linear-gradient(to right,#fff 50%,rgba(255,255,255,0) 100%),linear-gradient(to left,#fff 50%,rgba(255,255,255,0) 100%);background-position:0 0,100% 0;background-size:2px 100%,2px 100%;background-repeat:no-repeat,no-repeat}table th{line-height:1.2}form{margin-right:auto;margin-left:auto}@media (min-width:40rem){form{max-width:80%}}form label,form select,output{display:block}form label:not(:first-child){margin-top:1em}form p label{display:inline}form p label+label{margin-left:1em}form input[type],form select,form textarea{margin-bottom:1em}form input[type=checkbox],form input[type=radio]{margin-bottom:0}button,fieldset{margin:0;border:1px solid #aaa}fieldset{padding:.5em 1em}button{outline:0;box-sizing:border-box;height:2em;padding:calc(.25em - 1px) .5em;font-family:inherit;font-size:1em;border-radius:2px;background:#fff;display:inline-block;width:auto;background:#f2f2f2;color:#000;cursor:pointer}button:focus,input[type=email]:focus,input[type=month]:focus,input[type=number]:focus,input[type=password]:focus,input[type=search]:focus,input[type=tel]:focus,input[type=text]:focus,input[type=time]:focus,input[type=url]:focus,input[type=week]:focus,input[type^=date]:focus,select:focus{border:1px solid #000}button:not([disabled]):hover,input[type=button]:not([disabled]):hover,input[type=file]:not([disabled]):hover,input[type=reset]:not([disabled]):hover,input[type=submit]:not([disabled]):hover,select:not([disabled]):hover{border:1px solid #000}button:active,select:active{background-color:#aaa}button[disabled],select[disabled]{color:#aaa;cursor:not-allowed}select{outline:0;box-sizing:border-box;height:2em;margin:0;padding:calc(.25em - 1px) .5em;font-family:inherit;font-size:1em;border:1px solid #aaa;border-radius:2px;background:#fff;display:inline-block;width:auto;background:#f2f2f2;color:#000;cursor:pointer;padding-right:1.2em;background-position:top 55% right .35em;background-size:.5em;background-repeat:no-repeat;-webkit-appearance:none;-moz-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 2'%3E%3Cpath fill='rgb(170, 170, 170)' fill-rule='nonzero' d='M1.5 2L3 0H0z'/%3E%3C/svg%3E")}select:not([disabled]):focus,select:not([disabled]):hover{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 2'%3E%3Cpath fill='rgb(0, 0, 0)' fill-rule='nonzero' d='M1.5 2L3 0H0z'/%3E%3C/svg%3E")}input[type=email],input[type=month],input[type=number],input[type=password],input[type=search],input[type=tel],input[type=text],input[type=time],input[type=url],input[type=week],input[type^=date]{outline:0;box-sizing:border-box;height:2em;margin:0;padding:calc(.25em - 1px) .5em;font-family:inherit;font-size:1em;border:1px solid #aaa;border-radius:2px;background:#fff;color:#000;display:block;width:100%;line-height:calc(2em - 1px*2 - (.25em - 1px)*2);-webkit-appearance:none;-moz-appearance:none;appearance:none}input[type=email]::-moz-placeholder,input[type=month]::-moz-placeholder,input[type=number]::-moz-placeholder,input[type=password]::-moz-placeholder,input[type=search]::-moz-placeholder,input[type=tel]::-moz-placeholder,input[type=text]::-moz-placeholder,input[type=time]::-moz-placeholder,input[type=url]::-moz-placeholder,input[type=week]::-moz-placeholder,input[type^=date]::-moz-placeholder{color:#aaa}input[type=email]::-webkit-input-placeholder,input[type=month]::-webkit-input-placeholder,input[type=number]::-webkit-input-placeholder,input[type=password]::-webkit-input-placeholder,input[type=search]::-webkit-input-placeholder,input[type=tel]::-webkit-input-placeholder,input[type=text]::-webkit-input-placeholder,input[type=time]::-webkit-input-placeholder,input[type=url]::-webkit-input-placeholder,input[type=week]::-webkit-input-placeholder,input[type^=date]::-webkit-input-placeholder{color:#aaa}input[type=email]:-ms-input-placeholder,input[type=month]:-ms-input-placeholder,input[type=number]:-ms-input-placeholder,input[type=password]:-ms-input-placeholder,input[type=search]:-ms-input-placeholder,input[type=tel]:-ms-input-placeholder,input[type=text]:-ms-input-placeholder,input[type=time]:-ms-input-placeholder,input[type=url]:-ms-input-placeholder,input[type=week]:-ms-input-placeholder,input[type^=date]:-ms-input-placeholder{color:#aaa}input[type=button],input[type=reset],input[type=submit]{outline:0;box-sizing:border-box;height:2em;margin:0;padding:calc(.25em - 1px) .5em;font-family:inherit;font-size:1em;border:1px solid #aaa;border-radius:2px;background:#fff;display:inline-block;width:auto;background:#f2f2f2;color:#000;cursor:pointer;-webkit-appearance:none;-moz-appearance:none;appearance:none}input[type=button]:focus,input[type=reset]:focus,input[type=submit]:focus{border:1px solid #000}input[type=button]:active,input[type=reset]:active,input[type=submit]:active{background-color:#aaa}input[type=button][disabled],input[type=reset][disabled],input[type=submit][disabled]{color:#aaa;cursor:not-allowed}input[type=color]{outline:0;box-sizing:border-box;height:2em;margin:0;padding:calc(.25em - 1px) .5em;font-family:inherit;font-size:1em;border:1px solid #aaa;border-radius:2px;background:#fff;color:#000;display:block;line-height:calc(2em - 1px*2 - (.25em - 1px)*2);-webkit-appearance:none;-moz-appearance:none;appearance:none;width:6em}input[type=color]:focus{border:1px solid #000}input[type=color]::-moz-placeholder,textarea::-moz-placeholder{color:#aaa}input[type=color]::-webkit-input-placeholder,textarea::-webkit-input-placeholder{color:#aaa}input[type=color]:-ms-input-placeholder{color:#aaa}input[type=color]:hover{border:1px solid #000}input[type=file]{outline:0;box-sizing:border-box;margin:0;padding:calc(.25em - 1px) .5em;font-family:inherit;border:1px solid #aaa;border-radius:2px;background:#fff;background:#f2f2f2;color:#000;cursor:pointer;display:block;width:100%;height:auto;padding:.75em .5em;font-size:12px;line-height:1}input[type=file]:focus,textarea:focus{border:1px solid #000}input[type=file]:active{background-color:#aaa}input[type=file][disabled]{color:#aaa;cursor:not-allowed}input[type=checkbox],input[type=radio]{margin:-.2em .75em 0 0;vertical-align:middle}textarea{outline:0;box-sizing:border-box;margin:0;padding:calc(.25em - 1px) .5em;font-family:inherit;font-size:1em;border:1px solid #aaa;border-radius:2px;background:#fff;color:#000;display:block;width:100%;line-height:calc(2em - 1px*2 - (.25em - 1px)*2);-webkit-appearance:none;-moz-appearance:none;appearance:none;height:4.5em;resize:vertical;padding-top:.5em;padding-bottom:.5em}textarea:-ms-input-placeholder{color:#aaa}code,kbd,samp,var{font-family:Consolas,"Lucida Console",Monaco,monospace;font-style:normal}pre{overflow-x:auto;font-size:.8em;background:linear-gradient(rgba(0,0,0,.15) 0%,rgba(0,0,0,.15) 100%) 0 0,linear-gradient(rgba(0,0,0,.15) 0%,rgba(0,0,0,.15) 100%) 100% 0;background-attachment:scroll,scroll;background-size:1px 100%,1px 100%;background-repeat:no-repeat,no-repeat}pre>code,summary{display:inline-block}pre>code{overflow-x:visible;box-sizing:border-box;min-width:100%;border-right:3px solid #fff;border-left:1px solid #fff}hr{height:1px;margin:2em 0;border:0;background:#f2f2f2}details[open]{padding-bottom:.5em;border-bottom:1px solid #f2f2f2}summary{font-weight:700;border-bottom:1px dashed;cursor:pointer}summary::-webkit-details-marker{display:none}noscript{color:#d00000}::selection{background:rgba(0,100,193,.25)}
 
+/* === Design tokens (chrome-status-lite-ci1) === */
+/* The minified awsm.css line above is an upstream build and stays untouched;
+   every colour the project itself paints now reads a token from here, so
+   contrast can be retuned in one place instead of dozens of scattered
+   literals. Each token is a raw light/dark pair combined with light-dark(),
+   which picks the value from the element's used color-scheme (Baseline
+   2024-05-13: Chrome 123, Firefox 120, Safari 17.5). */
+:root {
+  --surface-light: #fff;              --surface-dark: #14161a;
+  --surface-sunken-light: #fafafa;    --surface-sunken-dark: #1b1e23;
+  --surface-raised-light: #f2f2f2;    --surface-raised-dark: #23272e;
+  --text-light: #000;                 --text-dark: #eceef1;
+  --muted-light: #aaa;                --muted-dark: #a3a8b0;
+  --subtle-light: #666;               --subtle-dark: #c2c7cf;
+  --border-light: #f2f2f2;            --border-dark: #2b2f36;
+  --border-strong-light: #e2e2e2;     --border-strong-dark: #3a3f47;
+  --border-faint-light: #f5f5f5;      --border-faint-dark: #23262b;
+  --border-panel-light: #e0e0e0;      --border-panel-dark: #3a3f47;
+  --border-control-light: #aaa;       --border-control-dark: #7a828c;
+  --accent-light: #0064c1;            --accent-dark: #6cb6ff;
+  --visited-light: #8d39d0;           --visited-dark: #c9a6ff;
+  --accent-hover-light: #f00000;      --accent-hover-dark: #ff7b72;
+  --current-bg-light: #eaf2fb;        --current-bg-dark: #16324d;
+
+  /* Base values are the light ones, so a browser without light-dark() support
+     renders exactly what shipped before; the guarded block below never applies
+     there and awsm's own #fff/#000 stays in charge. */
+  --surface: var(--surface-light);
+  --surface-sunken: var(--surface-sunken-light);
+  --surface-raised: var(--surface-raised-light);
+  --text: var(--text-light);
+  --muted: var(--muted-light);
+  --subtle: var(--subtle-light);
+  --border: var(--border-light);
+  --border-strong: var(--border-strong-light);
+  --border-faint: var(--border-faint-light);
+  --border-panel: var(--border-panel-light);
+  --border-control: var(--border-control-light);
+  --accent: var(--accent-light);
+  --visited: var(--visited-light);
+  --accent-hover: var(--accent-hover-light);
+  --current-bg: var(--current-bg-light);
+}
+/* Dark support is only claimed when the token machinery can honour it:
+   'color-scheme: light dark' on a browser without light-dark() would paint
+   dark scrollbars and form controls onto a page that is still light. */
+@supports (color: light-dark(#fff, #000)) {
+  :root {
+    color-scheme: light dark;
+    --surface: light-dark(var(--surface-light), var(--surface-dark));
+    --surface-sunken: light-dark(var(--surface-sunken-light), var(--surface-sunken-dark));
+    --surface-raised: light-dark(var(--surface-raised-light), var(--surface-raised-dark));
+    --text: light-dark(var(--text-light), var(--text-dark));
+    --muted: light-dark(var(--muted-light), var(--muted-dark));
+    --subtle: light-dark(var(--subtle-light), var(--subtle-dark));
+    --border: light-dark(var(--border-light), var(--border-dark));
+    --border-strong: light-dark(var(--border-strong-light), var(--border-strong-dark));
+    --border-faint: light-dark(var(--border-faint-light), var(--border-faint-dark));
+    --border-panel: light-dark(var(--border-panel-light), var(--border-panel-dark));
+    --border-control: light-dark(var(--border-control-light), var(--border-control-dark));
+    --accent: light-dark(var(--accent-light), var(--accent-dark));
+    --visited: light-dark(var(--visited-light), var(--visited-dark));
+    --accent-hover: light-dark(var(--accent-hover-light), var(--accent-hover-dark));
+    --current-bg: light-dark(var(--current-bg-light), var(--current-bg-dark));
+  }
+}
+
+/* === awsm.css overrides (chrome-status-lite-ci1) === */
+/* Only the awsm declarations these pages actually render are restyled, and
+   they are restyled here with the same selectors so source order, not
+   specificity hacks, wins; the vendor line stays re-generatable. */
+html { background: var(--surface); color: var(--text); }
+a, nav a:visited { color: var(--accent); }
+a:visited { color: var(--visited); }
+a:active, a:hover, article header h1 a:visited:hover, article header h2 a:visited:hover, nav a:hover { color: var(--accent-hover); }
+article header h1 a, article header h2 a { color: var(--text); }
+article header h1 a:visited, article header h2 a:visited, article header p, aside, body > footer, h6, legend { color: var(--muted); }
+hr { background: var(--border); }
+details[open] { border-bottom-color: var(--border); }
+pre > code { border-right-color: var(--surface); border-left-color: var(--surface); }
+/* The deprecation calendar is the app's only table: awsm paints its caption and
+   its two scroll-edge fades white, which would band a dark page. */
+table caption { background: var(--surface); }
+table td, table th { border-color: var(--border); }
+table td:first-child, table th:first-child { background-image: linear-gradient(to right, var(--surface) 50%, transparent 100%); }
+table td:last-child, table th:last-child { background-image: linear-gradient(to left, var(--surface) 50%, transparent 100%); }
+table td:only-child, table th:only-child { background-image: linear-gradient(to right, var(--surface) 50%, transparent 100%), linear-gradient(to left, var(--surface) 50%, transparent 100%); }
+/* awsm paints every form control with literal #fff/#f2f2f2 and #000 text, which
+   beats the UA's own color-scheme theming - the milestone pickers on /diff would
+   otherwise stay light-on-dark. */
+button, input[type=button], input[type=color], input[type=file], input[type=reset],
+input[type=submit], input[type=email], input[type=month], input[type=number],
+input[type=password], input[type=search], input[type=tel], input[type=text],
+input[type=time], input[type=url], input[type=week], input[type^=date], select, textarea {
+  background-color: var(--surface-raised);
+  color: var(--text);
+  border-color: var(--border-control);
+}
+button:not([disabled]):hover, input[type=button]:not([disabled]):hover, input[type=file]:not([disabled]):hover,
+input[type=reset]:not([disabled]):hover, input[type=submit]:not([disabled]):hover, select:not([disabled]):hover {
+  border-color: var(--text);
+}
+/* ... and its focus replacement border (1px #000) is invisible on a dark page. */
+button:focus, input[type=email]:focus, input[type=month]:focus, input[type=number]:focus,
+input[type=password]:focus, input[type=search]:focus, input[type=tel]:focus, input[type=text]:focus,
+input[type=time]:focus, input[type=url]:focus, input[type=week]:focus, input[type^=date]:focus,
+select:focus, textarea:focus {
+  border-color: var(--text);
+}
+/* The select arrow is an SVG data URI awsm swaps to solid black on hover/focus;
+   keep the grey arrow in both schemes, since it reads on either surface. */
+select:not([disabled]):focus, select:not([disabled]):hover {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 2'%3E%3Cpath fill='rgb(170, 170, 170)' fill-rule='nonzero' d='M1.5 2L3 0H0z'/%3E%3C/svg%3E");
+}
+
 /* === ChromeStatusLite responsive enhancements === */
 /* Feature pages render docs/sample/spec links as full URLs; these have no
    spaces, so without this they force the page wider than the screen on mobile.
@@ -20,23 +135,23 @@ a,dd,li,p,blockquote{overflow-wrap:break-word;word-break:break-word}
    0,1,0 on top, so these rules outrank the vendor's element/attribute rules
    without !important - the minified awsm.css line stays untouched and
    re-generatable. */
-:is(a,button,summary,select,input,textarea,[tabindex]):focus-visible{outline:2px solid #0064c1;outline-offset:2px;border-radius:4px}
+:is(a,button,summary,select,input,textarea,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 /* The vendored 'target:focus' rule drops the ring on the '§' heading anchor
    after a jump; keep a visible one when the focus came from the keyboard. */
-:is(h1,h2,h3,h4,h5,h6)>a[href^="#"][id]:empty:target:focus-visible{outline:2px solid #0064c1;outline-offset:2px}
+:is(h1,h2,h3,h4,h5,h6)>a[href^="#"][id]:empty:target:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* The version picker is a long list of release-number links. Render them as
    spaced, tappable chips that wrap, instead of a dense comma-separated run. */
 .versions{line-height:2;margin:1em 0}
-.versions a{display:inline-block;min-width:2em;padding:.2em .5em;margin:.12em .12em 0 0;text-align:center;border:1px solid #e2e2e2;border-radius:4px;line-height:1.3;text-decoration:none}
-.versions a:hover{border-color:#f00000}
-.versions a:focus-visible{border-color:#f00000}
-.versions a.current{border-color:#0064c1;background:#eaf2fb;font-weight:700}
+.versions a{display:inline-block;min-width:2em;padding:.2em .5em;margin:.12em .12em 0 0;text-align:center;border:1px solid var(--border-strong);border-radius:4px;line-height:1.3;text-decoration:none}
+.versions a:hover{border-color:var(--accent-hover)}
+.versions a:focus-visible{border-color:var(--accent-hover)}
+.versions a.current{border-color:var(--accent);background:var(--current-bg);font-weight:700}
 /* The long tail of older versions lives in a native <details> disclosure that
    flows inline with the recent chips; the expanded list drops below it. */
 .more-versions{display:inline;border-bottom:0;padding-bottom:0}
 .more-versions[open]{border-bottom:0;padding-bottom:0}
-.more-versions>summary{display:inline-block;cursor:pointer;padding:.2em .5em;margin:.12em .12em 0 .15em;border:1px dashed #0064c1;border-radius:4px;color:#0064c1;line-height:1.3;list-style:none}
+.more-versions>summary{display:inline-block;cursor:pointer;padding:.2em .5em;margin:.12em .12em 0 .15em;border:1px dashed var(--accent);border-radius:4px;color:var(--accent);line-height:1.3;list-style:none}
 .more-versions>summary::-webkit-details-marker{display:none}
 .more-versions .version-list{display:block;margin-top:.4em}
 /* Tables (the deprecation calendar) scroll horizontally within the viewport on
@@ -51,26 +166,28 @@ a,dd,li,p,blockquote{overflow-wrap:break-word;word-break:break-word}
   table{font-size:.85em}
 }
 
-/* Badges and milestone timelines for /breaking and /origin-trials */
+/* Badges and milestone timelines for /breaking and /origin-trials. Each badge is
+   a status tint, so its light/dark triple is a light-dark() pair inline rather
+   than a token: the raw values are only ever meaningful together. */
 .badge { display: inline-block; padding: 0.15em 0.5em; border-radius: 3px; font-size: 0.8em; font-weight: 600; line-height: 1.2; vertical-align: middle; margin-left: 0.4em; }
-.badge.breaking, .badge.breaking-change { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
-.badge.deprecated { background: #fff3e0; color: #e65100; border: 1px solid #ffe0b2; }
-.badge.removed { background: #fbe9e7; color: #d84315; border: 1px solid #ffccbc; }
-.badge.ot { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
-.badge.ot.upcoming { background: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; }
-.badge.ot.past { background: #f5f5f5; color: #616161; border: 1px solid #e0e0e0; }
-.badge.impact { background: #ede7f6; color: #4527a0; border: 1px solid #d1c4e9; }
-.milestone-timeline, .milestone-trials { margin-bottom: 2.5em; padding-bottom: 1.5em; border-bottom: 1px solid #f2f2f2; }
-.milestone-date { font-weight: normal; color: #666; font-size: 0.85em; margin-left: 0.3em; }
+.badge.breaking, .badge.breaking-change { background: light-dark(#ffebee, #3b1a1e); color: light-dark(#c62828, #ff9a9a); border: 1px solid light-dark(#ffcdd2, #5c2b30); }
+.badge.deprecated { background: light-dark(#fff3e0, #3a2a14); color: light-dark(#e65100, #ffb875); border: 1px solid light-dark(#ffe0b2, #5c4322); }
+.badge.removed { background: light-dark(#fbe9e7, #3a201d); color: light-dark(#d84315, #ff9b7a); border: 1px solid light-dark(#ffccbc, #5c342b); }
+.badge.ot { background: light-dark(#e8f5e9, #17301b); color: light-dark(#2e7d32, #8ee09a); border: 1px solid light-dark(#c8e6c9, #2c5233); }
+.badge.ot.upcoming { background: light-dark(#e3f2fd, #16283a); color: light-dark(#1565c0, #8dc2ff); border: 1px solid light-dark(#bbdefb, #274a6b); }
+.badge.ot.past { background: light-dark(#f5f5f5, #262626); color: light-dark(#616161, #b5b5b5); border: 1px solid light-dark(#e0e0e0, #3a3a3a); }
+.badge.impact { background: light-dark(#ede7f6, #291f3a); color: light-dark(#4527a0, #c3b0ff); border: 1px solid light-dark(#d1c4e9, #443463); }
+.milestone-timeline, .milestone-trials { margin-bottom: 2.5em; padding-bottom: 1.5em; border-bottom: 1px solid var(--border); }
+.milestone-date { font-weight: normal; color: var(--subtle); font-size: 0.85em; margin-left: 0.3em; }
 .breaking-item, .origin-trial-item { margin: 1em 0 1.5em; padding-left: 0.5em; }
-.error-notice { padding: 0.8em 1em; background: #fff8e1; color: #bf360c; border: 1px solid #ffe082; border-radius: 4px; }
+.error-notice { padding: 0.8em 1em; background: light-dark(#fff8e1, #3a2f14); color: light-dark(#bf360c, #ffab91); border: 1px solid light-dark(#ffe082, #6b5320); border-radius: 4px; }
 /* Feature snapshot history and visual diff (chrome-status-lite-33u). */
 .snapshot-history { padding-left: 1.2em; }
 .snapshot-history li { margin: 0.6em 0; }
-.diff { border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden; }
-.diff-block { border-bottom: 1px solid #f5f5f5; }
+.diff { border: 1px solid var(--border-panel); border-radius: 4px; overflow: hidden; }
+.diff-block { border-bottom: 1px solid var(--border-faint); }
 .diff-block:last-child { border-bottom: none; }
-.diff-field { padding: 0.4em 0.8em; background: #fafafa; font-weight: 600; font-size: 0.85em; color: #555; }
+.diff-field { padding: 0.4em 0.8em; background: var(--surface-sunken); font-weight: 600; font-size: 0.85em; color: var(--subtle); }
 .diff-line { padding: 0.2em 0.8em; font-family: ui-monospace, monospace; font-size: 0.9em; white-space: pre-wrap; overflow-wrap: anywhere; }
-.diff-add { background: #e6ffec; color: #116329; }
-.diff-del { background: #ffebe9; color: #82071e; }
+.diff-add { background: light-dark(#e6ffec, #12301c); color: light-dark(#116329, #7ee2a8); }
+.diff-del { background: light-dark(#ffebe9, #3a1a1c); color: light-dark(#82071e, #ff9ea8); }

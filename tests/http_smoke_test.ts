@@ -8,14 +8,15 @@ function assertStylesheetLoaded(statuses: number[]): void {
   }
 }
 
-// A page that measures the keyboard focus ring the SERVED stylesheet actually
-// paints (chrome-status-lite-2x9): the stylesheet is not asserted as text, the
-// browser is asked for the computed outline of each interactive control while
-// it is focused, then again with that same stylesheet disabled, so a probe that
-// would pass on a stylesheet-free page cannot pass here.
+// A page that measures what the SERVED stylesheet actually paints: the
+// keyboard focus ring (chrome-status-lite-2x9) and the colour scheme's tokens
+// (chrome-status-lite-ci1). The stylesheet is never asserted as text - the
+// browser is asked for computed styles - and the focus half is measured a
+// second time with that same stylesheet disabled, so a probe that would pass
+// on a stylesheet-free page cannot pass here.
 const FOCUS_PROBE_IDS = ["link", "button", "select", "input", "textarea", "summary", "chip"];
-const focusProbePage = `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<link rel="stylesheet" href="/styles/index.css"><title>focus probe</title></head><body><main>
+const styleProbePage = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="/styles/index.css"><title>style probe</title></head><body><main>
 <a id="link" href="#x">link</a>
 <button id="button">button</button>
 <select id="select"><option>1</option></select>
@@ -23,6 +24,10 @@ const focusProbePage = `<!doctype html><html lang="en"><head><meta charset="utf-
 <textarea id="textarea"></textarea>
 <details><summary id="summary">summary</summary></details>
 <div class="versions"><a id="chip" href="#y">chrome 112</a></div>
+<span class="badge breaking" id="badge">breaking</span>
+<div class="diff-add" id="add">+added</div>
+<p class="milestone-date" id="date">date</p>
+<div id="canvas" style="background:var(--surface);color:var(--text)">canvas</div>
 <pre id="out"></pre></main><script>
 const ids = ${JSON.stringify(FOCUS_PROBE_IDS)};
 const lines = [];
@@ -37,6 +42,25 @@ function probe(tag) {
     el.blur();
   }
 }
+// WCAG relative luminance, so the probe reports measured contrast rather than
+// just "the colours changed".
+const lum = (rgb) => {
+  const [r, g, b] = rgb.map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const parse = (value) => value.match(/[\\d.]+/g).slice(0, 3).map(Number);
+const ratio = (a, b) => { const pair = [lum(parse(a)), lum(parse(b))].sort((m, n) => n - m); return (pair[0] + 0.05) / (pair[1] + 0.05); };
+function tokens() {
+  const page = getComputedStyle(document.documentElement);
+  lines.push("PAGE|bg=" + page.backgroundColor + "|color=" + page.color + "|contrast=" + ratio(page.backgroundColor, page.color).toFixed(2));
+  const canvas = getComputedStyle(document.getElementById("canvas"));
+  lines.push("SURFACE|bg=" + canvas.backgroundColor + "|color=" + canvas.color + "|contrast=" + ratio(canvas.backgroundColor, canvas.color).toFixed(2));
+  for (const id of ["link", "badge", "add", "date"]) {
+    const cs = getComputedStyle(document.getElementById(id));
+    lines.push(id.toUpperCase() + "|bg=" + cs.backgroundColor + "|color=" + cs.color);
+  }
+}
+tokens();
 probe("css-on");
 document.styleSheets[0].disabled = true;
 probe("css-off");
@@ -49,6 +73,46 @@ function focusProbeLine(html: string, tag: string, id: string): string {
   const line = html.split("\n").find((entry) => entry.startsWith(`${tag}|${id}|`));
   if (!line) throw new Error(`Focus probe produced no ${tag}|${id} line`);
   return line;
+}
+
+function probeLine(html: string, tag: string): string {
+  const line = html.split("\n").find((entry) => entry.startsWith(`${tag}|`));
+  if (!line) throw new Error(`Style probe produced no ${tag} line`);
+  return line;
+}
+
+// The colour tokens in both schemes, measured from the served stylesheet
+// (chrome-status-lite-ci1). The same page is loaded twice - once with the
+// browser's light scheme, once under prefers-color-scheme: dark - so "the page
+// adapts" is asserted end to end in a real browser instead of by grepping the
+// CSS text for a media query.
+const LIGHT_THEME = {
+  PAGE: "bg=rgb(255, 255, 255)|color=rgb(0, 0, 0)",
+  SURFACE: "bg=rgb(255, 255, 255)|color=rgb(0, 0, 0)",
+  LINK: "color=rgb(0, 100, 193)",
+  BADGE: "bg=rgb(255, 235, 238)|color=rgb(198, 40, 40)",
+  ADD: "bg=rgb(230, 255, 236)|color=rgb(17, 99, 41)",
+  DATE: "color=rgb(102, 102, 102)",
+};
+const DARK_THEME = {
+  PAGE: "bg=rgb(20, 22, 26)|color=rgb(236, 238, 241)",
+  SURFACE: "bg=rgb(20, 22, 26)|color=rgb(236, 238, 241)",
+  LINK: "color=rgb(108, 182, 255)",
+  BADGE: "bg=rgb(59, 26, 30)|color=rgb(255, 154, 154)",
+  ADD: "bg=rgb(18, 48, 28)|color=rgb(126, 226, 168)",
+  DATE: "color=rgb(194, 199, 207)",
+};
+
+function assertThemeTokens(html: string, expected: Record<string, string>): void {
+  includes(html, "PROBE-DONE"); // the probe script ran to completion
+  for (const [tag, needle] of Object.entries(expected)) includes(probeLine(html, tag), needle);
+  // Not just "the colours changed": body text has to stay readable in both
+  // schemes (WCAG 2.1 AA asks 4.5:1 for normal text).
+  for (const tag of ["PAGE", "SURFACE"]) {
+    const match = probeLine(html, tag).match(/contrast=([\d.]+)/);
+    if (!match) throw new Error(`Style probe reported no contrast for ${tag}`);
+    if (!(Number(match[1]) >= 4.5)) throw new Error(`${tag} contrast ${match[1]} is below 4.5:1: ${probeLine(html, tag)}`);
+  }
 }
 
 function assertFocusRing(html: string): void {
@@ -83,8 +147,8 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
       url.hostname = "preview.deno.net";
       return handler(new Request(url, request));
     }
-    if (new URL(request.url).pathname === "/__focus_probe") {
-      return new Response(focusProbePage, { headers: { "content-type": "text/html; charset=utf-8" } });
+    if (new URL(request.url).pathname === "/__style_probe") {
+      return new Response(styleProbePage, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
     const isCss = new URL(request.url).pathname === "/styles/index.css";
     const response = isCss && denyStylesheet
@@ -96,13 +160,16 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
   const port = (server.addr as Deno.NetAddr).port;
   const root = `http://127.0.0.1:${port}`;
   const profiles: string[] = [];
-  const browser = async (path = "/?version=112") => {
+  const browser = async (path = "/?version=112", scheme: "light" | "dark" = "light") => {
     const profile = await Deno.makeTempDir();
     profiles.push(profile);
     const screenshot = `${profile}/render.png`;
     const chrome = new Deno.Command(Deno.env.get("CHROME_BIN") || "google-chrome", {
+      // The scheme is pinned per visit rather than inherited from the host, so a
+      // machine whose desktop is dark cannot flip the assertions below.
       args: ["--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
         "--disable-background-networking", `--user-data-dir=${profile}`,
+        `--blink-settings=preferredColorScheme=${scheme === "dark" ? 0 : 1}`,
         "--virtual-time-budget=2000", `--screenshot=${screenshot}`, "--dump-dom", `${root}${path}`],
       stdout: "piped", stderr: "piped",
     });
@@ -159,7 +226,12 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
 
     // The keyboard focus ring is measured in the browser, from the served
     // stylesheet, in the same run (chrome-status-lite-2x9).
-    assertFocusRing((await browser("/__focus_probe")).html);
+    const probeHtml = (await browser("/__style_probe")).html;
+    assertFocusRing(probeHtml);
+    // ... and the colour tokens in the light scheme, then the same page under a
+    // real prefers-color-scheme: dark (chrome-status-lite-ci1).
+    assertThemeTokens(probeHtml, LIGHT_THEME);
+    assertThemeTokens((await browser("/__style_probe", "dark")).html, DARK_THEME);
 
     denyStylesheet = true;
     browserCssStatuses = [];
