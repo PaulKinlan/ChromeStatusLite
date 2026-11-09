@@ -1,6 +1,5 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import { formatStableDate } from "../lib/utils.ts";
 
 import nav from "../ui-components/nav.ts";
@@ -125,7 +124,7 @@ export default async function render(
   }
 
   const renderBadge = (type: string) => {
-    return template`<span class="badge ${escapeHtml(type.toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(type)}</span>`;
+    return template`<span class="badge ${type.toLowerCase().replace(/\s+/g, "-")}">${type}</span>`;
   };
 
   const renderEnterpriseBadge = (level?: number) => {
@@ -143,9 +142,9 @@ export default async function render(
 
   const renderFeatureItem = (item: Feature, type: string) => {
     const safeId = encodeURIComponent(String(item.id));
-    const name = escapeHtml(item.name || "Unnamed feature");
-    const summary = item.summary ? escapeHtml(item.summary) : "";
-    const stage = item.intent_stage ? escapeHtml(item.intent_stage) : "";
+    const name = item.name || "Unnamed feature";
+    const summary = item.summary ? item.summary : "";
+    const stage = item.intent_stage ? item.intent_stage : "";
 
     return template`
     <article class="breaking-item">
@@ -156,7 +155,7 @@ export default async function render(
       </h3>
       <p>${summary}</p>
       ${stage ? template`<p><small>Intent stage: ${stage}</small></p>` : template``}
-      ${item.motivation ? template`<blockquote><small>${escapeHtml(item.motivation)}</small></blockquote>` : template``}
+      ${item.motivation ? template`<blockquote><small>${item.motivation}</small></blockquote>` : template``}
     </article>`;
   };
 
@@ -203,7 +202,7 @@ export default async function render(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chrome Breaking Changes Timeline</title>
-  <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
+  <link rel="canonical" href="https://chromestatuslite.com${url.pathname + url.search}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 

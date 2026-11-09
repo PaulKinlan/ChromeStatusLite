@@ -1,6 +1,6 @@
 import { createHandler, stripBodyForHead } from "../src/handler.ts";
 import { MemorySnapshotStore, type SnapshotStore } from "../src/lib/snapshots.ts";
-import template from "../src/flora.ts";
+import template, { raw } from "../src/flora.ts";
 import feed from "../src/routes/feed.ts";
 import apiVersion from "../src/routes/api-version.ts";
 import breaking from "../src/routes/breaking.ts";
@@ -853,6 +853,38 @@ Deno.test("flora stream converts mid-stream rejections into stream errors withou
     }
   }
   equal(streamFailed, true);
+});
+
+const drain = async (stream: ReadableStream): Promise<string> =>
+  new Response(stream).text();
+
+Deno.test("flora escapes interpolated strings by default (chrome-status-lite-btw)", async () => {
+  const html = await drain(await template`<p>${'<img src=x onerror=alert(1)>'}</p>`);
+  equal(html, "<p>&lt;img src=x onerror=alert(1)&gt;</p>");
+});
+
+Deno.test("flora escapes strings inside arrays and promises too", async () => {
+  const html = await drain(await template`<ul>${
+    ["<b>one</b>", Promise.resolve("<i>two</i>")]
+  }</ul>`);
+  equal(html, "<ul>&lt;b&gt;one&lt;/b&gt;&lt;i&gt;two&lt;/i&gt;</ul>");
+});
+
+Deno.test("flora emits raw() values verbatim and passes nested templates through as markup", async () => {
+  const html = await drain(await template`<div>${raw("<em>ok</em>")}</div>`);
+  equal(html, "<div><em>ok</em></div>");
+
+  // A nested template result is a ReadableStream of already-rendered (and
+  // already escaped at its own interpolations) markup: it must stream
+  // through unchanged rather than being re-escaped.
+  const inner = template`<b>${"<i>inner</i>"}</b>`;
+  const outer = await drain(await template`<div>${inner}</div>`);
+  equal(outer, "<div><b>&lt;i&gt;inner&lt;/i&gt;</b></div>");
+});
+
+Deno.test("flora interpolates numbers and null/undefined without escaping artifacts", async () => {
+  const html = await drain(await template`<p>${42}:${null}:${undefined}</p>`);
+  equal(html, "<p>42::</p>");
 });
 
 Deno.test("feature entry without resources or null deprecation entries render safely", async () => {

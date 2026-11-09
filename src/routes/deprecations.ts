@@ -1,7 +1,6 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
 import { formatStableDate } from "../lib/utils.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
 
@@ -15,7 +14,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chrome Deprecation Calendar</title>
-  <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
+  <link rel="canonical" href="https://chromestatuslite.com${url.pathname + url.search}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 
@@ -92,10 +91,10 @@ const renderDeprecation = (deprecation, channels) => {
   let channel = (channels && desktopVersion) ? channels[desktopVersion] : undefined;
   let date = formatStableDate(channel?.stable_date) ?? 'N/A';
 
-  let name = escapeHtml(deprecation?.name || 'Unnamed feature');
+  let name = deprecation?.name || 'Unnamed feature';
   let id = deprecation?.id ? encodeURIComponent(String(deprecation.id)) : '';
-  let intentStage = escapeHtml(deprecation?.intent_stage || '');
-  let versionStr = escapeHtml(desktopVersion || '');
+  let intentStage = deprecation?.intent_stage || '';
+  let versionStr = desktopVersion || '';
   // A feature with no desktop milestone has nothing to link to (the release
   // summary defaults to latest), so the cell is plain text, not an empty
   // dead anchor (chrome-status-lite-5i3). 'N/A' matches the date column.

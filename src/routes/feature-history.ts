@@ -1,6 +1,5 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import {
   diffSnapshots,
   type FeatureSnapshot,
@@ -17,7 +16,7 @@ const page = (title: string, content, canonical: string) =>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)} — Chrome Platform Status</title>
+  <title>${title} — Chrome Platform Status</title>
   <link rel="canonical" href="${canonical}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
@@ -53,7 +52,7 @@ export async function renderHistory(
   }
   const canonicalUrl = new URL(request.url);
   const canonical = `https://chromestatuslite.com${
-    escapeHtml(canonicalUrl.pathname + canonicalUrl.search)
+    canonicalUrl.pathname + canonicalUrl.search
   }`;
   if (!store) {
     return page(
@@ -89,7 +88,7 @@ export async function renderHistory(
     return page(
       `Feature ${id} history`,
       template`<p><a href="/feature/${id}">&larr; Back to feature</a></p>
-      <h1>${escapeHtml(name)}: history</h1>
+      <h1>${name}: history</h1>
       <p>No snapshots captured yet. History builds up as readers view this
       feature; check back after the feature's details change.</p>`,
       canonical,
@@ -110,7 +109,7 @@ export async function renderHistory(
       <strong>${snap.at.replace("T", " ").slice(0, 16)}Z</strong> — ${diffHref}
       ${
         changed.length
-          ? template`<br>changed: ${escapeHtml(changed.join(", "))}`
+          ? template`<br>changed: ${changed.join(", ")}`
           : ""
       }
     </li>`;
@@ -119,7 +118,7 @@ export async function renderHistory(
   return page(
     `${name} history`,
     template`<p><a href="/feature/${id}">&larr; Back to feature</a></p>
-    <h1>${escapeHtml(name)}: history</h1>
+    <h1>${name}: history</h1>
     <p>${snapshots.length} snapshot(s), newest first. Every capture records the
     tracked fields as they were when a reader viewed the feature.</p>
     <ul class="snapshot-history">${shown.map((_, i) => entries[i])}</ul>
@@ -141,7 +140,7 @@ export async function renderDiff(
   }
   const url = new URL(request.url);
   const canonical = `https://chromestatuslite.com${
-    escapeHtml(url.pathname + url.search)
+    url.pathname + url.search
   }`;
   if (!store) {
     return page(
@@ -187,7 +186,7 @@ export async function renderDiff(
     return page(
       `${name} diff`,
       template`<p><a href="/feature/${id}/history">&larr; Back to history</a></p>
-      <h1>${escapeHtml(name)}: diff</h1>
+      <h1>${name}: diff</h1>
       <p>Two different snapshots are needed for a diff. <a href="/feature/${id}/history">View the history</a> to pick a pair.</p>`,
       canonical,
     ).then((data) => respond(data));
@@ -196,25 +195,25 @@ export async function renderDiff(
   const diffs = diffSnapshots(from, to);
   const rows = diffs.length
     ? diffs.map((d) => {
-      const label = template`<div class="diff-field">${escapeHtml(d.field)}</div>`;
+      const label = template`<div class="diff-field">${d.field}</div>`;
       if (d.kind === "added") {
         return template`<div class="diff-block">${label}
-          <div class="diff-line diff-add">+ ${escapeHtml(d.to)}</div></div>`;
+          <div class="diff-line diff-add">+ ${d.to}</div></div>`;
       }
       if (d.kind === "removed") {
         return template`<div class="diff-block">${label}
-          <div class="diff-line diff-del">− ${escapeHtml(d.from)}</div></div>`;
+          <div class="diff-line diff-del">− ${d.from}</div></div>`;
       }
       return template`<div class="diff-block">${label}
-        <div class="diff-line diff-del">− ${escapeHtml(d.from)}</div>
-        <div class="diff-line diff-add">+ ${escapeHtml(d.to)}</div></div>`;
+        <div class="diff-line diff-del">− ${d.from}</div>
+        <div class="diff-line diff-add">+ ${d.to}</div></div>`;
     })
     : template`<p>No tracked field changed between these snapshots.</p>`;
 
   return page(
     `${name} diff`,
     template`<p><a href="/feature/${id}/history">&larr; Back to history</a></p>
-    <h1>${escapeHtml(name)}: diff</h1>
+    <h1>${name}: diff</h1>
     ${paramNotice}
     <p>${from.at.replace("T", " ").slice(0, 16)}Z → ${to.at.replace("T", " ").slice(0, 16)}Z</p>
     <div class="diff">${rows}</div>`,

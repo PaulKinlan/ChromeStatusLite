@@ -1,6 +1,5 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 
 import nav from "../ui-components/nav.ts";
 import { WIKI_TOPICS } from "../lib/wiki.ts";
@@ -14,15 +13,15 @@ import { getTopicData } from "../lib/wiki-data.ts";
 // all fail renders without a count rather than taking down the directory.
 const renderTopicCard = (topic, chromeStatusAPI: StatusClient) => template`
   <article class="wiki-topic">
-    <h2><a href="/wiki/${escapeHtml(topic.slug)}">${escapeHtml(topic.title)}</a></h2>
-    <p>${escapeHtml(topic.description)}</p>
+    <h2><a href="/wiki/${topic.slug}">${topic.title}</a></h2>
+    <p>${topic.description}</p>
     ${getTopicData(topic, chromeStatusAPI).then((data) =>
       data.failed
         ? template``
         // A partial inventory renders as a lower-bound count ("2+") rather
         // than a silently wrong exact count; the topic page carries the full
         // incompleteness notice (un2).
-        : template`<p><a href="/wiki/${escapeHtml(topic.slug)}">${data.features.length}${data.complete ? "" : "+"} feature${data.features.length === 1 && data.complete ? "" : "s"}</a></p>`
+        : template`<p><a href="/wiki/${topic.slug}">${data.features.length}${data.complete ? "" : "+"} feature${data.features.length === 1 && data.complete ? "" : "s"}</a></p>`
     )}
   </article>`;
 
@@ -36,7 +35,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Web Platform Topic Wiki</title>
-  <link rel="canonical" href="https://chromestatuslite.com${escapeHtml(url.pathname + url.search)}">
+  <link rel="canonical" href="https://chromestatuslite.com${url.pathname + url.search}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
 

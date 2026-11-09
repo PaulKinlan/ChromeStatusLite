@@ -1,6 +1,5 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-import { escapeHtml } from "https://deno.land/x/escape_html/mod.ts";
 import linkify from "../lib/linkify.ts";
 import { sanitizeUrl } from "../lib/url.ts";
 import { captureSnapshot, type SnapshotStore } from "../lib/snapshots.ts";
@@ -17,10 +16,9 @@ const renderView = (label, browser) => {
   }
   // A view with a url already renders its text inside an anchor, so linkifying
   // that text would nest <a> (invalid HTML, chrome-status-lite-cbr): only the
-  // free-text branch is linkified. Notes are always free text.
-  const text = view.url
-    ? escapeHtml(view.text || "No signal")
-    : linkify(view.text || "No signal");
+  // free-text branch is linkified. Notes are always free text. Plain-string
+  // text is escaped by flora at interpolation.
+  const text = view.url ? view.text || "No signal" : linkify(view.text || "No signal");
   const url = sanitizeUrl(view.url);
   return template`<li>${label}: ${
     url
@@ -162,9 +160,9 @@ const renderEcosystemLinks = (feature) => {
   if (!name) return template``;
   const q = encodeURIComponent(name);
   const link = (label, url) =>
-    template`<li>${label}: <a href="${url}" rel="noopener noreferrer" target="_blank">${escapeHtml(
+    template`<li>${label}: <a href="${url}" rel="noopener noreferrer" target="_blank">${
       url
-    )}</a></li>`;
+    }</a></li>`;
   return template`
   <h2>Ecosystem</h2>
   <ul>
@@ -191,45 +189,45 @@ const renderFeature = (feature, showHistory = false) => {
 
   return template`
   <p><a href="/">&larr; Back to release summary</a></p>
-  <h1>${escapeHtml(feature.name)}</h1>
+  <h1>${feature.name}</h1>
   ${
     // Only advertise the history routes when a store is configured: on a
     // store-less deployment they render "not configured", so a link would
     // send readers to a dead end.
     showHistory
-      ? template`<p><a href="/feature/${escapeHtml(
+      ? template`<p><a href="/feature/${
           String(feature.id ?? "")
-        )}/history">Snapshot history</a></p>`
+        }/history">Snapshot history</a></p>`
       : template``
   }
 
   <dl>
     ${
       feature.category
-        ? template`<dt>Category</dt><dd>${escapeHtml(feature.category)}</dd>`
+        ? template`<dt>Category</dt><dd>${feature.category}</dd>`
         : template``
     }
     ${
       feature.feature_type
-        ? template`<dt>Type</dt><dd>${escapeHtml(feature.feature_type)}</dd>`
+        ? template`<dt>Type</dt><dd>${feature.feature_type}</dd>`
         : template``
     }
     ${
       status.text
-        ? template`<dt>Status</dt><dd>${escapeHtml(status.text)}${
+        ? template`<dt>Status</dt><dd>${status.text}${
             status.milestone_str
-              ? template` (Chrome <a href="/?version=${escapeHtml(
+              ? template` (Chrome <a href="/?version=${
                   status.milestone_str
-                )}">${escapeHtml(status.milestone_str)}</a>)`
+                }">${status.milestone_str}</a>)`
               : template``
           }</dd>`
         : template``
     }
     ${
       feature.intent_stage
-        ? template`<dt>Intent stage</dt><dd>${escapeHtml(
+        ? template`<dt>Intent stage</dt><dd>${
             feature.intent_stage
-          )}</dd>`
+          }</dd>`
         : template``
     }
   </dl>
@@ -268,7 +266,7 @@ const renderFeature = (feature, showHistory = false) => {
   ${renderLinks("Samples", feature.sample_links || feature.resources?.samples)}
   ${renderLinks("Explainers", feature.explainer_links)}
 
-  <p><a href="https://chromestatus.com/feature/${escapeHtml(String(feature.id ?? ""))}">View on chromestatus.com</a></p>
+  <p><a href="https://chromestatus.com/feature/${String(feature.id ?? "")}">View on chromestatus.com</a></p>
   `;
 };
 
@@ -283,9 +281,9 @@ export default async function render(request: Request, match: URLPatternResult, 
   }
 
   const url = new URL(request.url);
-  const canonical = `https://chromestatuslite.com${escapeHtml(
+  const canonical = `https://chromestatuslite.com${
     url.pathname + url.search
-  )}`;
+  }`;
 
   let feature;
   let notFound = false;
@@ -354,9 +352,9 @@ export default async function render(request: Request, match: URLPatternResult, 
 <body>
   ${nav()}
   <h1>Feature not found</h1>
-  <p>No Chrome Platform Status feature with id <code>${escapeHtml(
+  <p>No Chrome Platform Status feature with id <code>${
     id
-  )}</code> could be found.</p>
+  }</code> could be found.</p>
 </body>
 
 </html>`.then(
@@ -387,7 +385,7 @@ export default async function render(request: Request, match: URLPatternResult, 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(feature.name)} — Chrome Platform Status</title>
+  <title>${feature.name} — Chrome Platform Status</title>
   <link rel="canonical" href="${canonical}">
   <link rel="stylesheet" href="/styles/index.css">
 </head>
