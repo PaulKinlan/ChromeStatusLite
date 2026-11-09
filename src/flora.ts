@@ -72,7 +72,12 @@ const enqueueItem = async (val, controller) => {
       } else if (typeof val === "string") {
         controller.enqueue(encoder.encode(escapeHtml(val)));
       } else {
-        controller.enqueue(encoder.encode(val));
+        // Objects with a custom toString (URL instances, String wrappers,
+        // domain objects) stringify through ToString — without escaping here
+        // they would emit raw markup, the same unsafe direction the engine
+        // default exists to remove. escapeHtml(String(...)) is
+        // output-identical for numbers and booleans (chrome-status-lite-d9n).
+        controller.enqueue(encoder.encode(escapeHtml(String(val))));
       }
     }
   }

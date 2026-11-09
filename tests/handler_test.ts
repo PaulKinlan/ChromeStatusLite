@@ -887,6 +887,18 @@ Deno.test("flora interpolates numbers and null/undefined without escaping artifa
   equal(html, "<p>42::</p>");
 });
 
+Deno.test("flora escapes object leaves with a custom toString (chrome-status-lite-d9n)", async () => {
+  const hostile = { toString: () => "<script>alert(1)</script>" };
+  const html = await drain(await template`<p>${hostile}</p>`);
+  equal(html, "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>");
+  // A String wrapper is an object, not a typeof string: same escaping.
+  const wrapped = await drain(await template`<p>${new String("<b>x</b>")}</p>`);
+  equal(wrapped, "<p>&lt;b&gt;x&lt;/b&gt;</p>");
+  // Numbers/booleans are unchanged by escaping their string form.
+  const plain = await drain(await template`<p>${120}:${true}</p>`);
+  equal(plain, "<p>120:true</p>");
+});
+
 Deno.test("feature entry without resources or null deprecation entries render safely", async () => {
   const base = {
     getVersions: async () => [120],
