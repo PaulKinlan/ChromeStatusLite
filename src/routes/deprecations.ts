@@ -60,10 +60,19 @@ const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
       .filter((f) => f && typeof f === "object" && f.id)
       .sort(deprecationsSort);
 
-    // Map features to browser versions, removing features that don't have version.
+    // Map features to browser versions, removing features that don't have a
+    // version. A defined-but-unparseable milestone (desktop: "") must be
+    // excluded too: getChannels() strictly coerces its bounds
+    // (chrome-status-lite-3tl) and
+    // throws on a NaN bound, so letting such a value through poisons
+    // versions.at(0) and crashes the whole calendar into the error-notice
+    // instead of rendering its 'N/A' row (chrome-status-lite-b6s). The
+    // filter mirrors getChannels' own Number.parseInt acceptance exactly.
     const versions = deprecations
         .map(f => f?.browsers?.chrome?.desktop)
-        .filter(f => f !== undefined)
+        .filter(f =>
+          f !== undefined && Number.isFinite(Number.parseInt(String(f), 10))
+        )
         .sort((a, b) => parseInt(a) - parseInt(b));
 
     const rawChannels = await chromeStatusAPI.getChannels(versions.at(0), versions.at(-1));
