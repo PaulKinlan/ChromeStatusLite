@@ -39,6 +39,34 @@ Deno.test("every response carries baseline security headers", async () => {
   }
 });
 
+Deno.test("a rejecting route returns a hardened 500, not Deno.serve's bare one (chrome-status-lite-0nj)", async () => {
+  // Without the try/catch in createHandler this rejection escapes the handler
+  // and Deno.serve synthesises a 500 with none of SECURITY_HEADERS; removing
+  // the catch makes this suite fail (await handler rejects, headers missing).
+  // A non-async getVersions double is legal (StatusClient is structural) and
+  // its sync throw escapes the api-version route: the call at the whitelist
+  // step runs before the route's .catch(() => []) can attach, so route()
+  // rejects — a seam none of the routes' internal catches cover.
+  const handler = createHandler(fixtureClient({
+    getVersions: () => { throw new TypeError("upstream socket reset"); },
+  }));
+  const res = await handler(new Request("https://chromestatuslite.com/api/version/120"));
+  equal(res.status, 500);
+  equal(await res.text(), "Internal Server Error");
+  const csp = res.headers.get("content-security-policy") || "";
+  equal(csp, "default-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'");
+  equal(res.headers.get("x-content-type-options"), "nosniff");
+  equal(res.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+  equal(res.headers.get("x-frame-options"), "DENY");
+
+  // The error gate composes with the HEAD strip: no body, byte-accurate length.
+  const head = await handler(new Request("https://chromestatuslite.com/api/version/120", { method: "HEAD" }));
+  equal(head.status, 500);
+  equal(await head.text(), "");
+  equal(head.headers.get("content-length"), String(new TextEncoder().encode("Internal Server Error").length));
+  equal(head.headers.get("x-frame-options"), "DENY");
+});
+
 Deno.test("non-GET/HEAD verbs are rejected with 405 and Allow before dispatch", async () => {
   const client = fixtureClient({
     getVersions: () => { throw Error("must not touch upstream"); },

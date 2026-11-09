@@ -168,7 +168,22 @@ export function createHandler(
     }
   };
   return async (request: Request): Promise<Response> => {
-    const response = withSecurityHeaders(await route(request));
+    let response: Response;
+    try {
+      response = await route(request);
+    } catch (error) {
+      // The header gate is total (chrome-status-lite-0nj): a route that
+      // rejects must not fall through to Deno.serve's synthesised bare 500,
+      // which carries none of SECURITY_HEADERS — error paths are where
+      // unvalidated input most often lands, so they get the same CSP,
+      // nosniff, referrer-policy and frame-ancestors hardening as successes.
+      console.error(
+        `Unhandled route error: ${request.method} ${new URL(request.url).pathname}`,
+        error,
+      );
+      response = new Response("Internal Server Error", { status: 500 });
+    }
+    response = withSecurityHeaders(response);
     if (request.method === "HEAD") return stripBodyForHead(response);
     return response;
   };
