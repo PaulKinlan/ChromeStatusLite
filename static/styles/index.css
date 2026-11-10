@@ -18,7 +18,7 @@ html{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ox
   --surface-sunken-light: #fafafa;    --surface-sunken-dark: #1b1e23;
   --surface-raised-light: #f2f2f2;    --surface-raised-dark: #23272e;
   --text-light: #000;                 --text-dark: #eceef1;
-  --muted-light: #aaa;                --muted-dark: #a3a8b0;
+  --muted-light: #595959;             --muted-dark: #a3a8b0;
   --subtle-light: #666;               --subtle-dark: #c2c7cf;
   --border-light: #f2f2f2;            --border-dark: #2b2f36;
   --border-strong-light: #e2e2e2;     --border-strong-dark: #3a3f47;
