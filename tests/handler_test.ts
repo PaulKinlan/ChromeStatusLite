@@ -110,6 +110,36 @@ Deno.test("every page has one main landmark and a first-of-body skip link (chrom
   equal(topicHtml.split("<main").length - 1, 1, "wiki topic: exactly one <main>");
 });
 
+Deno.test("every page has exactly one h1 (chrome-status-lite-axi)", async () => {
+  // WCAG 1.3.1 / 2.4.6: one top-level heading per page. The home shell used to
+  // render a second h1 ("Chrome Release Summary") above the version h1 that
+  // matches <title>; the shell label is now a .page-kicker paragraph.
+  const handler = createHandler(fixtureClient());
+  const htmlRoutes = [
+    "/",
+    "/?version=118",
+    "/deprecations",
+    "/feature/123",
+    "/feature/123/history",
+    "/breaking",
+    "/origin-trials",
+    "/diff",
+  ];
+  for (const path of htmlRoutes) {
+    const res = await handler(new Request(`https://chromestatuslite.com${path}`));
+    const html = await res.text();
+    equal((html.match(/<h1[ >]/g) || []).length, 1, `${path}: exactly one h1`);
+  }
+  const wiki = await handler(new Request("https://chromestatuslite.com/wiki"));
+  const wikiHtml = await wiki.text();
+  equal((wikiHtml.match(/<h1[ >]/g) || []).length, 1, "/wiki: exactly one h1");
+  const topic = wikiHtml.match(/href="\/wiki\/([a-z0-9-]+)"/);
+  if (!topic) throw new Error("wiki directory listed no topic to probe");
+  const topicRes = await handler(new Request(`https://chromestatuslite.com/wiki/${topic[1]}`));
+  const topicHtml = await topicRes.text();
+  equal((topicHtml.match(/<h1[ >]/g) || []).length, 1, "wiki topic: exactly one h1");
+});
+
 Deno.test("a rejecting route returns a hardened 500, not Deno.serve's bare one (chrome-status-lite-0nj)", async () => {
   // Without the try/catch in createHandler this rejection escapes the handler
   // and Deno.serve synthesises a 500 with none of SECURITY_HEADERS; removing

@@ -98,6 +98,9 @@ article header h1 a:visited, article header h2 a:visited, article header p, asid
   border: 0 !important;
   white-space: nowrap !important;
 }
+/* Page kicker (chrome-status-lite-axi): the shell's former second h1, demoted
+   to a muted label so the release heading (matching <title>) is the only h1. */
+.page-kicker { margin: 0; font-size: 0.85em; color: var(--subtle); }
 hr { background: var(--border); }
 details[open] { border-bottom-color: var(--border); }
 pre > code { border-right-color: var(--surface); border-left-color: var(--surface); }
