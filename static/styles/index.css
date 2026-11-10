@@ -189,7 +189,7 @@ a,dd,li,p,blockquote{overflow-wrap:break-word;word-break:break-word}
    than a token: the raw values are only ever meaningful together. */
 .badge { display: inline-block; padding: 0.15em 0.5em; border-radius: 3px; font-size: 0.8em; font-weight: 600; line-height: 1.2; vertical-align: middle; margin-left: 0.4em; }
 .badge.breaking, .badge.breaking-change { background: light-dark(#ffebee, #3b1a1e); color: light-dark(#c62828, #ff9a9a); border: 1px solid light-dark(#ffcdd2, #5c2b30); }
-.badge.deprecated { background: light-dark(#fff3e0, #3a2a14); color: light-dark(#e65100, #ffb875); border: 1px solid light-dark(#ffe0b2, #5c4322); }
+.badge.deprecated { background: light-dark(#fff3e0, #3a2a14); color: light-dark(#b34a00, #ffb875); border: 1px solid light-dark(#ffe0b2, #5c4322); }
 .badge.removed { background: light-dark(#fbe9e7, #3a201d); color: light-dark(#d84315, #ff9b7a); border: 1px solid light-dark(#ffccbc, #5c342b); }
 .badge.ot { background: light-dark(#e8f5e9, #17301b); color: light-dark(#2e7d32, #8ee09a); border: 1px solid light-dark(#c8e6c9, #2c5233); }
 .badge.ot.upcoming { background: light-dark(#e3f2fd, #16283a); color: light-dark(#1565c0, #8dc2ff); border: 1px solid light-dark(#bbdefb, #274a6b); }
