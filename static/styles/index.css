@@ -83,6 +83,21 @@ a:visited { color: var(--visited); }
 a:active, a:hover, article header h1 a:visited:hover, article header h2 a:visited:hover, nav a:hover { color: var(--accent-hover); }
 article header h1 a, article header h2 a { color: var(--text); }
 article header h1 a:visited, article header h2 a:visited, article header p, aside, body > footer, h6, legend { color: var(--muted); }
+/* Skip link (chrome-status-lite-c8t): visually hidden until focused, then
+   fixed top-left so revealing it never shifts the page (Modern Web Guidance
+   accessibility: visually-hidden utility with :focus-within/:active opt-out). */
+.skip { position: fixed; top: 0.5em; left: 0.5em; z-index: 10; padding: 0.5em 0.75em; background: var(--surface-raised); color: var(--text); border: 1px solid var(--border-control); }
+.skip:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
 hr { background: var(--border); }
 details[open] { border-bottom-color: var(--border); }
 pre > code { border-right-color: var(--surface); border-left-color: var(--surface); }

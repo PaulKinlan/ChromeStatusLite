@@ -20,10 +20,12 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 
 <body>
   ${nav()}
+  <main id="main">
   <h1>Deprecation Calendar</h1>
   <div id="output">
     ${renderDeprecations(chromeStatusAPI)}
   </div>
+  </main>
 </body>
 
 </html>`

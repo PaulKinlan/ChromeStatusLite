@@ -30,9 +30,11 @@ const renderNotFound = (slug: string, canonical: string) =>
 
 <body>
   ${nav()}
+  <main id="main">
   <h1>Topic not found</h1>
   <p>No wiki topic <code>${slug}</code> exists. Browse the
      <a href="/wiki">topic directory</a>.</p>
+  </main>
 </body>
 
 </html>`.then(
@@ -166,12 +168,14 @@ export default async function render(
 
 <body>
   ${nav()}
+  <main id="main">
   <p><a href="/wiki">&larr; Topic directory</a></p>
   <h1>${topic.title}</h1>
   <p>${topic.description}</p>
   <div id="output">
     ${contentBody}
   </div>
+  </main>
 </body>
 
 </html>`.then(

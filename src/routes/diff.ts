@@ -121,7 +121,7 @@ export default async function render(
 </head>
 <body>
   ${nav()}
-  <main>
+  <main id="main">
     <h1>Compare Chrome milestones</h1>
     <p>Compare features recorded for two Chrome releases, grouped by their milestone status. These are release notes, not a complete inventory of browser support.</p>
     <form method="get" action="/diff">

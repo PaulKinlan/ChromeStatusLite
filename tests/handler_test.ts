@@ -70,6 +70,46 @@ Deno.test("every HTML page shell declares lang=en (chrome-status-lite-tiu)", asy
   includes(await topicRes.text(), '<html lang="en">');
 });
 
+Deno.test("every page has one main landmark and a first-of-body skip link (chrome-status-lite-c8t)", async () => {
+  // WCAG 2.1 A 2.4.1 Bypass Blocks: a <main id="main"> landmark per page plus
+  // a skip link as the first body element (emitted by the shared nav component
+  // before <nav>), so keyboard users can bypass the 7-link nav.
+  const handler = createHandler(fixtureClient());
+  const htmlRoutes = [
+    "/",
+    "/deprecations",
+    "/feature/123",
+    "/feature/123/history", // no store configured: still an HTML shell
+    "/breaking",
+    "/origin-trials",
+    "/diff",
+  ];
+  for (const path of htmlRoutes) {
+    const res = await handler(new Request(`https://chromestatuslite.com${path}`));
+    equal(res.status, 200);
+    const html = await res.text();
+    includes(html, '<main id="main">');
+    equal(html.split("<main").length - 1, 1, `${path}: exactly one <main>`);
+    // The skip link must precede every nav link: first element after <body>.
+    includes(
+      html.slice(html.indexOf("<body>"), html.indexOf("<nav>")),
+      '<a class="skip" href="#main">Skip to content</a>',
+      `${path}: skip link first in body`,
+    );
+  }
+  // The wiki shells render twice (directory + topic); probe the topic the
+  // directory itself links, so the pair cannot drift apart.
+  const wiki = await handler(new Request("https://chromestatuslite.com/wiki"));
+  const wikiHtml = await wiki.text();
+  includes(wikiHtml, '<main id="main">');
+  const topic = wikiHtml.match(/href="\/wiki\/([a-z0-9-]+)"/);
+  if (!topic) throw new Error("wiki directory listed no topic to probe");
+  const topicRes = await handler(new Request(`https://chromestatuslite.com/wiki/${topic[1]}`));
+  const topicHtml = await topicRes.text();
+  includes(topicHtml, '<main id="main">');
+  equal(topicHtml.split("<main").length - 1, 1, "wiki topic: exactly one <main>");
+});
+
 Deno.test("a rejecting route returns a hardened 500, not Deno.serve's bare one (chrome-status-lite-0nj)", async () => {
   // Without the try/catch in createHandler this rejection escapes the handler
   // and Deno.serve synthesises a 500 with none of SECURITY_HEADERS; removing

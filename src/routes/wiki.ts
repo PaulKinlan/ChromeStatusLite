@@ -41,6 +41,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 
 <body>
   ${nav()}
+  <main id="main">
   <h1>Web Platform Topic Wiki</h1>
   <p>Persistent topic pages grouping related Chrome Platform Status features: active stages,
      cross-browser consensus, and shipping timelines. Tags are assigned by a deterministic
@@ -48,6 +49,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   <div id="output" class="wiki-directory">
     ${WIKI_TOPICS.map((topic) => renderTopicCard(topic, chromeStatusAPI))}
   </div>
+  </main>
 </body>
 
 </html>`.then(

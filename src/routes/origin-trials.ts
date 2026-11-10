@@ -175,11 +175,13 @@ export default async function render(
 
 <body>
   ${nav()}
+  <main id="main">
   <h1>Origin Trials Tracker</h1>
   <p>Track active experimental Origin Trials running in Chrome ${stableVersion}–${devVersion}, plus recent trial history (${totalActiveTrialsCount} active trials, ${totalPastTrialsCount} past trials).</p>
   <div id="output">
     ${contentBody}
   </div>
+  </main>
 </body>
 
 </html>`.then(

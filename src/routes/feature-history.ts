@@ -23,9 +23,11 @@ const page = (title: string, content, canonical: string) =>
 
 <body>
   ${nav()}
+  <main id="main">
   <div id="output">
   ${content}
   </div>
+  </main>
 </body>
 
 </html>`;

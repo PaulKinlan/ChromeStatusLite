@@ -235,6 +235,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 
 <body>
   ${nav()}
+  <main id="main">
   <h1>Chrome Release Summary</h1>
   <div class="versions">Chrome version:
     <span class="version-list">${chips(recent)}</span>
@@ -247,6 +248,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   <div id="output">
   ${contentBody}
   </div>
+  </main>
 </body>
 
 </html>`.then(

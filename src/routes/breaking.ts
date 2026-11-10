@@ -208,11 +208,13 @@ export default async function render(
 
 <body>
   ${nav()}
+  <main id="main">
   <h1>Breaking Changes &amp; Deprecations Timeline</h1>
   <p>Track deprecated APIs, removals, and breaking changes across Chrome releases (showing ${totalCount} tracked changes across Chrome milestones${upstreamNote}).</p>
   <div id="output">
     ${contentBody}
   </div>
+  </main>
 </body>
 
 </html>`.then(
