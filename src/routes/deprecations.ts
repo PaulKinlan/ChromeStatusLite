@@ -8,7 +8,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   const url = new URL(request.url);
   return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -19,11 +19,13 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
+  <main id="main">
   <h1>Deprecation Calendar</h1>
   <div id="output">
     ${renderDeprecations(chromeStatusAPI)}
   </div>
+  </main>
 </body>
 
 </html>`

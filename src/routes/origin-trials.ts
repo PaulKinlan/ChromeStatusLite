@@ -163,7 +163,7 @@ export default async function render(
 
   return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -174,12 +174,14 @@ export default async function render(
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
+  <main id="main">
   <h1>Origin Trials Tracker</h1>
   <p>Track active experimental Origin Trials running in Chrome ${stableVersion}–${devVersion}, plus recent trial history (${totalActiveTrialsCount} active trials, ${totalPastTrialsCount} past trials).</p>
   <div id="output">
     ${contentBody}
   </div>
+  </main>
 </body>
 
 </html>`.then(

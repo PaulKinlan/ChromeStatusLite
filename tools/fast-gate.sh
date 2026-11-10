@@ -18,7 +18,14 @@ for path in "${paths[@]}"; do
     src/lib/snapshots.ts|src/routes/feature-history.ts|tests/history_test.ts) add tests/feature_test.ts; add tests/history_test.ts ;;
     src/lib/buckets.ts) add tests/index_test.ts; add tests/handler_test.ts ;;
     src/routes/diff.ts) add tests/diff_test.ts ;;
-    src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts ;;
+    # src/lib/utils.ts is consumed directly by feed (parseStableDate), breaking
+    # and origin-trials (formatStableDate) and api-version (parseMilestoneParam)
+    # — asserted through the handler suite — plus feature-history
+    # (isValidFeatureId → history suite), feature, deprecations, and the direct
+    # import in tests/client_test.ts. tests/gate_test.ts pins this selection to
+    # the real import graph so a new consumer cannot silently lose coverage
+    # (chrome-status-lite-4li).
+    src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/handler_test.ts; add tests/history_test.ts ;;
     src/routes/deprecations.ts|static/scripts/deprecations.js) add tests/deprecations_test.ts ;;
     src/routes/feed.ts|src/routes/api-version.ts|src/routes/breaking.ts|src/routes/origin-trials.ts) add tests/handler_test.ts ;;
     src/routes/wiki.ts|src/routes/wiki-topic.ts|src/lib/wiki.ts|src/lib/wiki-data.ts) add tests/wiki_test.ts ;;

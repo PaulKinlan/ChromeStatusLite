@@ -35,8 +35,9 @@ Deno.test("/diff compares two release milestones with distinct grouped columns",
   );
   includes(html, 'action="/diff"');
   // The shared nav must keep advertising the comparison route (review 8gx:
-  // deleting the nav entry previously stayed green).
-  includes(html, '<li><a href="/diff">Compare releases</a></li>');
+  // deleting the nav entry previously stayed green) — and on /diff it is the
+  // marked current link (chrome-status-lite-whe).
+  includes(html, '<li><a href="/diff" class="current" aria-current="page">Compare releases</a></li>');
   includes(html, '<li><a href="/deprecations">Deprecation Calendar</a></li>');
   includes(html, '<label for="from">From milestone</label>');
   includes(html, '<label for="to">To milestone</label>');

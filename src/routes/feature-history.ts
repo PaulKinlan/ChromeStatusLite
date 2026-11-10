@@ -11,7 +11,7 @@ import nav from "../ui-components/nav.ts";
 const page = (title: string, content, canonical: string) =>
   template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -22,10 +22,14 @@ const page = (title: string, content, canonical: string) =>
 </head>
 
 <body>
+  <!-- No nav link matches /feature/:id/history or /feature/:id/diff paths, so
+       no current path is threaded and nav() marks nothing (chrome-status-lite-whe). -->
   ${nav()}
+  <main id="main">
   <div id="output">
   ${content}
   </div>
+  </main>
 </body>
 
 </html>`;

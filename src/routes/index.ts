@@ -33,7 +33,7 @@ const renderData = async (version, featuresByType) => {
   ${renderOriginTrials(originTrials, version)}
   ${renderFlaggedFeatures(flaggedFeatures, version)}
   <h2>Deprecations and Removals</h2>
-  <h3 id="deprecation-policy">Deprecation policy</h2>
+  <h3 id="deprecation-policy">Deprecation policy</h3>
     <p>To keep the platform healthy, we sometimes remove APIs from the Web Platform which have run their course. There
         can be many reasons why we would remove an API, such as:</p>
     <ul>
@@ -62,7 +62,7 @@ const renderData = async (version, featuresByType) => {
   `;
 };
 
-const renderResources = (resources) => {
+const renderResources = (resources, tag = "h4") => {
   if (!resources || typeof resources !== "object") {
     return template``;
   }
@@ -81,7 +81,7 @@ const renderResources = (resources) => {
     return template``;
   }
 
-  return template`<h4>Resources</h4>
+  return template`<${tag}>Resources</${tag}>
       ${
         hasDocs && docs.length > 0
           ? template`<p>Docs: ${docs.map(
@@ -127,7 +127,7 @@ const renderFeature = (item, tag = "h3") => {
           : template``
       }
       ${renderFeatureMetadata(item)}
-      ${renderResources(item.resources)}`;
+      ${renderResources(item.resources, tag === "h3" ? "h4" : "h5")}`;
 };
 
 const renderEnabled = (enabled, version) => template`
@@ -217,12 +217,18 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
     list.flatMap((item, index) => index ? [" ", chip(item)] : [chip(item)]);
 
   const contentBody = upstreamError
-    ? template`<p class="error-notice">Unable to load release data from chromestatus.com. Please try again later.</p>`
+    ? // The error view keeps a page h1 (chrome-status-lite-7uj): heading
+      // navigation must still land on a title when upstream fails. Mirrors the
+      // feature page's error shell; the notice stays a sibling paragraph.
+      template`<h1>${
+      version ? template`Chrome ${version} unavailable` : template`Chrome release unavailable`
+    }</h1>
+      <p class="error-notice">Unable to load release data from chromestatus.com. Please try again later.</p>`
     : renderData(version, features);
 
   return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -234,8 +240,9 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 </head>
 
 <body>
-  ${nav()}
-  <h1>Chrome Release Summary</h1>
+  ${nav(url.pathname)}
+  <main id="main">
+  <p class="page-kicker">Chrome Release Summary</p>
   <div class="versions">Chrome version:
     <span class="version-list">${chips(recent)}</span>
     ${
@@ -247,6 +254,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   <div id="output">
   ${contentBody}
   </div>
+  </main>
 </body>
 
 </html>`.then(

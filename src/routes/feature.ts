@@ -310,7 +310,7 @@ export default async function render(request: Request, match: URLPatternResult, 
   if (upstreamError || (!notFound && !usableFeature)) {
     return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -321,9 +321,11 @@ export default async function render(request: Request, match: URLPatternResult, 
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
+  <main id="main">
   <h1>Unable to load feature</h1>
   <p class="error-notice">Unable to load feature details from chromestatus.com. Please try again later.</p>
+  </main>
 </body>
 
 </html>`.then(
@@ -339,7 +341,7 @@ export default async function render(request: Request, match: URLPatternResult, 
   if (!feature || !feature.id) {
     return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -350,11 +352,13 @@ export default async function render(request: Request, match: URLPatternResult, 
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
+  <main id="main">
   <h1>Feature not found</h1>
   <p>No Chrome Platform Status feature with id <code>${
     id
   }</code> could be found.</p>
+  </main>
 </body>
 
 </html>`.then(
@@ -380,7 +384,7 @@ export default async function render(request: Request, match: URLPatternResult, 
 
   return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -391,10 +395,12 @@ export default async function render(request: Request, match: URLPatternResult, 
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
+  <main id="main">
   <div id="output">
   ${renderFeature(feature, store !== null)}
   </div>
+  </main>
 </body>
 
 </html>`.then(

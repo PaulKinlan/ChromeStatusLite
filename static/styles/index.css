@@ -18,13 +18,13 @@ html{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ox
   --surface-sunken-light: #fafafa;    --surface-sunken-dark: #1b1e23;
   --surface-raised-light: #f2f2f2;    --surface-raised-dark: #23272e;
   --text-light: #000;                 --text-dark: #eceef1;
-  --muted-light: #aaa;                --muted-dark: #a3a8b0;
+  --muted-light: #595959;             --muted-dark: #a3a8b0;
   --subtle-light: #666;               --subtle-dark: #c2c7cf;
   --border-light: #f2f2f2;            --border-dark: #2b2f36;
   --border-strong-light: #e2e2e2;     --border-strong-dark: #3a3f47;
   --border-faint-light: #f5f5f5;      --border-faint-dark: #23262b;
   --border-panel-light: #e0e0e0;      --border-panel-dark: #3a3f47;
-  --border-control-light: #aaa;       --border-control-dark: #7a828c;
+  --border-control-light: #767676;    --border-control-dark: #7a828c;
   --accent-light: #0064c1;            --accent-dark: #6cb6ff;
   --visited-light: #8d39d0;           --visited-dark: #c9a6ff;
   --accent-hover-light: #f00000;      --accent-hover-dark: #ff7b72;
@@ -83,6 +83,27 @@ a:visited { color: var(--visited); }
 a:active, a:hover, article header h1 a:visited:hover, article header h2 a:visited:hover, nav a:hover { color: var(--accent-hover); }
 article header h1 a, article header h2 a { color: var(--text); }
 article header h1 a:visited, article header h2 a:visited, article header p, aside, body > footer, h6, legend { color: var(--muted); }
+/* Skip link (chrome-status-lite-c8t): visually hidden until focused, then
+   fixed top-left so revealing it never shifts the page (Modern Web Guidance
+   accessibility: visually-hidden utility with :focus-within/:active opt-out). */
+.skip { position: fixed; top: 0.5em; left: 0.5em; z-index: 10; padding: 0.5em 0.75em; background: var(--surface-raised); color: var(--text); border: 1px solid var(--border-control); }
+.skip:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+/* Page kicker (chrome-status-lite-axi): the shell's former second h1, demoted
+   to a muted label so the release heading (matching <title>) is the only h1. */
+.page-kicker { margin: 0; font-size: 0.85em; color: var(--subtle); }
+/* Current-page marker in the primary nav (chrome-status-lite-whe), mirroring
+   .versions a.current: visual state paired with aria-current="page". */
+nav a.current{display:inline-block;padding:.05em .4em;border-radius:4px;background:var(--current-bg);color:var(--accent);font-weight:700}
 hr { background: var(--border); }
 details[open] { border-bottom-color: var(--border); }
 pre > code { border-right-color: var(--surface); border-left-color: var(--surface); }
@@ -171,7 +192,7 @@ a,dd,li,p,blockquote{overflow-wrap:break-word;word-break:break-word}
    than a token: the raw values are only ever meaningful together. */
 .badge { display: inline-block; padding: 0.15em 0.5em; border-radius: 3px; font-size: 0.8em; font-weight: 600; line-height: 1.2; vertical-align: middle; margin-left: 0.4em; }
 .badge.breaking, .badge.breaking-change { background: light-dark(#ffebee, #3b1a1e); color: light-dark(#c62828, #ff9a9a); border: 1px solid light-dark(#ffcdd2, #5c2b30); }
-.badge.deprecated { background: light-dark(#fff3e0, #3a2a14); color: light-dark(#e65100, #ffb875); border: 1px solid light-dark(#ffe0b2, #5c4322); }
+.badge.deprecated { background: light-dark(#fff3e0, #3a2a14); color: light-dark(#b34a00, #ffb875); border: 1px solid light-dark(#ffe0b2, #5c4322); }
 .badge.removed { background: light-dark(#fbe9e7, #3a201d); color: light-dark(#d84315, #ff9b7a); border: 1px solid light-dark(#ffccbc, #5c342b); }
 .badge.ot { background: light-dark(#e8f5e9, #17301b); color: light-dark(#2e7d32, #8ee09a); border: 1px solid light-dark(#c8e6c9, #2c5233); }
 .badge.ot.upcoming { background: light-dark(#e3f2fd, #16283a); color: light-dark(#1565c0, #8dc2ff); border: 1px solid light-dark(#bbdefb, #274a6b); }
