@@ -113,6 +113,36 @@ async function makeScratch(): Promise<Scratch> {
   }
 }
 
+// Discovers src files that import src/lib/utils.ts by scanning real import
+// statements — deliberately not a hand-maintained list (chrome-status-lite-4li):
+// a new route consuming a utils helper fails the coverage pin below until the
+// fast-gate mapping selects its suite. Matches any ../ or ./ run into
+// lib/utils.ts (src/routes/x.ts, src/handler.ts) and the sibling ./utils.ts
+// form used inside src/lib itself.
+function utilsImportRegex(): RegExp {
+  return /from "(?:[.]{1,2}\/)+lib\/utils\.ts"|from "[.]\/utils\.ts"/;
+}
+
+async function utilsImporters(): Promise<string[]> {
+  const importRe = utilsImportRegex();
+  const found: string[] = [];
+  // dir is repo-relative ("src", "src/routes", ...) so returned paths compare
+  // against the gate's repo-relative changed-path list.
+  async function scan(dir: string): Promise<void> {
+    for await (const entry of Deno.readDir(`${repoRoot}/${dir}`)) {
+      if (entry.isDirectory) await scan(`${dir}/${entry.name}`);
+      else if (entry.isFile && entry.name.endsWith(".ts")) {
+        const path = `${dir}/${entry.name}`;
+        if (importRe.test(await Deno.readTextFile(`${repoRoot}/${path}`))) {
+          found.push(path);
+        }
+      }
+    }
+  }
+  await scan("src");
+  return found.sort();
+}
+
 // An untracked change the gate's diff collection will pick up.
 async function touch(dir: string, rel: string): Promise<void> {
   const slash = rel.lastIndexOf("/");
@@ -262,6 +292,58 @@ Deno.test("full gate runs the offline suites, then the smoke in a wider sandbox"
     if (invocations[0].includes(SMOKE)) fail("smoke must run in the second, wider invocation");
     includes(invocations[1], SMOKE, "smoke invocation");
     includes(invocations[1], "--allow-net=127.0.0.1", "smoke sandbox");
+  }));
+
+Deno.test("fast gate covers every src route that imports the shared lib/utils.ts", () =>
+  withScratch(async (scratch) => {
+    await touch(scratch.dir, "src/lib/utils.ts");
+    const base = await fastGate(scratch);
+    equal(base.code, 0, "exit code");
+    // feed (parseStableDate), breaking and origin-trials (formatStableDate)
+    // and api-version (parseMilestoneParam) assert through the handler suite;
+    // feature-history (isValidFeatureId) through the history suite. This exact
+    // set is the regression the mapping used to miss (chrome-status-lite-4li):
+    // a date-format regression in feed/breaking/origin-trials used to pass the
+    // implementer fast gate and first fail at the merger's full gate.
+    setEqual(
+      base.suites,
+      [
+        "tests/client_test.ts",
+        "tests/deprecations_test.ts",
+        "tests/feature_test.ts",
+        "tests/handler_test.ts",
+        "tests/history_test.ts",
+        "tests/http_smoke_test.ts",
+        "tests/index_test.ts",
+      ],
+      "suites selected for src/lib/utils.ts",
+    );
+    // Every src/routes file that really imports the shared util must be covered
+    // by the selection above: if a new consumer's suite is missing from the
+    // utils mapping, this fails. src/handler.ts is excluded — it is the shared
+    // router whose own attribution selects all suites by design.
+    const importers = (await utilsImporters()).filter((path) =>
+      path.startsWith("src/routes/")
+    );
+    if (importers.length === 0) {
+      fail("discovery found no src/routes importer of lib/utils.ts — the scan is broken");
+    }
+    for (const importer of importers) {
+      const probe = await makeScratch();
+      try {
+        await touch(probe.dir, importer);
+        const gate = await fastGate(probe);
+        equal(gate.code, 0, `exit code for ${importer}`);
+        const uncovered = gate.suites.filter((suite) => !base.suites.includes(suite));
+        if (uncovered.length > 0) {
+          fail(
+            `${importer} imports lib/utils.ts, but its suites (${uncovered.join(", ")}) are not selected when the shared util changes`,
+          );
+        }
+      } finally {
+        await Deno.remove(probe.dir, { recursive: true });
+      }
+    }
   }));
 
 Deno.test("coverage contract declares only transitively loaded paths and matches the gate mapping", () =>
