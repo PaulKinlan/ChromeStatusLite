@@ -24,7 +24,7 @@ html{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ox
   --border-strong-light: #e2e2e2;     --border-strong-dark: #3a3f47;
   --border-faint-light: #f5f5f5;      --border-faint-dark: #23262b;
   --border-panel-light: #e0e0e0;      --border-panel-dark: #3a3f47;
-  --border-control-light: #aaa;       --border-control-dark: #7a828c;
+  --border-control-light: #767676;    --border-control-dark: #7a828c;
   --accent-light: #0064c1;            --accent-dark: #6cb6ff;
   --visited-light: #8d39d0;           --visited-dark: #c9a6ff;
   --accent-hover-light: #f00000;      --accent-hover-dark: #ff7b72;
