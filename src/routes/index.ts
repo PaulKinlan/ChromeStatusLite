@@ -217,7 +217,13 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
     list.flatMap((item, index) => index ? [" ", chip(item)] : [chip(item)]);
 
   const contentBody = upstreamError
-    ? template`<p class="error-notice">Unable to load release data from chromestatus.com. Please try again later.</p>`
+    ? // The error view keeps a page h1 (chrome-status-lite-7uj): heading
+      // navigation must still land on a title when upstream fails. Mirrors the
+      // feature page's error shell; the notice stays a sibling paragraph.
+      template`<h1>${
+      version ? template`Chrome ${version} unavailable` : template`Chrome release unavailable`
+    }</h1>
+      <p class="error-notice">Unable to load release data from chromestatus.com. Please try again later.</p>`
     : renderData(version, features);
 
   return template`

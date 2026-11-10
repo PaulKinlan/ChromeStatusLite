@@ -175,6 +175,33 @@ Deno.test("primary nav marks the current section with aria-current (chrome-statu
   equal(marked(await topicRes.text(), "/wiki"), true, "wiki topic marks Topic Wiki");
 });
 
+Deno.test("the home page keeps exactly one h1 when upstream fails (chrome-status-lite-7uj)", async () => {
+  // The shell h1 used to guarantee a heading on error views; after the axi
+  // demotion the only h1 lives in the success fragment, so the error branch
+  // carries its own. Both failure shapes are pinned: a feature fetch failing
+  // with a known version, and a total version-list outage (version = "").
+  const handler = createHandler(fixtureClient({
+    getFeaturesForVersion: async () => {
+      throw new Error("offline");
+    },
+  }));
+  for (const path of ["/", "/?version=120"]) {
+    const res = await handler(new Request(`https://chromestatuslite.com${path}`));
+    const html = await res.text();
+    equal((html.match(/<h1[ >]/g) || []).length, 1, `${path} (upstream down): exactly one h1`);
+    includes(html, "Unable to load release data");
+  }
+  const dead = createHandler(fixtureClient({
+    getVersions: () => {
+      throw new Error("offline");
+    },
+  }));
+  const res = await dead(new Request("https://chromestatuslite.com/"));
+  const html = await res.text();
+  equal((html.match(/<h1[ >]/g) || []).length, 1, "version-list outage: exactly one h1");
+  includes(html, "Chrome release unavailable");
+});
+
 Deno.test("a rejecting route returns a hardened 500, not Deno.serve's bare one (chrome-status-lite-0nj)", async () => {
   // Without the try/catch in createHandler this rejection escapes the handler
   // and Deno.serve synthesises a 500 with none of SECURITY_HEADERS; removing
