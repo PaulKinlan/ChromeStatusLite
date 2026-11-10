@@ -207,7 +207,7 @@ export default async function render(
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
   <main id="main">
   <h1>Breaking Changes &amp; Deprecations Timeline</h1>
   <p>Track deprecated APIs, removals, and breaking changes across Chrome releases (showing ${totalCount} tracked changes across Chrome milestones${upstreamNote}).</p>

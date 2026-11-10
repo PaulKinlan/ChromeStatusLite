@@ -19,7 +19,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
   <main id="main">
   <h1>Deprecation Calendar</h1>
   <div id="output">

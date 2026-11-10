@@ -40,7 +40,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
   <main id="main">
   <h1>Web Platform Topic Wiki</h1>
   <p>Persistent topic pages grouping related Chrome Platform Status features: active stages,

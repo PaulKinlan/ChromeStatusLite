@@ -101,6 +101,9 @@ article header h1 a:visited, article header h2 a:visited, article header p, asid
 /* Page kicker (chrome-status-lite-axi): the shell's former second h1, demoted
    to a muted label so the release heading (matching <title>) is the only h1. */
 .page-kicker { margin: 0; font-size: 0.85em; color: var(--subtle); }
+/* Current-page marker in the primary nav (chrome-status-lite-whe), mirroring
+   .versions a.current: visual state paired with aria-current="page". */
+nav a.current{display:inline-block;padding:.05em .4em;border-radius:4px;background:var(--current-bg);color:var(--accent);font-weight:700}
 hr { background: var(--border); }
 details[open] { border-bottom-color: var(--border); }
 pre > code { border-right-color: var(--surface); border-left-color: var(--surface); }

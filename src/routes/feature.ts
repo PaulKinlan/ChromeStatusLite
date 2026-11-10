@@ -321,7 +321,7 @@ export default async function render(request: Request, match: URLPatternResult, 
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
   <main id="main">
   <h1>Unable to load feature</h1>
   <p class="error-notice">Unable to load feature details from chromestatus.com. Please try again later.</p>
@@ -352,7 +352,7 @@ export default async function render(request: Request, match: URLPatternResult, 
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
   <main id="main">
   <h1>Feature not found</h1>
   <p>No Chrome Platform Status feature with id <code>${
@@ -395,7 +395,7 @@ export default async function render(request: Request, match: URLPatternResult, 
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
   <main id="main">
   <div id="output">
   ${renderFeature(feature, store !== null)}

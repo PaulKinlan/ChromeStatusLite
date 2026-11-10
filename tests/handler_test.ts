@@ -140,6 +140,41 @@ Deno.test("every page has exactly one h1 (chrome-status-lite-axi)", async () => 
   equal((topicHtml.match(/<h1[ >]/g) || []).length, 1, "wiki topic: exactly one h1");
 });
 
+Deno.test("primary nav marks the current section with aria-current (chrome-status-lite-whe)", async () => {
+  // WCAG 1.3.1: the "you are here" cue must be visual AND programmatic. The
+  // marker markup mirrors the version chips' pattern: authored as static
+  // template markup, class="current" + aria-current="page" on exactly one link.
+  const handler = createHandler(fixtureClient());
+  const marked = (html: string, href: string): boolean =>
+    html.includes(`<a href="${href}" class="current" aria-current="page">`);
+  const NAV_HREFS = ["/", "/diff", "/breaking", "/origin-trials", "/deprecations", "/wiki"];
+  const cases: Array<[string, string | null]> = [
+    ["/", "/"],
+    ["/?version=118", "/"],
+    ["/breaking", "/breaking"],
+    ["/origin-trials", "/origin-trials"],
+    ["/deprecations", "/deprecations"],
+    ["/diff", "/diff"],
+    ["/feature/123", null], // deep page: no nav link matches, nothing marked
+    ["/feature/123/history", null],
+  ];
+  for (const [path, expected] of cases) {
+    const res = await handler(new Request(`https://chromestatuslite.com${path}`));
+    const html = await res.text();
+    for (const href of NAV_HREFS) {
+      equal(marked(html, href), href === expected, `${path}: marker on ${href}`);
+    }
+  }
+  // Wiki prefix rule: directory and topic page both mark Topic Wiki.
+  const wiki = await handler(new Request("https://chromestatuslite.com/wiki"));
+  const wikiHtml = await wiki.text();
+  equal(marked(wikiHtml, "/wiki"), true, "/wiki marks Topic Wiki");
+  const topic = wikiHtml.match(/href="\/wiki\/([a-z0-9-]+)"/);
+  if (!topic) throw new Error("wiki directory listed no topic to probe");
+  const topicRes = await handler(new Request(`https://chromestatuslite.com/wiki/${topic[1]}`));
+  equal(marked(await topicRes.text(), "/wiki"), true, "wiki topic marks Topic Wiki");
+});
+
 Deno.test("a rejecting route returns a hardened 500, not Deno.serve's bare one (chrome-status-lite-0nj)", async () => {
   // Without the try/catch in createHandler this rejection escapes the handler
   // and Deno.serve synthesises a 500 with none of SECURITY_HEADERS; removing

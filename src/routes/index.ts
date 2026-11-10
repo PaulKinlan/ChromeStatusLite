@@ -234,7 +234,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 </head>
 
 <body>
-  ${nav()}
+  ${nav(url.pathname)}
   <main id="main">
   <p class="page-kicker">Chrome Release Summary</p>
   <div class="versions">Chrome version:
