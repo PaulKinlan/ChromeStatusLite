@@ -34,7 +34,15 @@ const lines = [];
 function probe(tag) {
   for (const id of ids) {
     const el = document.getElementById(id);
-    el.focus();
+    // focus({focusVisible:true}) forces the keyboard modality deterministically
+    // (chrome-status-lite-2ag): bare el.focus() leaves :focus-visible to
+    // Chrome's focus-modality heuristic, which is environment/state-dependent
+    // and flaked the merger's full gate on a byte-identical tree. Three focus
+    // rounds absorb transient misfires; a stylesheet that never paints the
+    // ring still records fv=0 and fails the assertion below.
+    el.focus({ focusVisible: true });
+    if (!el.matches(":focus-visible")) { el.blur(); el.focus({ focusVisible: true }); }
+    if (!el.matches(":focus-visible")) { el.blur(); el.focus({ focusVisible: true }); }
     const cs = getComputedStyle(el);
     lines.push([tag, id, "fv=" + (el.matches(":focus-visible") ? 1 : 0),
       "outline=" + cs.outlineStyle + " " + cs.outlineWidth + " " + cs.outlineColor,
@@ -225,9 +233,24 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
     if ((await Deno.stat(screenshot)).size < 1000) throw new Error("Empty browser screenshot");
 
     // The keyboard focus ring is measured in the browser, from the served
-    // stylesheet, in the same run (chrome-status-lite-2x9).
-    const probeHtml = (await browser("/__style_probe")).html;
-    assertFocusRing(probeHtml);
+    // stylesheet, in the same run (chrome-status-lite-2x9). The visit is
+    // retried: a dump-vs-script race or a transient :focus-visible misfire
+    // must not fail an otherwise-correct stylesheet (chrome-status-lite-2ag —
+    // the merger's full gate flaked on a byte-identical tree). A real
+    // regression fails every attempt and still throws.
+    let probeHtml = "";
+    let probeError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      probeHtml = (await browser("/__style_probe")).html;
+      try {
+        assertFocusRing(probeHtml);
+        probeError = null;
+        break;
+      } catch (error) {
+        probeError = error;
+      }
+    }
+    if (probeError !== null) throw probeError;
     // ... and the colour tokens in the light scheme, then the same page under a
     // real prefers-color-scheme: dark (chrome-status-lite-ci1).
     assertThemeTokens(probeHtml, LIGHT_THEME);
