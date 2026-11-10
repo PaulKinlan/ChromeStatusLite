@@ -39,6 +39,37 @@ Deno.test("every response carries baseline security headers", async () => {
   }
 });
 
+Deno.test("every HTML page shell declares lang=en (chrome-status-lite-tiu)", async () => {
+  // WCAG 2.1 A 3.1.1: the page language must be programmatically determinable
+  // from the root element. Pinned here for every route through the real handler
+  // so a new or edited shell cannot drop the attribute without going red.
+  const handler = createHandler(fixtureClient());
+  const htmlRoutes = [
+    "/",
+    "/deprecations",
+    "/feature/123",
+    "/feature/123/history", // no store configured: still an HTML shell
+    "/breaking",
+    "/origin-trials",
+    "/diff",
+  ];
+  for (const path of htmlRoutes) {
+    const res = await handler(new Request(`https://chromestatuslite.com${path}`));
+    equal(res.status, 200);
+    includes(await res.text(), '<html lang="en">');
+  }
+  // The wiki shells render twice (directory + topic); probe the topic the
+  // directory itself links, so the pair cannot drift apart.
+  const wiki = await handler(new Request("https://chromestatuslite.com/wiki"));
+  const wikiHtml = await wiki.text();
+  includes(wikiHtml, '<html lang="en">');
+  const topic = wikiHtml.match(/href="\/wiki\/([a-z0-9-]+)"/);
+  if (!topic) throw new Error("wiki directory listed no topic to probe");
+  const topicRes = await handler(new Request(`https://chromestatuslite.com/wiki/${topic[1]}`));
+  equal(topicRes.status, 200);
+  includes(await topicRes.text(), '<html lang="en">');
+});
+
 Deno.test("a rejecting route returns a hardened 500, not Deno.serve's bare one (chrome-status-lite-0nj)", async () => {
   // Without the try/catch in createHandler this rejection escapes the handler
   // and Deno.serve synthesises a 500 with none of SECURITY_HEADERS; removing

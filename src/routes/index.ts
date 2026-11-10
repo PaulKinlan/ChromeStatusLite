@@ -222,7 +222,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
 
   return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">

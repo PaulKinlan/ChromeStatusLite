@@ -310,7 +310,7 @@ export default async function render(request: Request, match: URLPatternResult, 
   if (upstreamError || (!notFound && !usableFeature)) {
     return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -339,7 +339,7 @@ export default async function render(request: Request, match: URLPatternResult, 
   if (!feature || !feature.id) {
     return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -380,7 +380,7 @@ export default async function render(request: Request, match: URLPatternResult, 
 
   return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">

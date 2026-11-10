@@ -18,7 +18,7 @@ export { fetchQueryFeatures };
 const renderNotFound = (slug: string, canonical: string) =>
   template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -154,7 +154,7 @@ export default async function render(
 
   return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">

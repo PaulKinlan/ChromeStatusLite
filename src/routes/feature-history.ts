@@ -11,7 +11,7 @@ import nav from "../ui-components/nav.ts";
 const page = (title: string, content, canonical: string) =>
   template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">

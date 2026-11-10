@@ -163,7 +163,7 @@ export default async function render(
 
   return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">

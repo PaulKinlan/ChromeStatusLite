@@ -29,7 +29,7 @@ export default async function render(request: Request, chromeStatusAPI: StatusCl
   const url = new URL(request.url);
   return template`
   <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
