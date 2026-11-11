@@ -1,4 +1,5 @@
 import { ChromeStatusAPI, UpstreamFetchBudgetError } from "../src/lib/utils.ts";
+import { StripStream } from "../src/stream-utils.ts";
 import { equal } from "./fixture.ts";
 
 Deno.test("isolated API client caches responses until the fixture clock expires", async () => {
@@ -581,4 +582,49 @@ Deno.test("a live negative cache entry does not consume the fetch budget (chrome
     equal(caught instanceof UpstreamFetchBudgetError, false);
   }
   equal(calls, 1);
+});
+
+Deno.test("StripStream drops the XSSI prefix across chunk boundaries, and only at the body start (chrome-status-lite-95fa)", async () => {
+  // chromestatus.com guards its JSON with ")]}'\n". The decision used to be
+  // taken on chunk ONE alone, so a chunk boundary inside the prefix - legal, an
+  // HTTP/2 frame or a proxy may deliver one to four bytes first - left the
+  // prefix in the body, JSON.parse threw and fetchJson marked the whole read
+  // failed. The stream now waits for five bytes (or the end of a shorter body)
+  // before deciding.
+  const encoder = new TextEncoder();
+  const strip = async (chunks: (string | Uint8Array)[]): Promise<string> => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(typeof chunk === "string" ? encoder.encode(chunk) : chunk);
+        }
+        controller.close();
+      },
+    });
+    return new TextDecoder().decode(await new Response(stream.pipeThrough(new StripStream())).bytes());
+  };
+
+  // Stripped, and the rest of the body survives byte for byte (UTF-8 included,
+  // so the slice is by bytes and not by characters).
+  equal(await strip([`)]}'\n${'{"name":"Chrome ✓"}'}`]), '{"name":"Chrome ✓"}');
+  // ... and every way the prefix can be split across chunks.
+  equal(await strip([")", "]}'\n{\"a\":1}"]), '{"a":1}');
+  equal(await strip([")]", "}'\n{\"a\":1}"]), '{"a":1}');
+  equal(await strip([")]}'", "\n{\"a\":1}"]), '{"a":1}');
+  equal(await strip([")", "]", "}", "'", "\n{\"a\":1}"]), '{"a":1}');
+
+  // No prefix: the body passes through untouched, including one shorter than
+  // the prefix and one whose first chunk is a single byte.
+  equal(await strip(['{"a":1}']), '{"a":1}');
+  equal(await strip(["{}"]), "{}");
+  equal(await strip(["{", '"a":1}']), '{"a":1}');
+  // Only the body start is inspected, so a prefix-looking run later is data.
+  equal(await strip(['{"a":1}', ")]}'\n"]), `{"a":1})]}'\n`);
+
+  // A prefix with no body, and no body at all.
+  equal(await strip([")]}'\n"]), "");
+  equal(await strip([]), "");
+
+  // After the decision every later chunk is forwarded untouched.
+  equal(await strip([")]}'\n", '{"a":', "1}"]), '{"a":1}');
 });
