@@ -150,9 +150,38 @@ select:not([disabled]):focus, select:not([disabled]):hover {
    min-width also covers short labels ("RSS" was 35.4px wide). */
 /* awsm's 'ul li+li{margin-top:.25em}' outranks a plain 'nav li' reset, so the
    selector needs all three types or every row after the first gains a stray 4px. */
-nav ul{display:flex;flex-wrap:wrap;gap:.25em .4em}
 nav ul li{display:block;margin:0}
 nav a{display:flex;align-items:center;min-width:44px;min-height:44px}
+/* Two-layout primary nav (chrome-status-lite-nc9). The links cannot fit one row
+   of ~362px on a phone, so wrapping them cost three 44px rows (140px) above every
+   page's h1. Collapsed is the default: a Menu button with the link list as a
+   native popover, which supplies top layer, light dismiss and Escape without a
+   line of script - this project ships no client script on purpose (the pin is
+   in tests/deprecations_test.ts), so the layout switch is CSS only.
+   The breakpoint is the compromise that buys that: 60rem is where the row fits
+   with room to spare at the default text size, and because the media query is in
+   rem it grows with the reader's own font-size setting. A measured switch would
+   be better and needs script; that is recorded on the bead.
+   The closed state must stay the UA's display:none, so no display is set here:
+   only :popover-open paints the panel. */
+nav .menu-button{display:inline-flex;align-items:center;min-height:44px;margin:0;padding:0 .85em;border:1px solid var(--border-control);border-radius:4px;background:var(--surface-raised);color:var(--text);font-family:inherit;font-size:1em;cursor:pointer;anchor-name:--nav-menu}
+nav .site-menu{position:fixed;inset:auto;top:calc(1.2em + 3.25rem);right:.75rem;left:auto;width:min(16rem,calc(100dvw - 1.5rem));max-height:calc(100dvh - 5rem);margin:0;padding:.25em;overflow:auto;list-style:none;background:var(--surface);color:var(--text);border:1px solid var(--border-control);border-radius:6px;box-shadow:0 .4rem 1.5rem rgb(0 0 0 / .25)}
+/* Anchor the panel under its button where the browser can (Baseline: newly
+   available); the fixed offset above is the fallback declaration for browsers
+   that ignore these. */
+nav .site-menu{top:anchor(--nav-menu bottom);left:anchor(--nav-menu left);right:auto}
+nav .site-menu:popover-open{display:flex;flex-direction:column;gap:.125em}
+nav .site-menu::backdrop{background:rgb(0 0 0 / .2)}
+/* Inline row, from the width where the links fit. The reset has to undo the UA
+   popover box (fixed position, centred, bordered) as well, because the attribute
+   stays in the markup at every width - the list is simply displayed in flow
+   instead of in the top layer. */
+@media (min-width:60rem){
+  nav .menu-button{display:none}
+  nav .site-menu{position:static;display:flex;flex-direction:row;flex-wrap:wrap;gap:.25em .4em;width:auto;max-width:none;max-height:none;margin:0;padding:0;overflow:visible;border:0;background:none;box-shadow:none}
+  nav .site-menu li{flex:0 0 auto}
+  nav .site-menu::backdrop{display:none}
+}
 /* Feature pages render docs/sample/spec links as full URLs; these have no
    spaces, so without this they force the page wider than the screen on mobile.
    Let any long link or word wrap instead of overflowing horizontally. */

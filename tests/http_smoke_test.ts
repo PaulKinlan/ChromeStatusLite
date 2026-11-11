@@ -26,7 +26,7 @@ function assertStylesheetLoaded(statuses: number[]): void {
 // so a missing or regressed rule fails every run.
 const FOCUS_PROBE_IDS = ["link", "button", "select", "input", "textarea", "summary", "chip"];
 // The nav under test is the REAL component markup, lifted out of a rendered page
-// (chrome-status-lite-brf), so the tap targets are measured from what the
+// (chrome-status-lite-brf / nc9), so the tap targets are measured from what the
 // routes actually emit rather than from a hand-copy.
 const NAV_PLACEHOLDER = "<!--nav-->";
 const styleProbePage = `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -184,10 +184,11 @@ const themeMeasure = `(() => {
   return lines;
 })()`;
 
-// Tap targets (chrome-status-lite-brf): a nav link's box was only as tall as its
-// text line and the chips were 29.9px, so both are measured here from the served
-// stylesheet. Every link and the version chip has to reach the 44px preferred
-// target size (WCAG 2.5.5) in both dimensions.
+// Tap targets (chrome-status-lite-brf / nc9): measured in the COLLAPSED layout,
+// because that is the one a phone visitor taps - the list is a closed popover
+// until the menu button is pressed, and a nav whose button stops opening it
+// measures 0x0 here and fails. Every link and the version chip has to reach the
+// 44px preferred target size (WCAG 2.5.5) in both dimensions.
 const targetMeasure = `(() => {
   const button = document.querySelector("nav .menu-button");
   if (button) button.click();
@@ -324,6 +325,21 @@ function assertTapTargets(lines: string[]): void {
   }
 }
 
+// Both nav layouts are CSS only (chrome-status-lite-nc9), so the markup never
+// changes with the viewport: the Menu button and the popover attribute are
+// always present and the media query alone decides which presentation is
+// painted. A layout that needed script would show up here as a missing
+// attribute, and the project deliberately ships no client script
+// (tests/deprecations_test.ts).
+function assertNavMarkup(html: string): void {
+  if (!html.includes('class="menu-button"')) {
+    throw new Error("Primary nav lost its menu button");
+  }
+  if (!/<ul id="site-menu" class="site-menu" popover="auto">/.test(html)) {
+    throw new Error("Nav list is not a popover, so the menu button cannot open it");
+  }
+}
+
 function assertFocusRing(focus: string[], withoutCss: string[]): void {
   for (const id of FOCUS_PROBE_IDS) {
     const line = focusProbeLine(focus, "css-on", id);
@@ -349,12 +365,13 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
   let denyStylesheet = false;
   let browserCssStatuses: number[] = [];
   // The probe page carries the real nav, lifted from a rendered page once, before
-  // anything is served (chrome-status-lite-brf). Taken from the SERVER
+  // anything is served (chrome-status-lite-brf / nc9). Taken from the SERVER
   // response rather than a browser dump, so the markup measured is exactly what
   // the routes emit at every width.
   const homeHtml = await (await handler(new Request("https://chromestatuslite.com/?version=112"))).text();
   const renderedNav = homeHtml.match(/<nav[^>]*>[\s\S]*?<\/nav>/);
   if (!renderedNav) throw new Error("Rendered page carries no <nav> to measure");
+  includes(renderedNav[0], 'popover="auto"'); // collapsed: the layout a phone gets
   const probePage = styleProbePage.replace(NAV_PLACEHOLDER, renderedNav[0]);
   const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen: () => {} }, async (request) => {
     // Route a fixture host through the actual HTTP listener; fetch cannot override Host.
@@ -435,6 +452,7 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
     includes(html, "https://chromestatuslite.com/?version=112");
     // The listener records the browser's CSS request and its response status.
     assertStylesheetLoaded(browserCssStatuses);
+    assertNavMarkup(html);
     if ((await Deno.stat(screenshot)).size < 1000) throw new Error("Empty browser screenshot");
 
     // The keyboard focus ring and the colour tokens are measured over the

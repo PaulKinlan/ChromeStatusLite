@@ -102,6 +102,28 @@ Deno.test("every page has exactly one h1 (chrome-status-lite-axi)", async () => 
   equal((topicHtml.match(/<h1[ >]/g) || []).length, 1, "wiki topic: exactly one h1");
 });
 
+Deno.test("the collapsed nav ships its popover wiring server-side (chrome-status-lite-nc9)", async () => {
+  // One nav tree, two presentations, and both are CSS only: the collapsed one
+  // needs its popovertarget wiring and popover attribute in the server-rendered
+  // markup, so the Menu button opens the links with no script at all - this
+  // project ships no client script on purpose (see the pin in
+  // tests/deprecations_test.ts), and the popover supplies top layer, light
+  // dismiss and Escape natively.
+  const handler = createHandler(fixtureClient());
+  const paths = ["/", "/diff", "/breaking", "/origin-trials", "/deprecations", "/wiki", "/feature/123"];
+  for (const path of paths) {
+    const html = await (await handler(new Request(`https://chromestatuslite.com${path}`))).text();
+    includes(
+      html,
+      '<button class="menu-button" type="button" popovertarget="site-menu" aria-controls="site-menu">Menu</button>',
+      `${path}: menu button controls the link list`,
+    );
+    includes(html, '<ul id="site-menu" class="site-menu" popover="auto">', `${path}: link list is a popover`);
+    // The links stay links in a list: no menu roles, no arrow-key contract.
+    equal(html.includes('role="menu"'), false, `${path}: no menu role`);
+  }
+});
+
 Deno.test("primary nav marks the current section with aria-current (chrome-status-lite-whe)", async () => {
   // WCAG 1.3.1: the "you are here" cue must be visual AND programmatic. The
   // marker markup mirrors the version chips' pattern: authored as static
