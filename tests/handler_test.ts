@@ -226,35 +226,61 @@ Deno.test("static HEAD never reads the file: a stat-only filesystem still answer
   equal(getRes.status, 404);
 });
 
-Deno.test("HEAD strip holds peak memory to a chunk, not the whole body (chrome-status-lite-70n)", async () => {
-  // Discriminator for the streaming drain: measure RSS growth across the
-  // strip of a 256 MiB stream. An arrayBuffer() drain materialises the whole
-  // body, so RSS ends >= 256 MiB higher; chunk-by-chunk counting discards as
-  // it goes and allocation-driven GC keeps the residue small (reviewer
-  // measured 559 MiB peak old vs 105 MiB new on this size). The 64 MiB delta
-  // threshold sits far from both outcomes, so GC noise cannot flip it.
-  const chunks = 256;
-  const chunk = new Uint8Array(1024 * 1024); // 1 MiB
-  const baselineRss = Deno.memoryUsage().rss;
-  let pulled = 0;
-  const stripped = await stripBodyForHead(
-    new Response(new ReadableStream({
-      pull(controller) {
-        pulled++;
-        controller.enqueue(chunk);
-        if (pulled === chunks) controller.close();
-      },
-    })),
-  );
-  equal(stripped.headers.get("content-length"), String(chunks * chunk.byteLength));
-  equal(pulled, chunks); // the whole stream was measured, not truncated
-  const retainedMiB = (Deno.memoryUsage().rss - baselineRss) / (1024 * 1024);
-  if (retainedMiB >= 64) {
-    throw new Error(
-      `HEAD strip grew RSS by ~${retainedMiB.toFixed(0)} MiB draining a 256 MiB stream — ` +
-      "the drain buffers the whole body instead of counting chunks",
-    );
-  }
+Deno.test("HEAD strip drains the body chunk by chunk, never through a whole-body API (chrome-status-lite-vp3)", async () => {
+  // Deterministic replacement for the RSS-threshold probe this test used to be
+  // (chrome-status-lite-70n, removed by chrome-status-lite-vp3): it built a
+  // 256 MiB stream and rejected if Deno.memoryUsage().rss grew by >= 64 MiB.
+  // RSS is a function of the host and the GC schedule, not of
+  // stripBodyForHead, so it could go red on unrelated VM memory activity, and
+  // it paid 256 MiB of stream traffic on every fast and full gate.
+  //
+  // Retention itself cannot be observed deterministically: a buffering drain
+  // also pulls the stream chunk by chunk, so from the producer side "drain and
+  // discard" and "drain and keep" are identical - what differs is only what
+  // survives GC, which is exactly what the old probe measured. What IS
+  // deterministic is the API the obvious buffering drain needs: it has to ask
+  // the response for its body as one value. So this guard hands the strip a
+  // response whose whole-body APIs throw, and requires the exact length to
+  // come out of the response's own body stream, pulled to completion. Known
+  // limit, stated rather than hidden: a drain that re-wraps the body
+  // (`new Response(response.body).arrayBuffer()`) still passes, because it
+  // reads the same chunks through the same reader. Every streaming idiom
+  // (getReader, async iteration, pipeTo) keeps working here.
+  const chunks = [new Uint8Array([1, 2, 3]), new Uint8Array([4, 5]), new Uint8Array([6, 7, 8, 9])];
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const buffered = (api: string) => () => {
+    throw new Error(`HEAD strip called response.${api}() - that materialises the whole body`);
+  };
+  let pulls = 0;
+  // Chunk-by-chunk source: every chunk is handed out by a pull, so the pull
+  // count proves the drain reached the end of the stream rather than a prefix.
+  const body = new ReadableStream({
+    pull(controller) {
+      const chunk = chunks[pulls];
+      pulls++;
+      if (chunk === undefined) controller.close();
+      else controller.enqueue(chunk);
+    },
+  });
+  const response = {
+    body,
+    headers: new Headers({ "content-type": "text/html" }),
+    status: 200,
+    statusText: "OK",
+    arrayBuffer: buffered("arrayBuffer"),
+    blob: buffered("blob"),
+    bytes: buffered("bytes"),
+    clone: buffered("clone"),
+    formData: buffered("formData"),
+    json: buffered("json"),
+    text: buffered("text"),
+  } as unknown as Response;
+
+  const stripped = await stripBodyForHead(response);
+  equal(stripped.headers.get("content-length"), String(total)); // exact sum of the chunks
+  equal(pulls, chunks.length + 1); // every chunk pulled, then the close observed
+  equal(await stripped.text(), ""); // and the HEAD body itself is empty
+  includes(stripped.headers.get("content-type") || "", "text/html");
 });
 
 Deno.test("static assets and unknown paths", async () => {
