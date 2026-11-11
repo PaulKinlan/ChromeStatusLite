@@ -3,7 +3,7 @@ import type { StatusClient } from "../handler.ts";
 import linkify from "../lib/linkify.ts";
 import { sanitizeUrl } from "../lib/url.ts";
 import { captureSnapshot, type SnapshotStore } from "../lib/snapshots.ts";
-import { isValidFeatureId } from "../lib/utils.ts";
+import { isValidFeatureId, UpstreamFetchBudgetError } from "../lib/utils.ts";
 
 import nav from "../ui-components/nav.ts";
 import { renderFeatureMetadata } from "../ui-components/feature-metadata.ts";
@@ -292,6 +292,45 @@ export default async function render(request: Request, match: URLPatternResult, 
     feature = await chromeStatusAPI.getFeature(id);
   } catch (err: any) {
     feature = null;
+    // The aggregate feature-detail fetch budget, not an outage: nothing went
+    // wrong upstream, this process declined to amplify one client's traffic
+    // 1:1 onto chromestatus.com (chrome-status-lite-d9s). Answered honestly
+    // as 429 + Retry-After; the "Unable to load" page below would blame the
+    // upstream and hide a self-inflicted refusal.
+    if (err instanceof UpstreamFetchBudgetError) {
+      const retryAfter = Math.max(1, Math.ceil(err.retryAfterMs / 1000));
+      return template`
+  <!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Too many feature lookups</title>
+  <link rel="canonical" href="${canonical}">
+  <link rel="stylesheet" href="/styles/index.css">
+</head>
+
+<body>
+  ${nav(url.pathname)}
+  <main id="main">
+  <h1>Too many feature lookups</h1>
+  <p class="error-notice">Too many new feature pages were requested in a short time. Please try
+  again in ${retryAfter} second${retryAfter === 1 ? "" : "s"}.</p>
+  </main>
+</body>
+
+</html>`.then(
+        (data) =>
+          new Response(data, {
+            status: 429,
+            headers: {
+              "content-type": "text/html",
+              "retry-after": String(retryAfter),
+            },
+          })
+      );
+    }
     // The client reports a missing feature by throwing
     // "Upstream HTTP 404 from <path>"; only that exact shape is an
     // authoritative answer that the feature does not exist. Every other

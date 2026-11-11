@@ -58,6 +58,23 @@ const MAX_PLAUSIBLE_VERSION = 2000;
 // cache write.
 export const MAX_FEATURE_ID_DIGITS = 16;
 const FEATURE_ID_RE = new RegExp(`^\\d{1,${MAX_FEATURE_ID_DIGITS}}$`);
+
+// Aggregate bound on the one upstream surface whose cardinality cannot be
+// narrowed (chrome-status-lite-d9s). A feature id is shape-validated only
+// (1-16 digits): real ids are both 7-digit modern ids and 16-digit legacy
+// datastore keys, so the accepted set stays ~10^16 — far more than any
+// caller could need, and every *distinct* id that is not already cached
+// costs an upstream round trip to chromestatus.com. One unauthenticated
+// client can therefore drive the API 1:1 through /feature/:id. A token
+// bucket bounds the aggregate rate without rejecting any real id shape:
+// FEATURE_FETCH_BURST fresh feature pages at once, refilling one per
+// second (60/min sustained). That ceiling sits far above any honest
+// pattern — the shared LRU retains 100 entries for an hour, so a caller
+// legitimately needing more than 60 *new* feature pages a minute could not
+// have the results kept anyway — while a flood stops at the same ceiling
+// instead of scaling with the attacker's request rate.
+const FEATURE_FETCH_BURST = 30;
+const FEATURE_FETCH_REFILL_PER_SECOND = 1;
 const MILESTONE_PARAM_RE = new RegExp(
   `^\\d{1,${String(MAX_PLAUSIBLE_VERSION).length}}$`,
 );
@@ -111,6 +128,51 @@ class NegativeCacheEntry {
   ) {}
 }
 
+// Raised when the aggregate feature-detail fetch budget is exhausted
+// (chrome-status-lite-d9s). Carries the wait so the route can answer 429
+// with an honest Retry-After rather than reporting an upstream outage —
+// nothing went wrong upstream, this process declined to amplify.
+export class UpstreamFetchBudgetError extends Error {
+  constructor(readonly retryAfterMs: number) {
+    super(
+      `Feature detail fetch budget exhausted; retry in ${retryAfterMs}ms`,
+    );
+    this.name = "UpstreamFetchBudgetError";
+  }
+}
+
+// A token bucket over *uncached* feature-detail upstream fetches. Refill is
+// computed from the clock on demand, so an idle client holds no timer and a
+// burst is cheap: `take()` either spends a token or throws with the wait.
+// Cache hits, singleflighted in-flight hits and live negative entries never
+// reach take(), so only a genuine upstream round trip is charged.
+export class FeatureFetchBudget {
+  private tokens: number;
+  private last: number;
+
+  constructor(
+    private readonly burst: number,
+    private readonly refillPerMs: number,
+    private readonly now: () => number,
+  ) {
+    this.tokens = burst;
+    this.last = now();
+  }
+
+  public take(): void {
+    const at = this.now();
+    const elapsed = Math.max(0, at - this.last);
+    this.tokens = Math.min(this.burst, this.tokens + elapsed * this.refillPerMs);
+    this.last = at;
+    if (this.tokens < 1) {
+      throw new UpstreamFetchBudgetError(
+        Math.ceil((1 - this.tokens) / this.refillPerMs),
+      );
+    }
+    this.tokens -= 1;
+  }
+}
+
 export class ChromeStatusAPI {
   private static instance: null | ChromeStatusAPI = null;
 
@@ -124,6 +186,10 @@ export class ChromeStatusAPI {
   private timeoutMs: number;
   private maxBodyBytes: number;
   private negativeCacheMaxAge: number;
+  private now: () => number;
+  // Bounds the aggregate rate of uncached feature-detail upstream fetches
+  // (chrome-status-lite-d9s); see FEATURE_FETCH_BURST above.
+  private featureBudget: FeatureFetchBudget;
   // Concurrent cache misses for the same path share one upstream call
   // (singleflight): without it, an outage burst overlapping the slow (up to
   // 15s) first attempt amplifies 1:1 before the negative cache entry exists
@@ -138,12 +204,21 @@ export class ChromeStatusAPI {
     timeoutMs?: number;
     maxBodyBytes?: number;
     negativeCacheMaxAge?: number;
+    featureFetchBudget?: { burst?: number; refillPerSecond?: number };
+    now?: () => number;
   } = {}) {
     this.fetcher = options.fetcher ?? fetch;
     this.timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
     this.maxBodyBytes = options.maxBodyBytes ?? FETCH_MAX_BODY_BYTES;
     this.negativeCacheMaxAge = options.negativeCacheMaxAge ??
       NEGATIVE_CACHE_MAX_AGE;
+    this.now = options.now ?? Date.now;
+    this.featureBudget = new FeatureFetchBudget(
+      options.featureFetchBudget?.burst ?? FEATURE_FETCH_BURST,
+      (options.featureFetchBudget?.refillPerSecond ??
+        FEATURE_FETCH_REFILL_PER_SECOND) / 1000,
+      this.now,
+    );
     this.cache = options.cache ?? new LRU<string, any>({
       max: CACHE_MAX_ITEMS,
       maxAge: CACHE_MAX_AGE,
@@ -245,9 +320,15 @@ export class ChromeStatusAPI {
     return this.fetchJson(`/api/v0/features?${params}`);
   }
 
-  // Fetches a single feature's full detail by id.
+  // Fetches a single feature's full detail by id. The only call site whose
+  // parameter space is unbounded, so it is the only one charged against the
+  // fetch budget (chrome-status-lite-d9s); the charge is taken inside
+  // fetchJson, after the cache/singleflight checks, so a hit is free.
   public async getFeature(id: string | number): Promise<any> {
-    return this.fetchJson(`/api/v0/features/${id}`);
+    return this.fetchJson(
+      `/api/v0/features/${id}`,
+      () => this.featureBudget.take(),
+    );
   }
 
   // Records a retryable failure in the negative cache (unless the TTL is
@@ -256,17 +337,23 @@ export class ChromeStatusAPI {
     if (this.negativeCacheMaxAge > 0) {
       this.cache.set(
         path,
-        new NegativeCacheEntry(error, Date.now() + this.negativeCacheMaxAge),
+        new NegativeCacheEntry(error, this.now() + this.negativeCacheMaxAge),
       );
     }
     throw error;
   }
 
-  private async fetchJson<T>(path: string): Promise<T> {
+  // `charge`, when supplied, is spent immediately before the upstream call
+  // and never on a cache hit, an in-flight hit or a live negative entry —
+  // so it can only throw for work that would really reach chromestatus.com.
+  private async fetchJson<T>(
+    path: string,
+    charge?: () => void,
+  ): Promise<T> {
     let json = this.cache.get(path);
 
     if (json instanceof NegativeCacheEntry) {
-      if (Date.now() < json.expiresAt) {
+      if (this.now() < json.expiresAt) {
         throw json.error;
       }
       // Stale negative entry: evict and fall through to a real re-fetch.
@@ -278,6 +365,10 @@ export class ChromeStatusAPI {
 
     let pending = this.inFlight.get(path);
     if (!pending) {
+      // Charge before the call is registered: a refusal must not leave an
+      // in-flight entry (or a cached error) behind, so the next attempt
+      // after the wait is a clean upstream call.
+      charge?.();
       pending = this.fetchUpstream(path);
       this.inFlight.set(path, pending);
       // Bookkeeping on both branches so this derived promise never rejects;
