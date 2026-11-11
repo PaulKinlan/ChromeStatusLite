@@ -14,6 +14,16 @@ function assertStylesheetLoaded(statuses: number[]): void {
 // browser is asked for computed styles - and the focus half is measured a
 // second time with that same stylesheet disabled, so a probe that would pass
 // on a stylesheet-free page cannot pass here.
+//
+// The focus half is driven over the DevTools protocol instead of by focusing
+// the controls (chrome-status-lite-0hn): Chrome matches :focus-visible only
+// while the DOCUMENT itself has focus, and a headless window does not always
+// have it (document.hasFocus() was false on a first visit, true on later ones),
+// so a focus()-driven probe failed the merger's full gate on a byte-identical
+// tree and retries could only shrink that window. CSS.forcePseudoState applies
+// the served rule deterministically - verified on Chrome 155 with
+// document.hasFocus() false - and the stylesheet still has to paint the ring,
+// so a missing or regressed rule fails every run.
 const FOCUS_PROBE_IDS = ["link", "button", "select", "input", "textarea", "summary", "chip"];
 const styleProbePage = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <link rel="stylesheet" href="/styles/index.css"><title>style probe</title></head><body><main>
@@ -28,69 +38,216 @@ const styleProbePage = `<!doctype html><html lang="en"><head><meta charset="utf-
 <div class="diff-add" id="add">+added</div>
 <p class="milestone-date" id="date">date</p>
 <div id="canvas" style="background:var(--surface);color:var(--text)">canvas</div>
-<pre id="out"></pre></main><script>
-const ids = ${JSON.stringify(FOCUS_PROBE_IDS)};
-const lines = [];
-function probe(tag) {
-  for (const id of ids) {
-    const el = document.getElementById(id);
-    // focus({focusVisible:true}) forces the keyboard modality deterministically
-    // (chrome-status-lite-2ag): bare el.focus() leaves :focus-visible to
-    // Chrome's focus-modality heuristic, which is environment/state-dependent
-    // and flaked the merger's full gate on a byte-identical tree. Three focus
-    // rounds absorb transient misfires; a stylesheet that never paints the
-    // ring still records fv=0 and fails the assertion below.
-    el.focus({ focusVisible: true });
-    if (!el.matches(":focus-visible")) { el.blur(); el.focus({ focusVisible: true }); }
-    if (!el.matches(":focus-visible")) { el.blur(); el.focus({ focusVisible: true }); }
-    const cs = getComputedStyle(el);
-    lines.push([tag, id, "fv=" + (el.matches(":focus-visible") ? 1 : 0),
-      "outline=" + cs.outlineStyle + " " + cs.outlineWidth + " " + cs.outlineColor,
-      "offset=" + cs.outlineOffset, "border=" + cs.borderTopWidth + " " + cs.borderTopColor].join("|"));
-    el.blur();
-  }
-}
-// WCAG relative luminance, so the probe reports measured contrast rather than
-// just "the colours changed".
-const lum = (rgb) => {
-  const [r, g, b] = rgb.map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-};
-const parse = (value) => value.match(/[\\d.]+/g).slice(0, 3).map(Number);
-const ratio = (a, b) => { const pair = [lum(parse(a)), lum(parse(b))].sort((m, n) => n - m); return (pair[0] + 0.05) / (pair[1] + 0.05); };
-function tokens() {
-  const page = getComputedStyle(document.documentElement);
-  lines.push("PAGE|bg=" + page.backgroundColor + "|color=" + page.color + "|contrast=" + ratio(page.backgroundColor, page.color).toFixed(2));
-  const canvas = getComputedStyle(document.getElementById("canvas"));
-  lines.push("SURFACE|bg=" + canvas.backgroundColor + "|color=" + canvas.color + "|contrast=" + ratio(canvas.backgroundColor, canvas.color).toFixed(2));
-  for (const id of ["link", "badge", "add", "date"]) {
-    const cs = getComputedStyle(document.getElementById(id));
-    lines.push(id.toUpperCase() + "|bg=" + cs.backgroundColor + "|color=" + cs.color);
-  }
-}
-tokens();
-probe("css-on");
-document.styleSheets[0].disabled = true;
-probe("css-off");
-document.styleSheets[0].disabled = false;
-document.getElementById("out").textContent = String.fromCharCode(10) + lines.join(String.fromCharCode(10)) + String.fromCharCode(10) + "PROBE-DONE";
-</script></body></html>`;
+</main></body></html>`;
+
+const CHROME = Deno.env.get("CHROME_BIN") || "google-chrome";
 const FOCUS_RING = "outline=solid 2px rgb(0, 100, 193)";
 
-function focusProbeLine(html: string, tag: string, id: string): string {
-  const line = html.split("\n").find((entry) => entry.startsWith(`${tag}|${id}|`));
+type CdpReply = { result?: any; error?: { message?: string } };
+type CdpPage = {
+  call: (method: string, params?: Record<string, unknown>) => Promise<CdpReply>;
+  evaluate: (expression: string) => Promise<unknown>;
+  close: () => Promise<void>;
+};
+
+// A WebSocket client for the browser-level DevTools endpoint. Sessions are
+// flattened, so this single socket also drives the one page the probe opens.
+function cdpClient(ws: WebSocket): { attach: (url: string) => Promise<CdpPage> } {
+  let nextId = 1;
+  const pending = new Map<number, (reply: CdpReply) => void>();
+  ws.onmessage = (event) => {
+    const message = JSON.parse(event.data as string) as { id?: number };
+    const resolve = message.id === undefined ? undefined : pending.get(message.id);
+    if (resolve === undefined) return;
+    pending.delete(message.id as number);
+    resolve(message as CdpReply);
+  };
+  const send = (method: string, params: Record<string, unknown> = {}, sessionId?: string) =>
+    new Promise<CdpReply>((resolve) => {
+      const id = nextId++;
+      pending.set(id, resolve);
+      ws.send(JSON.stringify({ id, method, params, ...(sessionId === undefined ? {} : { sessionId }) }));
+    });
+  return {
+    async attach(url: string): Promise<CdpPage> {
+      const target = await send("Target.createTarget", { url });
+      const targetId = target.result?.targetId as string | undefined;
+      if (targetId === undefined) throw new Error(`Could not open ${url}: ${target.error?.message ?? "no target"}`);
+      const attached = await send("Target.attachToTarget", { targetId, flatten: true });
+      const sessionId = attached.result?.sessionId as string | undefined;
+      if (sessionId === undefined) throw new Error(`Could not attach to ${url}: ${attached.error?.message ?? "no session"}`);
+      const call = (method: string, params: Record<string, unknown> = {}) => send(method, params, sessionId);
+      // runtime.evaluate failures are surfaced, not turned into undefined: a
+      // probe expression that throws has to fail the test loudly.
+      const evaluate = async (expression: string) => {
+        const reply = await call("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+        const details = reply.result?.exceptionDetails;
+        if (reply.error || details) {
+          throw new Error(`Probe expression failed: ${reply.error?.message ?? details?.text} ${details?.exception?.description ?? ""}`.trim());
+        }
+        return reply.result?.result?.value;
+      };
+      for (const domain of ["Page.enable", "Runtime.enable", "DOM.enable", "CSS.enable"]) {
+        const enabled = await call(domain);
+        if (enabled.error) throw new Error(`${domain} failed: ${enabled.error.message}`);
+      }
+      return { call, evaluate, close: async () => { await send("Target.closeTarget", { targetId }); } };
+    },
+  };
+}
+
+// --remote-debugging-port=0 makes Chrome pick a free port and report the
+// endpoint on stderr, so two gates on one machine cannot collide on it.
+async function launchDebugChrome(): Promise<{ ws: WebSocket; close: () => Promise<void> }> {
+  const profile = await Deno.makeTempDir();
+  const child = new Deno.Command(CHROME, {
+    args: ["--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
+      "--disable-background-networking", `--user-data-dir=${profile}`, "--remote-debugging-port=0", "about:blank"],
+    stdout: "null", stderr: "piped",
+  }).spawn();
+  const decoder = new TextDecoder();
+  const reader = child.stderr.getReader();
+  let log = "";
+  let announce = (_: string) => {};
+  const endpoint = new Promise<string>((resolve) => { announce = resolve; });
+  // Keep draining stderr after the endpoint is found: a full pipe would block
+  // Chrome in the middle of the probe.
+  const drain = (async () => {
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        log = (log + decoder.decode(value, { stream: true })).slice(-4096);
+        const match = log.match(/DevTools listening on (ws:\/\/\S+)/);
+        if (match) announce(match[1]);
+      }
+    } catch { /* browser closed */ }
+  })();
+  let timer = 0;
+  const expired = new Promise<string>((resolve) => { timer = setTimeout(() => resolve(""), 20_000); });
+  const browserUrl = await Promise.race([endpoint, expired]);
+  clearTimeout(timer);
+  if (browserUrl === "") {
+    try { child.kill("SIGKILL"); } catch { /* already gone */ }
+    await child.status;
+    await Deno.remove(profile, { recursive: true }).catch(() => {});
+    throw new Error(`Chrome reported no DevTools endpoint: ${log.slice(-400)}`);
+  }
+  const ws = new WebSocket(browserUrl);
+  await new Promise<void>((resolve, reject) => {
+    ws.onopen = () => resolve();
+    ws.onerror = () => reject(new Error(`DevTools WebSocket ${browserUrl} failed to open`));
+  });
+  return {
+    ws,
+    close: async () => {
+      try { ws.close(); } catch { /* already closed */ }
+      try { child.kill("SIGKILL"); } catch { /* already gone */ }
+      await child.status;
+      await drain.catch(() => {});
+      await Deno.remove(profile, { recursive: true }).catch(() => {});
+    },
+  };
+}
+
+// One line per control, in the format assertFocusRing parses.
+const focusMeasure = (id: string): string => `(() => {
+  const control = document.getElementById(${JSON.stringify(id)});
+  const style = getComputedStyle(control);
+  return ["fv=" + (control.matches(":focus-visible") ? 1 : 0),
+    "outline=" + style.outlineStyle + " " + style.outlineWidth + " " + style.outlineColor,
+    "offset=" + style.outlineOffset,
+    "border=" + style.borderTopWidth + " " + style.borderTopColor].join("|");
+})()`;
+
+// WCAG relative luminance, so the probe reports measured contrast rather than
+// just "the colours changed".
+const themeMeasure = `(() => {
+  const lum = (rgb) => {
+    const [r, g, b] = rgb.map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const parse = (value) => value.match(/[\\d.]+/g).slice(0, 3).map(Number);
+  const ratio = (a, b) => { const pair = [lum(parse(a)), lum(parse(b))].sort((m, n) => n - m); return (pair[0] + 0.05) / (pair[1] + 0.05); };
+  const page = getComputedStyle(document.documentElement);
+  const canvas = getComputedStyle(document.getElementById("canvas"));
+  const lines = ["PAGE|bg=" + page.backgroundColor + "|color=" + page.color + "|contrast=" + ratio(page.backgroundColor, page.color).toFixed(2),
+    "SURFACE|bg=" + canvas.backgroundColor + "|color=" + canvas.color + "|contrast=" + ratio(canvas.backgroundColor, canvas.color).toFixed(2)];
+  for (const id of ["link", "badge", "add", "date"]) {
+    const style = getComputedStyle(document.getElementById(id));
+    lines.push(id.toUpperCase() + "|bg=" + style.backgroundColor + "|color=" + style.color);
+  }
+  return lines;
+})()`;
+
+// Measures the served stylesheet from a real browser: the colour tokens in both
+// schemes, and the keyboard focus ring with and without that stylesheet.
+async function probeStyles(root: string): Promise<{ focus: string[]; withoutCss: string[]; light: string[]; dark: string[] }> {
+  const browser = await launchDebugChrome();
+  try {
+    const page = await cdpClient(browser.ws).attach(`${root}/__style_probe`);
+    try {
+      const deadline = performance.now() + 15_000;
+      for (;;) {
+        const ready = await page.evaluate(`document.readyState === "complete" && (document.styleSheets[0]?.cssRules?.length ?? 0) > 0`).catch(() => false);
+        if (ready === true) break;
+        if (performance.now() > deadline) throw new Error("The probe page never parsed the served stylesheet");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      const light = await page.evaluate(themeMeasure) as string[];
+      const document_ = await page.call("DOM.getDocument", { depth: -1 });
+      const documentNodeId = document_.result?.root?.nodeId as number | undefined;
+      if (documentNodeId === undefined) throw new Error("DevTools returned no document node for the probe page");
+      const nodes = new Map<string, number>();
+      for (const id of FOCUS_PROBE_IDS) {
+        const found = await page.call("DOM.querySelector", { nodeId: documentNodeId, selector: `#${id}` });
+        const nodeId = found.result?.nodeId as number | undefined;
+        if (!nodeId) throw new Error(`The probe page has no #${id} control`);
+        nodes.set(id, nodeId);
+      }
+      const forceFocusVisible = async () => {
+        for (const [id, nodeId] of nodes) {
+          const forced = await page.call("CSS.forcePseudoState", { nodeId, forcedPseudoClasses: ["focus-visible"] });
+          if (forced.error) throw new Error(`Could not force :focus-visible on #${id}: ${forced.error.message}`);
+        }
+      };
+      await forceFocusVisible();
+      const focus: string[] = [];
+      for (const id of FOCUS_PROBE_IDS) focus.push(`css-on|${id}|${await page.evaluate(focusMeasure(id))}`);
+      // Sensitivity: with the served stylesheet disabled, the same forced
+      // controls must fall back to the user agent ring.
+      await page.evaluate(`document.styleSheets[0].disabled = true`);
+      await forceFocusVisible();
+      const withoutCss: string[] = [];
+      for (const id of FOCUS_PROBE_IDS) withoutCss.push(`css-off|${id}|${await page.evaluate(focusMeasure(id))}`);
+      await page.evaluate(`document.styleSheets[0].disabled = false`);
+      // prefers-color-scheme: dark is emulated on the page - the same CSS path
+      // the browser takes, without a second browser launch.
+      await page.call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
+      const dark = await page.evaluate(themeMeasure) as string[];
+      return { focus, withoutCss, light, dark };
+    } finally {
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+function focusProbeLine(lines: string[], tag: string, id: string): string {
+  const line = lines.find((entry) => entry.startsWith(`${tag}|${id}|`));
   if (!line) throw new Error(`Focus probe produced no ${tag}|${id} line`);
   return line;
 }
 
-function probeLine(html: string, tag: string): string {
-  const line = html.split("\n").find((entry) => entry.startsWith(`${tag}|`));
+function probeLine(lines: string[], tag: string): string {
+  const line = lines.find((entry) => entry.startsWith(`${tag}|`));
   if (!line) throw new Error(`Style probe produced no ${tag} line`);
   return line;
 }
 
 // The colour tokens in both schemes, measured from the served stylesheet
-// (chrome-status-lite-ci1). The same page is loaded twice - once with the
+// (chrome-status-lite-ci1). The same page is measured twice - once in the
 // browser's light scheme, once under prefers-color-scheme: dark - so "the page
 // adapts" is asserted end to end in a real browser instead of by grepping the
 // CSS text for a media query.
@@ -111,36 +268,34 @@ const DARK_THEME = {
   DATE: "color=rgb(194, 199, 207)",
 };
 
-function assertThemeTokens(html: string, expected: Record<string, string>): void {
-  includes(html, "PROBE-DONE"); // the probe script ran to completion
-  for (const [tag, needle] of Object.entries(expected)) includes(probeLine(html, tag), needle);
+function assertThemeTokens(lines: string[], expected: Record<string, string>): void {
+  for (const [tag, needle] of Object.entries(expected)) includes(probeLine(lines, tag), needle);
   // Not just "the colours changed": body text has to stay readable in both
   // schemes (WCAG 2.1 AA asks 4.5:1 for normal text).
   for (const tag of ["PAGE", "SURFACE"]) {
-    const match = probeLine(html, tag).match(/contrast=([\d.]+)/);
+    const match = probeLine(lines, tag).match(/contrast=([\d.]+)/);
     if (!match) throw new Error(`Style probe reported no contrast for ${tag}`);
-    if (!(Number(match[1]) >= 4.5)) throw new Error(`${tag} contrast ${match[1]} is below 4.5:1: ${probeLine(html, tag)}`);
+    if (!(Number(match[1]) >= 4.5)) throw new Error(`${tag} contrast ${match[1]} is below 4.5:1: ${probeLine(lines, tag)}`);
   }
 }
 
-function assertFocusRing(html: string): void {
-  includes(html, "PROBE-DONE"); // the probe script ran to completion
+function assertFocusRing(focus: string[], withoutCss: string[]): void {
   for (const id of FOCUS_PROBE_IDS) {
-    const line = focusProbeLine(html, "css-on", id);
+    const line = focusProbeLine(focus, "css-on", id);
     includes(line, "fv=1"); // the control really matched :focus-visible
     includes(line, FOCUS_RING);
     includes(line, "offset=2px");
   }
-  // Sensitivity: the same probe with the served stylesheet disabled must NOT
-  // report the author ring, so a 404/absent rule cannot pass the loop above.
+  // Sensitivity: the same controls with the served stylesheet disabled must
+  // NOT report the author ring, so a 404/absent rule cannot pass the loop above.
   for (const id of FOCUS_PROBE_IDS) {
-    const line = focusProbeLine(html, "css-off", id);
+    const line = focusProbeLine(withoutCss, "css-off", id);
     if (line.includes(FOCUS_RING)) {
       throw new Error(`Author focus ring survived a disabled stylesheet: ${line}`);
     }
   }
   // Keyboard parity with the hover affordance on the version chips.
-  includes(focusProbeLine(html, "css-on", "chip"), "border=1px rgb(240, 0, 0)");
+  includes(focusProbeLine(focus, "css-on", "chip"), "border=1px rgb(240, 0, 0)");
 }
 
 Deno.test("real HTTP and headless browser render a fixture page and load its stylesheet", async () => {
@@ -168,16 +323,13 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
   const port = (server.addr as Deno.NetAddr).port;
   const root = `http://127.0.0.1:${port}`;
   const profiles: string[] = [];
-  const browser = async (path = "/?version=112", scheme: "light" | "dark" = "light") => {
+  const browser = async (path = "/?version=112") => {
     const profile = await Deno.makeTempDir();
     profiles.push(profile);
     const screenshot = `${profile}/render.png`;
-    const chrome = new Deno.Command(Deno.env.get("CHROME_BIN") || "google-chrome", {
-      // The scheme is pinned per visit rather than inherited from the host, so a
-      // machine whose desktop is dark cannot flip the assertions below.
+    const chrome = new Deno.Command(CHROME, {
       args: ["--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
         "--disable-background-networking", `--user-data-dir=${profile}`,
-        `--blink-settings=preferredColorScheme=${scheme === "dark" ? 0 : 1}`,
         "--virtual-time-budget=2000", `--screenshot=${screenshot}`, "--dump-dom", `${root}${path}`],
       stdout: "piped", stderr: "piped",
     });
@@ -232,29 +384,16 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
     assertStylesheetLoaded(browserCssStatuses);
     if ((await Deno.stat(screenshot)).size < 1000) throw new Error("Empty browser screenshot");
 
-    // The keyboard focus ring is measured in the browser, from the served
-    // stylesheet, in the same run (chrome-status-lite-2x9). The visit is
-    // retried: a dump-vs-script race or a transient :focus-visible misfire
-    // must not fail an otherwise-correct stylesheet (chrome-status-lite-2ag —
-    // the merger's full gate flaked on a byte-identical tree). A real
-    // regression fails every attempt and still throws.
-    let probeHtml = "";
-    let probeError: unknown = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      probeHtml = (await browser("/__style_probe")).html;
-      try {
-        assertFocusRing(probeHtml);
-        probeError = null;
-        break;
-      } catch (error) {
-        probeError = error;
-      }
-    }
-    if (probeError !== null) throw probeError;
-    // ... and the colour tokens in the light scheme, then the same page under a
-    // real prefers-color-scheme: dark (chrome-status-lite-ci1).
-    assertThemeTokens(probeHtml, LIGHT_THEME);
-    assertThemeTokens((await browser("/__style_probe", "dark")).html, DARK_THEME);
+    // The keyboard focus ring and the colour tokens are measured over the
+    // DevTools protocol from the served stylesheet (chrome-status-lite-2x9,
+    // chrome-status-lite-ci1): forced :focus-visible, then the same controls
+    // with the stylesheet disabled, then prefers-color-scheme: dark. No retry
+    // loop - the measurement no longer depends on the headless window's focus
+    // state, which is what flaked the merger gate (chrome-status-lite-0hn).
+    const probe = await probeStyles(root);
+    assertFocusRing(probe.focus, probe.withoutCss);
+    assertThemeTokens(probe.light, LIGHT_THEME);
+    assertThemeTokens(probe.dark, DARK_THEME);
 
     denyStylesheet = true;
     browserCssStatuses = [];
