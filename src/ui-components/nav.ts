@@ -26,8 +26,18 @@ export default function render(currentPath = "") {
   // The skip link is the first body element on every page (each shell renders
   // nav() immediately after <body>), letting keyboard users bypass the 7-link
   // nav (WCAG 2.4.1). Its target is each shell's <main id="main">.
+  //
+  // One nav tree, two presentations (chrome-status-lite-nc9): the link list is a
+  // native popover behind a "Menu" button when the links do not fit on one line,
+  // and the same list laid out as an inline row when they do. Both come from CSS
+  // alone - the project ships no client script on purpose (see the pin in
+  // tests/deprecations_test.ts), and the popover and popovertarget give the
+  // collapsed layout top layer, light dismiss and Escape natively.
+  // These are links, not a menu: no role="menu"/menubar, no arrow keys, and they
+  // stay in the Tab order.
   return template`<a class="skip" href="#main">Skip to content</a><nav>
-    <ul>
+    <button class="menu-button" type="button" popovertarget="site-menu" aria-controls="site-menu">Menu</button>
+    <ul id="site-menu" class="site-menu" popover="auto">
       ${
     LINKS.map(([href, label]) =>
       template`<li><a href="${href}"${

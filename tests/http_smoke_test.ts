@@ -25,8 +25,12 @@ function assertStylesheetLoaded(statuses: number[]): void {
 // document.hasFocus() false - and the stylesheet still has to paint the ring,
 // so a missing or regressed rule fails every run.
 const FOCUS_PROBE_IDS = ["link", "button", "select", "input", "textarea", "summary", "chip"];
+// The nav under test is the REAL component markup, lifted out of a rendered page
+// (chrome-status-lite-brf / nc9), so the tap targets are measured from what the
+// routes actually emit rather than from a hand-copy.
+const NAV_PLACEHOLDER = "<!--nav-->";
 const styleProbePage = `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<link rel="stylesheet" href="/styles/index.css"><title>style probe</title></head><body><main>
+<link rel="stylesheet" href="/styles/index.css"><title>style probe</title></head><body>${NAV_PLACEHOLDER}<main>
 <a id="link" href="#x">link</a>
 <button id="button">button</button>
 <select id="select"><option>1</option></select>
@@ -180,9 +184,29 @@ const themeMeasure = `(() => {
   return lines;
 })()`;
 
+// Tap targets (chrome-status-lite-brf / nc9): measured in the COLLAPSED layout,
+// because that is the one a phone visitor taps - the list is a closed popover
+// until the menu button is pressed, and a nav whose button stops opening it
+// measures 0x0 here and fails. Every link and the version chip has to reach the
+// 44px preferred target size (WCAG 2.5.5) in both dimensions.
+const targetMeasure = `(() => {
+  const button = document.querySelector("nav .menu-button");
+  if (button) button.click();
+  const links = [...document.querySelectorAll("nav a")].map((el) => el.getBoundingClientRect());
+  const chip = document.getElementById("chip").getBoundingClientRect();
+  const min = (values) => Math.min(...values).toFixed(1);
+  return ["TARGETS|navCount=" + links.length +
+    "|navMinW=" + min(links.map((r) => r.width)) +
+    "|navMinH=" + min(links.map((r) => r.height)) +
+    "|chipW=" + chip.width.toFixed(1) + "|chipH=" + chip.height.toFixed(1)];
+})()`;
+
 // Measures the served stylesheet from a real browser: the colour tokens in both
 // schemes, and the keyboard focus ring with and without that stylesheet.
-async function probeStyles(root: string): Promise<{ focus: string[]; withoutCss: string[]; light: string[]; dark: string[] }> {
+async function probeStyles(
+  root: string,
+  probePage: string,
+): Promise<{ focus: string[]; withoutCss: string[]; light: string[]; dark: string[]; targets: string[] }> {
   const browser = await launchDebugChrome();
   try {
     const page = await cdpClient(browser.ws).attach(`${root}/__style_probe`);
@@ -223,9 +247,12 @@ async function probeStyles(root: string): Promise<{ focus: string[]; withoutCss:
       await page.evaluate(`document.styleSheets[0].disabled = false`);
       // prefers-color-scheme: dark is emulated on the page - the same CSS path
       // the browser takes, without a second browser launch.
+      // Tap targets come from the same visit and the same served stylesheet; a
+      // second browser launch would only add time to the gate.
+      const targets = await page.evaluate(targetMeasure) as string[];
       await page.call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
       const dark = await page.evaluate(themeMeasure) as string[];
-      return { focus, withoutCss, light, dark };
+      return { focus, withoutCss, light, dark, targets };
     } finally {
       await page.close();
     }
@@ -279,6 +306,40 @@ function assertThemeTokens(lines: string[], expected: Record<string, string>): v
   }
 }
 
+const MIN_TARGET_PX = 44;
+
+function numberField(line: string, key: string): number {
+  const match = line.match(new RegExp(`${key}=([\\d.]+)`));
+  if (!match) throw new Error(`Tap-target probe reported no ${key}: ${line}`);
+  return Number(match[1]);
+}
+
+function assertTapTargets(lines: string[]): void {
+  const line = probeLine(lines, "TARGETS");
+  equal(numberField(line, "navCount"), 7); // the real nav, not an empty shell
+  for (const key of ["navMinW", "navMinH", "chipW", "chipH"]) {
+    const measured = numberField(line, key);
+    if (!(measured >= MIN_TARGET_PX)) {
+      throw new Error(`${key} ${measured}px is under the ${MIN_TARGET_PX}px target size: ${line}`);
+    }
+  }
+}
+
+// Both nav layouts are CSS only (chrome-status-lite-nc9), so the markup never
+// changes with the viewport: the Menu button and the popover attribute are
+// always present and the media query alone decides which presentation is
+// painted. A layout that needed script would show up here as a missing
+// attribute, and the project deliberately ships no client script
+// (tests/deprecations_test.ts).
+function assertNavMarkup(html: string): void {
+  if (!html.includes('class="menu-button"')) {
+    throw new Error("Primary nav lost its menu button");
+  }
+  if (!/<ul id="site-menu" class="site-menu" popover="auto">/.test(html)) {
+    throw new Error("Nav list is not a popover, so the menu button cannot open it");
+  }
+}
+
 function assertFocusRing(focus: string[], withoutCss: string[]): void {
   for (const id of FOCUS_PROBE_IDS) {
     const line = focusProbeLine(focus, "css-on", id);
@@ -303,6 +364,15 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
   const handler = createHandler(fixtureClient());
   let denyStylesheet = false;
   let browserCssStatuses: number[] = [];
+  // The probe page carries the real nav, lifted from a rendered page once, before
+  // anything is served (chrome-status-lite-brf / nc9). Taken from the SERVER
+  // response rather than a browser dump, so the markup measured is exactly what
+  // the routes emit at every width.
+  const homeHtml = await (await handler(new Request("https://chromestatuslite.com/?version=112"))).text();
+  const renderedNav = homeHtml.match(/<nav[^>]*>[\s\S]*?<\/nav>/);
+  if (!renderedNav) throw new Error("Rendered page carries no <nav> to measure");
+  includes(renderedNav[0], 'popover="auto"'); // collapsed: the layout a phone gets
+  const probePage = styleProbePage.replace(NAV_PLACEHOLDER, renderedNav[0]);
   const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen: () => {} }, async (request) => {
     // Route a fixture host through the actual HTTP listener; fetch cannot override Host.
     if (request.headers.get("x-fixture-host")) {
@@ -311,7 +381,7 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
       return handler(new Request(url, request));
     }
     if (new URL(request.url).pathname === "/__style_probe") {
-      return new Response(styleProbePage, { headers: { "content-type": "text/html; charset=utf-8" } });
+      return new Response(probePage, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
     const isCss = new URL(request.url).pathname === "/styles/index.css";
     const response = isCss && denyStylesheet
@@ -382,6 +452,7 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
     includes(html, "https://chromestatuslite.com/?version=112");
     // The listener records the browser's CSS request and its response status.
     assertStylesheetLoaded(browserCssStatuses);
+    assertNavMarkup(html);
     if ((await Deno.stat(screenshot)).size < 1000) throw new Error("Empty browser screenshot");
 
     // The keyboard focus ring and the colour tokens are measured over the
@@ -390,8 +461,9 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
     // with the stylesheet disabled, then prefers-color-scheme: dark. No retry
     // loop - the measurement no longer depends on the headless window's focus
     // state, which is what flaked the merger gate (chrome-status-lite-0hn).
-    const probe = await probeStyles(root);
+    const probe = await probeStyles(root, probePage);
     assertFocusRing(probe.focus, probe.withoutCss);
+    assertTapTargets(probe.targets);
     assertThemeTokens(probe.light, LIGHT_THEME);
     assertThemeTokens(probe.dark, DARK_THEME);
 

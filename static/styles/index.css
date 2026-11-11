@@ -81,17 +81,6 @@ html { background: var(--surface); color: var(--text); }
 a, nav a:visited { color: var(--accent); }
 a:visited { color: var(--visited); }
 a:active, a:hover, article header h1 a:visited:hover, article header h2 a:visited:hover, nav a:hover { color: var(--accent-hover); }
-/* awsm base shapes the templates do not emit yet (chrome-status-lite-82g
-   retuned --muted; review finding chrome-status-lite-z21 asked whether these
-   overrides stay): no route renders <article><header>, <aside>, <footer>,
-   <h6> or <legend> today - checked against every route render (index,
-   breaking, deprecations, origin-trials, diff, wiki, wiki-topic, feature,
-   feature history, feature diff, feed, api, 404) and against src/ and
-   static/scripts/. The group is kept deliberately as the boundary with the
-   vendored awsm.css above, which paints exactly these shapes #aaa (2.32:1 on
-   #fff - below AA): whatever adds a footer, aside or legend inherits
-   var(--muted) - 7.00:1 light, 7.58:1 dark - instead. These are --muted's only
-   consumers, so the token is part of this grouping rather than orphaned. */
 article header h1 a, article header h2 a { color: var(--text); }
 article header h1 a:visited, article header h2 a:visited, article header p, aside, body > footer, h6, legend { color: var(--muted); }
 /* Skip link (chrome-status-lite-c8t): visually hidden until focused, then
@@ -114,7 +103,7 @@ article header h1 a:visited, article header h2 a:visited, article header p, asid
 .page-kicker { margin: 0; font-size: 0.85em; color: var(--subtle); }
 /* Current-page marker in the primary nav (chrome-status-lite-whe), mirroring
    .versions a.current: visual state paired with aria-current="page". */
-nav a.current{display:inline-block;padding:.05em .4em;border-radius:4px;background:var(--current-bg);color:var(--accent);font-weight:700}
+nav a.current{padding:0 .4em;border-radius:4px;background:var(--current-bg);color:var(--accent);font-weight:700}
 hr { background: var(--border); }
 details[open] { border-bottom-color: var(--border); }
 pre > code { border-right-color: var(--surface); border-left-color: var(--surface); }
@@ -154,6 +143,45 @@ select:not([disabled]):focus, select:not([disabled]):hover {
 }
 
 /* === ChromeStatusLite responsive enhancements === */
+/* Tappable nav targets (chrome-status-lite-brf). awsm lays the primary nav out
+   as inline-block text, so a link's box is only as tall as its line (~19-25px):
+   a thumb landing between two wrapped rows hits one of them. Both shapes clear
+   WCAG 2.5.8's 24px minimum; neither reaches the 44px preferred size (2.5.5).
+   min-width also covers short labels ("RSS" was 35.4px wide). */
+/* awsm's 'ul li+li{margin-top:.25em}' outranks a plain 'nav li' reset, so the
+   selector needs all three types or every row after the first gains a stray 4px. */
+nav ul li{display:block;margin:0}
+nav a{display:flex;align-items:center;min-width:44px;min-height:44px}
+/* Two-layout primary nav (chrome-status-lite-nc9). The links cannot fit one row
+   of ~362px on a phone, so wrapping them cost three 44px rows (140px) above every
+   page's h1. Collapsed is the default: a Menu button with the link list as a
+   native popover, which supplies top layer, light dismiss and Escape without a
+   line of script - this project ships no client script on purpose (the pin is
+   in tests/deprecations_test.ts), so the layout switch is CSS only.
+   The breakpoint is the compromise that buys that: 60rem is where the row fits
+   with room to spare at the default text size, and because the media query is in
+   rem it grows with the reader's own font-size setting. A measured switch would
+   be better and needs script; that is recorded on the bead.
+   The closed state must stay the UA's display:none, so no display is set here:
+   only :popover-open paints the panel. */
+nav .menu-button{display:inline-flex;align-items:center;min-height:44px;margin:0;padding:0 .85em;border:1px solid var(--border-control);border-radius:4px;background:var(--surface-raised);color:var(--text);font-family:inherit;font-size:1em;cursor:pointer;anchor-name:--nav-menu}
+nav .site-menu{position:fixed;inset:auto;top:calc(1.2em + 3.25rem);right:.75rem;left:auto;width:min(16rem,calc(100dvw - 1.5rem));max-height:calc(100dvh - 5rem);margin:0;padding:.25em;overflow:auto;list-style:none;background:var(--surface);color:var(--text);border:1px solid var(--border-control);border-radius:6px;box-shadow:0 .4rem 1.5rem rgb(0 0 0 / .25)}
+/* Anchor the panel under its button where the browser can (Baseline: newly
+   available); the fixed offset above is the fallback declaration for browsers
+   that ignore these. */
+nav .site-menu{top:anchor(--nav-menu bottom);left:anchor(--nav-menu left);right:auto}
+nav .site-menu:popover-open{display:flex;flex-direction:column;gap:.125em}
+nav .site-menu::backdrop{background:rgb(0 0 0 / .2)}
+/* Inline row, from the width where the links fit. The reset has to undo the UA
+   popover box (fixed position, centred, bordered) as well, because the attribute
+   stays in the markup at every width - the list is simply displayed in flow
+   instead of in the top layer. */
+@media (min-width:60rem){
+  nav .menu-button{display:none}
+  nav .site-menu{position:static;display:flex;flex-direction:row;flex-wrap:wrap;gap:.25em .4em;width:auto;max-width:none;max-height:none;margin:0;padding:0;overflow:visible;border:0;background:none;box-shadow:none}
+  nav .site-menu li{flex:0 0 auto}
+  nav .site-menu::backdrop{display:none}
+}
 /* Feature pages render docs/sample/spec links as full URLs; these have no
    spaces, so without this they force the page wider than the screen on mobile.
    Let any long link or word wrap instead of overflowing horizontally. */
@@ -174,8 +202,8 @@ a,dd,li,p,blockquote{overflow-wrap:break-word;word-break:break-word}
 
 /* The version picker is a long list of release-number links. Render them as
    spaced, tappable chips that wrap, instead of a dense comma-separated run. */
-.versions{line-height:2;margin:1em 0}
-.versions a{display:inline-block;min-width:2em;padding:.2em .5em;margin:.12em .12em 0 0;text-align:center;border:1px solid var(--border-strong);border-radius:4px;line-height:1.3;text-decoration:none}
+.versions{line-height:1.4;margin:1em 0}
+.versions a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:2em;padding:0 .5em;margin:.12em .12em 0 0;text-align:center;border:1px solid var(--border-strong);border-radius:4px;line-height:1.3;text-decoration:none}
 .versions a:hover{border-color:var(--accent-hover)}
 .versions a:focus-visible{border-color:var(--accent-hover)}
 .versions a.current{border-color:var(--accent);background:var(--current-bg);font-weight:700}
@@ -183,7 +211,7 @@ a,dd,li,p,blockquote{overflow-wrap:break-word;word-break:break-word}
    flows inline with the recent chips; the expanded list drops below it. */
 .more-versions{display:inline;border-bottom:0;padding-bottom:0}
 .more-versions[open]{border-bottom:0;padding-bottom:0}
-.more-versions>summary{display:inline-block;cursor:pointer;padding:.2em .5em;margin:.12em .12em 0 .15em;border:1px dashed var(--accent);border-radius:4px;color:var(--accent);line-height:1.3;list-style:none}
+.more-versions>summary{display:inline-flex;align-items:center;min-height:44px;cursor:pointer;padding:0 .5em;margin:.12em .12em 0 .15em;border:1px dashed var(--accent);border-radius:4px;color:var(--accent);line-height:1.3;list-style:none}
 .more-versions>summary::-webkit-details-marker{display:none}
 .more-versions .version-list{display:block;margin-top:.4em}
 /* Tables (the deprecation calendar) scroll horizontally within the viewport on
