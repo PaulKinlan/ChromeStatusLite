@@ -154,6 +154,15 @@ select:not([disabled]):focus, select:not([disabled]):hover {
 }
 
 /* === ChromeStatusLite responsive enhancements === */
+/* Balanced line breaks on headings, prettier wraps on body text
+   (chrome-status-lite-qs9l, guide improve-text-layout-and-legibility).
+   text-wrap: balance is Baseline (2024-05) and used directly; text-wrap:
+   pretty is Chromium/Safari-only but is simply ignored where unsupported -
+   graceful degradation, so no @supports guard or fallback. balance stays on
+   h1-h6 only: the guide warns against applying it globally (expensive
+   iterative algorithm, and boxes with borders/backgrounds gain odd gaps). */
+h1,h2,h3,h4,h5,h6{text-wrap:balance}
+p,blockquote,li{text-wrap:pretty}
 /* Feature pages render docs/sample/spec links as full URLs; these have no
    spaces, so without this they force the page wider than the screen on mobile.
    Let any long link or word wrap instead of overflowing horizontally. */

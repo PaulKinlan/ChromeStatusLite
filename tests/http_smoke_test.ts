@@ -37,6 +37,7 @@ const styleProbePage = `<!doctype html><html lang="en"><head><meta charset="utf-
 <span class="badge breaking" id="badge">breaking</span>
 <div class="diff-add" id="add">+added</div>
 <p class="milestone-date" id="date">date</p>
+<h2 id="heading">heading</h2>
 <div id="canvas" style="background:var(--surface);color:var(--text)">canvas</div>
 </main></body></html>`;
 
@@ -177,6 +178,10 @@ const themeMeasure = `(() => {
     const style = getComputedStyle(document.getElementById(id));
     lines.push(id.toUpperCase() + "|bg=" + style.backgroundColor + "|color=" + style.color);
   }
+  // The shared stylesheet's wrapping policy (chrome-status-lite-qs9l): measured,
+  // not grepped, so a vendored-CSS regeneration that drops the rule fails here.
+  lines.push("WRAP|heading=" + getComputedStyle(document.getElementById("heading")).textWrap +
+    "|date=" + getComputedStyle(document.getElementById("date")).textWrap);
   return lines;
 })()`;
 
@@ -258,6 +263,7 @@ const LIGHT_THEME = {
   BADGE: "bg=rgb(255, 235, 238)|color=rgb(198, 40, 40)",
   ADD: "bg=rgb(230, 255, 236)|color=rgb(17, 99, 41)",
   DATE: "color=rgb(102, 102, 102)",
+  WRAP: "heading=balance|date=pretty",
 };
 const DARK_THEME = {
   PAGE: "bg=rgb(20, 22, 26)|color=rgb(236, 238, 241)",
@@ -266,6 +272,7 @@ const DARK_THEME = {
   BADGE: "bg=rgb(59, 26, 30)|color=rgb(255, 154, 154)",
   ADD: "bg=rgb(18, 48, 28)|color=rgb(126, 226, 168)",
   DATE: "color=rgb(194, 199, 207)",
+  WRAP: "heading=balance|date=pretty",
 };
 
 function assertThemeTokens(lines: string[], expected: Record<string, string>): void {
