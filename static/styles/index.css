@@ -81,6 +81,17 @@ html { background: var(--surface); color: var(--text); }
 a, nav a:visited { color: var(--accent); }
 a:visited { color: var(--visited); }
 a:active, a:hover, article header h1 a:visited:hover, article header h2 a:visited:hover, nav a:hover { color: var(--accent-hover); }
+/* awsm base shapes the templates do not emit yet (chrome-status-lite-82g
+   retuned --muted; review finding chrome-status-lite-z21 asked whether these
+   overrides stay): no route renders <article><header>, <aside>, <footer>,
+   <h6> or <legend> today - checked against every route render (index,
+   breaking, deprecations, origin-trials, diff, wiki, wiki-topic, feature,
+   feature history, feature diff, feed, api, 404) and against src/ and
+   static/scripts/. The group is kept deliberately as the boundary with the
+   vendored awsm.css above, which paints exactly these shapes #aaa (2.32:1 on
+   #fff - below AA): whatever adds a footer, aside or legend inherits
+   var(--muted) - 7.00:1 light, 7.58:1 dark - instead. These are --muted's only
+   consumers, so the token is part of this grouping rather than orphaned. */
 article header h1 a, article header h2 a { color: var(--text); }
 article header h1 a:visited, article header h2 a:visited, article header p, aside, body > footer, h6, legend { color: var(--muted); }
 /* Skip link (chrome-status-lite-c8t): visually hidden until focused, then
