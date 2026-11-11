@@ -5,37 +5,42 @@ base="${GATE_BASE:-$(git merge-base HEAD origin/main)}"
 mapfile -t paths < <( { git diff --name-only "$base" HEAD; git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; } | sort -u )
 declare -A selected=()
 add() { selected["$1"]=1; }
-add_all() { add tests/handler_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/diff_test.ts; add tests/client_test.ts; add tests/wiki_test.ts; add tests/history_test.ts; }
+add_app() { add tests/handler_test.ts; add tests/shell_test.ts; add tests/feed_test.ts; add tests/api_version_test.ts; add tests/timeline_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/diff_test.ts; add tests/wiki_test.ts; add tests/history_test.ts; }
+add_all() { add_app; add tests/flora_test.ts; add tests/client_test.ts; }
 gate=0
 for path in "${paths[@]}"; do
   # Map deleted paths too: their former suites must verify that the removal is safe.
   case "$path" in
-    static/*.html) add tests/handler_test.ts ;;
+    static/*.html) add tests/handler_test.ts; add tests/shell_test.ts ;;
     src/routes/index.ts|static/scripts/index.js) add tests/index_test.ts ;;
     src/routes/feature.ts) add tests/feature_test.ts ;;
     src/lib/linkify.ts) add tests/feature_test.ts; add tests/index_test.ts ;;
-    src/lib/url.ts) add tests/feature_test.ts; add tests/index_test.ts; add tests/handler_test.ts ;;
+    src/lib/url.ts) add tests/feature_test.ts; add tests/index_test.ts; add tests/handler_test.ts; add tests/timeline_test.ts ;;
     src/lib/snapshots.ts|src/routes/feature-history.ts|tests/history_test.ts) add tests/feature_test.ts; add tests/history_test.ts ;;
-    src/lib/buckets.ts) add tests/index_test.ts; add tests/handler_test.ts ;;
+    src/lib/buckets.ts) add tests/index_test.ts; add tests/handler_test.ts; add tests/feed_test.ts ;;
     src/routes/diff.ts) add tests/diff_test.ts ;;
-    # src/lib/utils.ts is consumed directly by feed (parseStableDate), breaking
-    # and origin-trials (formatStableDate) and api-version (parseMilestoneParam)
-    # — asserted through the handler suite — plus feature-history
-    # (isValidFeatureId → history suite), feature, deprecations, and the direct
-    # import in tests/client_test.ts. tests/gate_test.ts pins this selection to
-    # the real import graph so a new consumer cannot silently lose coverage
-    # (chrome-status-lite-4li).
-    src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/handler_test.ts; add tests/history_test.ts ;;
+    # Shared utils are consumed by feed, api-version, breaking/origin-trials,
+    # feature-history, feature and deprecations, plus the direct client test.
+    # tests/gate_test.ts pins this selection to the real route import graph.
+    src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/handler_test.ts; add tests/history_test.ts; add tests/feed_test.ts; add tests/api_version_test.ts; add tests/timeline_test.ts ;;
     src/routes/deprecations.ts|static/scripts/deprecations.js) add tests/deprecations_test.ts ;;
-    src/routes/feed.ts|src/routes/api-version.ts|src/routes/breaking.ts|src/routes/origin-trials.ts) add tests/handler_test.ts ;;
+    src/routes/feed.ts) add tests/feed_test.ts ;;
+    src/routes/api-version.ts) add tests/api_version_test.ts ;;
+    src/routes/breaking.ts|src/routes/origin-trials.ts) add tests/timeline_test.ts ;;
     src/routes/wiki.ts|src/routes/wiki-topic.ts|src/lib/wiki.ts|src/lib/wiki-data.ts) add tests/wiki_test.ts ;;
     # .fleet/coverage-contract.json declares suite attribution only for paths with a
     # real transitive import into the executed suites (chrome-status-lite-74e);
     # tests/gate_test.ts pins the contract and this mapping to each other.
-    main.ts|src/handler.ts|src/flora.ts|src/stream-utils.ts|src/ui-components/*|static/styles/*|README.md|deno.json|deno.lock|docs/speed.md|tests/fixture.ts|tests/http_smoke_test.ts)
+    # Only select suites that import each changed module at runtime. The
+    # standalone flora tests do not load stream-utils or UI components, and
+    # client tests do not load flora or UI components.
+    src/flora.ts) add_app; add tests/flora_test.ts ;;
+    src/stream-utils.ts) add_app; add tests/client_test.ts ;;
+    src/ui-components/*) add_app ;;
+    main.ts|src/handler.ts|static/styles/*|README.md|deno.json|deno.lock|docs/speed.md|tests/fixture.ts|tests/http_smoke_test.ts)
       add_all ;;
     tools/*|.fleet/*|tests/gate_test.ts) add_all; gate=1 ;;
-    tests/index_test.ts|tests/feature_test.ts|tests/deprecations_test.ts|tests/handler_test.ts|tests/diff_test.ts|tests/wiki_test.ts|tests/history_test.ts) add "$path" ;;
+    tests/index_test.ts|tests/feature_test.ts|tests/deprecations_test.ts|tests/handler_test.ts|tests/shell_test.ts|tests/feed_test.ts|tests/api_version_test.ts|tests/timeline_test.ts|tests/flora_test.ts|tests/diff_test.ts|tests/wiki_test.ts|tests/history_test.ts) add "$path" ;;
     *) echo "Unmapped changed path: $path" >&2; exit 1 ;;
   esac
 done
