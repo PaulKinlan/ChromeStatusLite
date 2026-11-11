@@ -662,3 +662,55 @@ Deno.test("KvSnapshotStore trim keeps the newest snapshots even when the backend
   equal(listed[0].at, "2026-03-01T00:00:00.000Z");
   equal(listed[1].at, "2026-02-01T00:00:00.000Z");
 });
+
+Deno.test("history caps the rendered list at 25 and counts the withheld captures (chrome-status-lite-2yt3)", async () => {
+  // A heavily-viewed feature must not render an ever-growing list: the page
+  // shows the newest MAX_ENTRIES=25 captures and says how many it withheld.
+  const store = new MemorySnapshotStore({ maxSnapshotsPerFeature: 30 });
+  for (let day = 1; day <= 30; day++) {
+    await store.add("123", {
+      at: `2026-01-${String(day).padStart(2, "0")}T00:00:00.000Z`,
+      data: { Name: "Capped", Summary: `v${day}` },
+    });
+  }
+  const handler = createHandler(fixtureClient(), undefined, store);
+  const response = await handler(new Request("https://chromestatuslite.com/feature/123/history"));
+  equal(response.status, 200);
+  const html = await response.text();
+
+  includes(html, "30 snapshot(s), newest first.");
+  const listed = html.slice(html.indexOf('<ul class="snapshot-history">'), html.indexOf("</ul>", html.indexOf('<ul class="snapshot-history">')));
+  equal(listed.split("<li>").length - 1, 25); // only the newest 25 are rendered
+  includes(listed, "2026-01-30 00:00"); // newest first...
+  includes(listed, "2026-01-06 00:00"); // ...down to the 25th
+  equal(listed.includes("2026-01-05 00:00"), false); // the rest are withheld
+  includes(html, "5 older capture(s) not shown.");
+});
+
+Deno.test("diff with only one snapshot asks for a pair instead of rendering an empty diff (chrome-status-lite-2yt3)", async () => {
+  const store = new MemorySnapshotStore();
+  await store.add("123", { at: "2026-01-01T00:00:00.000Z", data: { Name: "Only" } });
+  const handler = createHandler(fixtureClient(), undefined, store);
+  const response = await handler(new Request("https://chromestatuslite.com/feature/123/diff"));
+  equal(response.status, 200);
+  const html = await response.text();
+  includes(html, "Two different snapshots are needed for a diff.");
+  includes(html, '<a href="/feature/123/history">View the history</a>');
+  equal(html.includes('<div class="diff">'), false); // no empty diff shell
+});
+
+Deno.test("diff between two captures with identical tracked fields says nothing changed (chrome-status-lite-2yt3)", async () => {
+  // Re-viewing a feature does not capture an unchanged snapshot
+  // (captureSnapshot dedupes), so this pair can only exist when the tracked
+  // fields changed and then changed back: the diff is empty, which must read
+  // as "no tracked field changed" rather than as a broken page.
+  const store = new MemorySnapshotStore();
+  await store.add("123", { at: "2026-01-01T00:00:00.000Z", data: { Name: "Same", Summary: "same" } });
+  await store.add("123", { at: "2026-01-02T00:00:00.000Z", data: { Name: "Same", Summary: "same" } });
+  const handler = createHandler(fixtureClient(), undefined, store);
+  const response = await handler(new Request("https://chromestatuslite.com/feature/123/diff"));
+  equal(response.status, 200);
+  const html = await response.text();
+  includes(html, "No tracked field changed between these snapshots.");
+  includes(html, "2026-01-01 00:00Z &rarr; 2026-01-02 00:00Z".replace("&rarr;", "→"));
+});
