@@ -10,13 +10,18 @@
 const repoRoot = Deno.cwd();
 
 const ROUTE_SUITES = [
+  "tests/api_version_test.ts",
   "tests/client_test.ts",
   "tests/deprecations_test.ts",
   "tests/diff_test.ts",
   "tests/feature_test.ts",
+  "tests/feed_test.ts",
+  "tests/flora_test.ts",
   "tests/handler_test.ts",
   "tests/history_test.ts",
   "tests/index_test.ts",
+  "tests/shell_test.ts",
+  "tests/timeline_test.ts",
   "tests/wiki_test.ts",
 ];
 const SMOKE = "tests/http_smoke_test.ts";
@@ -85,7 +90,7 @@ async function makeScratch(): Promise<Scratch> {
     await Deno.mkdir(`${dir}/bin`);
     await Deno.writeTextFile(
       `${dir}/bin/deno`,
-      `#!/usr/bin/env bash\necho "$*" >> "${dir}/deno.log"\n[[ " $* " == *" $GATE_FAIL_SUITE "* ]] && exit 1\nexit 0\n`,
+      `#!/usr/bin/env bash\necho "$*" >> "${dir}/deno.log"\n[[ " $* " == *" $GATE_FAIL_SUITE "* ]] && exit 1\nif [[ -n "$GATE_CHECK_SUITE_EXISTS" && " $* " == *" $GATE_CHECK_SUITE_EXISTS "* && ! -f "$GATE_CHECK_SUITE_EXISTS" ]]; then exit 1; fi\nexit 0\n`,
     );
     await Deno.chmod(`${dir}/bin/deno`, 0o755);
     const git = async (args: string[]): Promise<string> => {
@@ -105,6 +110,7 @@ async function makeScratch(): Promise<Scratch> {
         PATH: `${dir}/bin:${Deno.env.get("PATH") || ""}`,
         GATE_BASE: base,
         GATE_FAIL_SUITE: "__no_such_suite__",
+        GATE_CHECK_SUITE_EXISTS: "",
       },
     };
   } catch (error) {
@@ -194,12 +200,12 @@ async function withScratch(fn: (scratch: Scratch) => Promise<void>): Promise<voi
   }
 }
 
-Deno.test("fast gate maps a static page change to the handler suite plus the always-on smoke", () =>
+Deno.test("fast gate maps a static page change to the shell and handler suites plus smoke", () =>
   withScratch(async (scratch) => {
     await touch(scratch.dir, "static/index.html");
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
-    setEqual(gate.suites, ["tests/handler_test.ts", SMOKE], "selected suites");
+    setEqual(gate.suites, ["tests/handler_test.ts", "tests/shell_test.ts", SMOKE], "selected suites");
     includes(gate.invocations[1], "--allow-net=127.0.0.1", "smoke sandbox");
   }));
 
@@ -217,6 +223,37 @@ Deno.test("fast gate maps diff route to its focused suite", () =>
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
     setEqual(gate.suites, ["tests/diff_test.ts", SMOKE], "selected suites");
+  }));
+
+Deno.test("fast gate runs the owned route suite on a source change", () =>
+  withScratch(async (scratch) => {
+    const routes = [
+      ["src/routes/feed.ts", "tests/feed_test.ts"],
+      ["src/routes/api-version.ts", "tests/api_version_test.ts"],
+      ["src/routes/breaking.ts", "tests/timeline_test.ts"],
+      ["src/routes/origin-trials.ts", "tests/timeline_test.ts"],
+    ];
+    for (const [route, suite] of routes) {
+      const probe = await makeScratch();
+      try {
+        await touch(probe.dir, route);
+        const gate = await fastGate(probe);
+        equal(gate.code, 0, `exit code for ${route}`);
+        setEqual(gate.suites, [suite, SMOKE], `selected suites for ${route}`);
+      } finally {
+        await Deno.remove(probe.dir, { recursive: true });
+      }
+    }
+  }));
+
+Deno.test("fast gate fails closed when a new suite is deleted", () =>
+  withScratch(async (scratch) => {
+    await removeTracked(scratch, "tests/feed_test.ts");
+    scratch.env.GATE_CHECK_SUITE_EXISTS = "tests/feed_test.ts";
+    const gate = await fastGate(scratch);
+    equal(gate.code, 1, "deleted suite must fail the gate");
+    setEqual(gate.suites, ["tests/feed_test.ts"], "selected suite");
+    equal(gate.invocations.length, 1, "gate stops after missing suite");
   }));
 
 Deno.test("fast gate maps a deleted route even in a mixed diff, and surfaces its suite failure", () =>
@@ -299,8 +336,8 @@ Deno.test("fast gate covers every src route that imports the shared lib/utils.ts
     await touch(scratch.dir, "src/lib/utils.ts");
     const base = await fastGate(scratch);
     equal(base.code, 0, "exit code");
-    // feed (parseStableDate), breaking and origin-trials (formatStableDate)
-    // and api-version (parseMilestoneParam) assert through the handler suite;
+    // feed (parseStableDate), timeline (formatStableDate) and api-version
+    // (parseMilestoneParam) assert through their owned suites;
     // feature-history (isValidFeatureId) through the history suite. This exact
     // set is the regression the mapping used to miss (chrome-status-lite-4li):
     // a date-format regression in feed/breaking/origin-trials used to pass the
@@ -308,13 +345,16 @@ Deno.test("fast gate covers every src route that imports the shared lib/utils.ts
     setEqual(
       base.suites,
       [
+        "tests/api_version_test.ts",
         "tests/client_test.ts",
         "tests/deprecations_test.ts",
         "tests/feature_test.ts",
+        "tests/feed_test.ts",
         "tests/handler_test.ts",
         "tests/history_test.ts",
         "tests/http_smoke_test.ts",
         "tests/index_test.ts",
+        "tests/timeline_test.ts",
       ],
       "suites selected for src/lib/utils.ts",
     );

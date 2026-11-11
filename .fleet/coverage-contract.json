@@ -1,36 +1,47 @@
 {
   "//": "fleet-check coverage attribution. Declares suite placement ONLY for changed paths with a real transitive import into the executed suites, which no test file imports by name (chrome-status-lite-74e: a declared-but-never-loaded path turns a truthful PARTIAL into a false KNOWN). main.ts is loaded by tests/http_smoke_test.ts, tools/* is exercised by tests/gate_test.ts, so neither needs an entry here. Each pattern lists exactly the suites tools/fast-gate.sh runs for that path; tests/gate_test.ts pins this file and the fast-gate mapping to each other.",
   "src/flora.ts": [
-    "tests/client_test.ts",
+    "tests/api_version_test.ts",
     "tests/deprecations_test.ts",
     "tests/diff_test.ts",
     "tests/feature_test.ts",
+    "tests/feed_test.ts",
+    "tests/flora_test.ts",
     "tests/handler_test.ts",
     "tests/history_test.ts",
     "tests/http_smoke_test.ts",
     "tests/index_test.ts",
+    "tests/shell_test.ts",
+    "tests/timeline_test.ts",
     "tests/wiki_test.ts"
   ],
   "src/stream-utils.ts": [
+    "tests/api_version_test.ts",
     "tests/client_test.ts",
     "tests/deprecations_test.ts",
     "tests/diff_test.ts",
     "tests/feature_test.ts",
+    "tests/feed_test.ts",
     "tests/handler_test.ts",
     "tests/history_test.ts",
     "tests/http_smoke_test.ts",
     "tests/index_test.ts",
+    "tests/shell_test.ts",
+    "tests/timeline_test.ts",
     "tests/wiki_test.ts"
   ],
   "src/ui-components/*": [
-    "tests/client_test.ts",
+    "tests/api_version_test.ts",
     "tests/deprecations_test.ts",
     "tests/diff_test.ts",
     "tests/feature_test.ts",
+    "tests/feed_test.ts",
     "tests/handler_test.ts",
     "tests/history_test.ts",
     "tests/http_smoke_test.ts",
     "tests/index_test.ts",
+    "tests/shell_test.ts",
+    "tests/timeline_test.ts",
     "tests/wiki_test.ts"
   ],
   "src/lib/linkify.ts": [
@@ -42,7 +53,8 @@
     "tests/feature_test.ts",
     "tests/handler_test.ts",
     "tests/http_smoke_test.ts",
-    "tests/index_test.ts"
+    "tests/index_test.ts",
+    "tests/timeline_test.ts"
   ],
   "src/lib/snapshots.ts": [
     "tests/feature_test.ts",
@@ -55,6 +67,7 @@
     "tests/http_smoke_test.ts"
   ],
   "src/lib/buckets.ts": [
+    "tests/feed_test.ts",
     "tests/handler_test.ts",
     "tests/http_smoke_test.ts",
     "tests/index_test.ts"
