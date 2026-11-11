@@ -40,6 +40,7 @@ const styleProbePage = `<!doctype html><html lang="en"><head><meta charset="utf-
 <div class="versions"><a id="chip" href="#y">chrome 112</a></div>
 <span class="badge breaking" id="badge">breaking</span>
 <div class="diff-add" id="add">+added</div>
+<div class="diff" id="diff" style="height:60px"><div id="diff-body" style="height:400px">tall diff body</div></div>
 <p class="milestone-date" id="date">date</p>
 <h2 id="heading">heading</h2>
 <div id="canvas" style="background:var(--surface);color:var(--text)">canvas</div>
@@ -209,12 +210,29 @@ const targetMeasure = `(() => {
     "|chipW=" + chip.width.toFixed(1) + "|chipH=" + chip.height.toFixed(1)];
 })()`;
 
+// The diff panel clips its children to its radius without becoming a scroll
+// container (chrome-status-lite-wde): overflow: hidden was used only to round
+// the corner and silently made every diff panel programmatically scrollable,
+// adding scroll anchoring and breaking inner sticky positioning. The child is
+// tall enough to overflow, so the clip path is exercised; scrollTop/scrollLeft
+// are SET and have to stay 0 on an element that is not a scroll container.
+const clipMeasure = `(() => {
+  const diff = document.getElementById("diff");
+  const body = document.getElementById("diff-body");
+  diff.scrollTop = 40;
+  diff.scrollLeft = 40;
+  const style = getComputedStyle(diff);
+  return ["overflowY=" + style.overflowY, "overflowX=" + style.overflowX,
+    "scrollY=" + diff.scrollTop, "scrollX=" + diff.scrollLeft,
+    "contentOverflows=" + (body.getBoundingClientRect().height > diff.getBoundingClientRect().height ? 1 : 0)].join("|");
+})()`;
+
 // Measures the served stylesheet from a real browser: the colour tokens in both
 // schemes, and the keyboard focus ring with and without that stylesheet.
 async function probeStyles(
   root: string,
   probePage: string,
-): Promise<{ focus: string[]; withoutCss: string[]; light: string[]; dark: string[]; targets: string[] }> {
+): Promise<{ focus: string[]; withoutCss: string[]; light: string[]; dark: string[]; targets: string[]; clip: string[] }> {
   const browser = await launchDebugChrome();
   try {
     const page = await cdpClient(browser.ws).attach(`${root}/__style_probe`);
@@ -227,6 +245,7 @@ async function probeStyles(
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
       const light = await page.evaluate(themeMeasure) as string[];
+      const clipOn = `css-on|${await page.evaluate(clipMeasure)}`;
       const document_ = await page.call("DOM.getDocument", { depth: -1 });
       const documentNodeId = document_.result?.root?.nodeId as number | undefined;
       if (documentNodeId === undefined) throw new Error("DevTools returned no document node for the probe page");
@@ -249,6 +268,7 @@ async function probeStyles(
       // Sensitivity: with the served stylesheet disabled, the same forced
       // controls must fall back to the user agent ring.
       await page.evaluate(`document.styleSheets[0].disabled = true`);
+      const clipOff = `css-off|${await page.evaluate(clipMeasure)}`;
       await forceFocusVisible();
       const withoutCss: string[] = [];
       for (const id of FOCUS_PROBE_IDS) withoutCss.push(`css-off|${id}|${await page.evaluate(focusMeasure(id))}`);
@@ -260,7 +280,7 @@ async function probeStyles(
       const targets = await page.evaluate(targetMeasure) as string[];
       await page.call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
       const dark = await page.evaluate(themeMeasure) as string[];
-      return { focus, withoutCss, light, dark, targets };
+      return { focus, withoutCss, light, dark, targets, clip: [clipOn, clipOff] };
     } finally {
       await page.close();
     }
@@ -369,6 +389,22 @@ function assertFocusRing(focus: string[], withoutCss: string[]): void {
   includes(focusProbeLine(focus, "css-on", "chip"), "border=1px rgb(240, 0, 0)");
 }
 
+// The diff panel clips without scrolling (chrome-status-lite-wde): measured from
+// the served stylesheet over the same DevTools visit, with an overflowing child
+// so the clip is real.
+function assertDiffClipsWithoutScrolling(clip: string[]): void {
+  const on = probeLine(clip, "css-on");
+  includes(on, "overflowY=clip");
+  includes(on, "overflowX=clip");
+  includes(on, "scrollY=0"); // setting scrollTop was ignored: no scroll container
+  includes(on, "scrollX=0");
+  includes(on, "contentOverflows=1"); // the child really does overflow the panel
+  // Sensitivity: without the served stylesheet the panel has no clip at all.
+  const off = probeLine(clip, "css-off");
+  includes(off, "overflowY=visible");
+  includes(off, "overflowX=visible");
+}
+
 Deno.test("real HTTP and headless browser render a fixture page and load its stylesheet", async () => {
   equal(typeof main, "function"); // the deploy entrypoint wiring loads
   const handler = createHandler(fixtureClient());
@@ -474,6 +510,7 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
     const probe = await probeStyles(root, probePage);
     assertFocusRing(probe.focus, probe.withoutCss);
     assertTapTargets(probe.targets);
+    assertDiffClipsWithoutScrolling(probe.clip);
     assertThemeTokens(probe.light, LIGHT_THEME);
     assertThemeTokens(probe.dark, DARK_THEME);
 
