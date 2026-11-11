@@ -12,20 +12,22 @@ for path in "${paths[@]}"; do
   # Map deleted paths too: their former suites must verify that the removal is safe.
   case "$path" in
     static/*.html) add tests/handler_test.ts; add tests/shell_test.ts ;;
-    src/routes/index.ts|static/scripts/index.js) add tests/index_test.ts ;;
-    src/routes/feature.ts) add tests/feature_test.ts ;;
+    src/routes/index.ts|static/scripts/index.js) add tests/index_test.ts; add tests/handler_test.ts ;;
+    src/routes/feature.ts) add tests/feature_test.ts; add tests/handler_test.ts ;;
     src/lib/linkify.ts) add tests/feature_test.ts; add tests/index_test.ts ;;
     src/lib/url.ts) add tests/feature_test.ts; add tests/index_test.ts; add tests/handler_test.ts; add tests/timeline_test.ts ;;
     src/lib/snapshots.ts|src/routes/feature-history.ts|tests/history_test.ts) add tests/feature_test.ts; add tests/history_test.ts ;;
     src/lib/buckets.ts) add tests/index_test.ts; add tests/handler_test.ts; add tests/feed_test.ts ;;
-    src/routes/diff.ts) add tests/diff_test.ts ;;
+    src/routes/diff.ts) add tests/diff_test.ts; add tests/handler_test.ts ;;
     # Shared utils are consumed by feed, api-version, breaking/origin-trials,
     # feature-history, feature and deprecations, plus the direct client test.
     # tests/gate_test.ts pins this selection to the real route import graph.
     src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/handler_test.ts; add tests/history_test.ts; add tests/feed_test.ts; add tests/api_version_test.ts; add tests/timeline_test.ts ;;
-    src/routes/deprecations.ts|static/scripts/deprecations.js) add tests/deprecations_test.ts ;;
-    src/routes/feed.ts) add tests/feed_test.ts ;;
-    src/routes/api-version.ts) add tests/api_version_test.ts ;;
+    # Cross-route failure and HTTP-policy assertions still live in handler_test.ts.
+    # Keep that suite selected for every route whose behaviour they assert.
+    src/routes/deprecations.ts|static/scripts/deprecations.js) add tests/deprecations_test.ts; add tests/handler_test.ts ;;
+    src/routes/feed.ts) add tests/feed_test.ts; add tests/handler_test.ts ;;
+    src/routes/api-version.ts) add tests/api_version_test.ts; add tests/handler_test.ts ;;
     src/routes/breaking.ts|src/routes/origin-trials.ts) add tests/timeline_test.ts ;;
     src/routes/wiki.ts|src/routes/wiki-topic.ts|src/lib/wiki.ts|src/lib/wiki-data.ts) add tests/wiki_test.ts ;;
     # .fleet/coverage-contract.json declares suite attribution only for paths with a
