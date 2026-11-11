@@ -1,4 +1,4 @@
-import { ChromeStatusAPI } from "../src/lib/utils.ts";
+import { ChromeStatusAPI, UpstreamFetchBudgetError } from "../src/lib/utils.ts";
 import { equal } from "./fixture.ts";
 
 Deno.test("isolated API client caches responses until the fixture clock expires", async () => {
@@ -486,4 +486,99 @@ Deno.test("getVersions still rejects with a plain error on a cache without del",
     equal((err as Error).message.includes("implausible dev.version"), true);
   }
   equal(caught, true);
+});
+
+Deno.test("uncached feature-detail fetches are budgeted, cached ones are free (chrome-status-lite-d9s)", async () => {
+  // Feature ids are shape-validated only (1-16 digits), so the accepted set
+  // is ~10^16 and every distinct uncached id would otherwise cost an
+  // upstream round trip: one client could drive chromestatus.com 1:1. The
+  // bucket caps that aggregate rate at `burst`, and only for work that
+  // really reaches upstream.
+  let now = 0;
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    now: () => now,
+    featureFetchBudget: { burst: 3, refillPerSecond: 1 },
+    fetcher: async () => {
+      calls++;
+      return new Response(`)]}'\n${JSON.stringify({ id: calls })}`);
+    },
+  });
+
+  for (const id of ["101", "102", "103"]) await client.getFeature(id);
+  equal(calls, 3);
+
+  let caught: Error | undefined;
+  try {
+    await client.getFeature("104");
+  } catch (err) {
+    caught = err as Error;
+  }
+  equal(caught instanceof UpstreamFetchBudgetError, true);
+  equal((caught as UpstreamFetchBudgetError).retryAfterMs, 1000);
+  // The refusal is local: no upstream call, and it must not be cached as an
+  // error, so after the wait the same id is a clean fetch.
+  equal(calls, 3);
+
+  // A cache hit (the first client_test case above proves hits do not refetch)
+  // must not be charged either: repeat an already-cached id while the bucket
+  // is empty and it still resolves.
+  const cache = new Map<string, unknown>();
+  const cachedClient = new ChromeStatusAPI({
+    now: () => now,
+    featureFetchBudget: { burst: 1, refillPerSecond: 1 },
+    cache: {
+      get: (path: string) => cache.get(path),
+      set: (path: string, value: unknown) => {
+        cache.set(path, value);
+        return true;
+      },
+    },
+    fetcher: async () => new Response(`)]}'\n${JSON.stringify({ id: 7 })}`),
+  });
+  await cachedClient.getFeature("7");
+  // Bucket now empty; the cached id resolves without a token.
+  equal((await cachedClient.getFeature("7")).id, 7);
+
+  // Refill is time-based: one second later exactly one more uncached fetch
+  // is allowed, and the bucket is empty again immediately after.
+  now += 1000;
+  await client.getFeature("105");
+  equal(calls, 4);
+  caught = undefined;
+  try {
+    await client.getFeature("106");
+  } catch (err) {
+    caught = err as Error;
+  }
+  equal(caught instanceof UpstreamFetchBudgetError, true);
+  equal(calls, 4);
+});
+
+Deno.test("a live negative cache entry does not consume the fetch budget (chrome-status-lite-d9s)", async () => {
+  // Only a genuine upstream round trip is charged: an id whose retryable
+  // failure is remembered is answered from the negative cache, so repeat
+  // requests inside the window must not burn tokens (they would otherwise
+  // turn an upstream outage into a self-inflicted 429).
+  let now = 0;
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    now: () => now,
+    negativeCacheMaxAge: 60_000,
+    featureFetchBudget: { burst: 1, refillPerSecond: 1 },
+    fetcher: async () => {
+      calls++;
+      return new Response("boom", { status: 503 });
+    },
+  });
+  for (let i = 0; i < 4; i++) {
+    let caught: Error | undefined;
+    try {
+      await client.getFeature("999");
+    } catch (err) {
+      caught = err as Error;
+    }
+    equal(caught instanceof UpstreamFetchBudgetError, false);
+  }
+  equal(calls, 1);
 });

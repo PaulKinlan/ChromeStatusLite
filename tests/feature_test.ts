@@ -1,5 +1,6 @@
 import { createHandler } from "../src/handler.ts";
 import { sanitizeUrl } from "../src/lib/url.ts";
+import { UpstreamFetchBudgetError } from "../src/lib/utils.ts";
 import { equal, fixtureClient, includes, sampleFeature } from "./fixture.ts";
 
 Deno.test("feature detail renders fixture and canonical URL", async () => {
@@ -333,4 +334,23 @@ Deno.test("ecosystem WPT query falls back to the name slug when wpt_descr has no
   includes(html, 'href="https://wpt.fyi/results/?q=probe-feature"');
   equal(html.includes("q=example-com"), false);
   equal(html.includes("q=changed"), false);
+});
+
+Deno.test("/feature/:id answers an exhausted fetch budget with 429 and Retry-After (chrome-status-lite-d9s)", async () => {
+  // The budget refusal is this process declining to amplify, not an upstream
+  // outage: the page must say so and the response must be retryable, rather
+  // than the "unable to load ... from chromestatus.com" outage copy.
+  const handler = createHandler(fixtureClient({
+    getFeature: async () => {
+      throw new UpstreamFetchBudgetError(2400);
+    },
+  }));
+  const response = await handler(
+    new Request("https://chromestatuslite.com/feature/123"),
+  );
+  equal(response.status, 429);
+  equal(response.headers.get("retry-after"), "3");
+  const html = await response.text();
+  includes(html, "Too many feature lookups");
+  equal(html.includes("Unable to load feature details from chromestatus.com"), false);
 });
