@@ -136,10 +136,19 @@ input[type=time]:focus, input[type=url]:focus, input[type=week]:focus, input[typ
 select:focus, textarea:focus {
   border-color: var(--text);
 }
-/* The select arrow is an SVG data URI awsm swaps to solid black on hover/focus;
-   keep the grey arrow in both schemes, since it reads on either surface. */
-select:not([disabled]):focus, select:not([disabled]):hover {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 2'%3E%3Cpath fill='rgb(170, 170, 170)' fill-rule='nonzero' d='M1.5 2L3 0H0z'/%3E%3C/svg%3E");
+/* The select arrow is an SVG data URI awsm paints rgb(170,170,170) - 2.08:1 on
+   the control fill, under WCAG 1.4.11's 3:1 for meaningful graphics
+   (chrome-status-lite-bh0) - and swaps to solid black on hover/focus. Restate
+   the glyph for every state: a bare `select` override would win the base state
+   on source order but lose hover/focus to awsm's higher-specificity black swap.
+   A data URI cannot read var() or light-dark(), so the fill is baked; it is
+   --border-control's light value #767676, which clears 3:1 against
+   --surface-raised in both schemes (4.06:1 on #f2f2f2 light, 3.30:1 on
+   #23272e dark; the http smoke probe measures both in a real browser). */
+select,
+select:not([disabled]):focus,
+select:not([disabled]):hover {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 2'%3E%3Cpath fill='rgb(118, 118, 118)' fill-rule='nonzero' d='M1.5 2L3 0H0z'/%3E%3C/svg%3E");
 }
 
 /* === ChromeStatusLite responsive enhancements === */
