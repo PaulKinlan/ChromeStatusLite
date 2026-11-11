@@ -4,9 +4,53 @@ import {
   captureSnapshot,
   diffSnapshots,
   KvSnapshotStore,
+  type KvSnapshotStoreOptions,
   MemorySnapshotStore,
   snapshotKeysToTrim,
 } from "../src/lib/snapshots.ts";
+
+// Deno's test resource sanitizer does NOT observe embedded-KV handles
+// (chrome-status-lite-orgp): a test that leaks an unclosed Deno.openKv handle
+// stays green. So the suite enforces "each test owns and closes its KV
+// handles" itself: every handle a test opens is recorded through store() or
+// own(), and assertAllClosed() proves each one rejects operations with
+// BadResource - a dropped close() fails the test that dropped it.
+function kvOwner() {
+  const handles: Deno.Kv[] = [];
+  return {
+    store(path?: string, options: KvSnapshotStoreOptions = {}): KvSnapshotStore {
+      return new KvSnapshotStore(path, {
+        ...options,
+        openKv: async (p?: string) => {
+          const kv = await (options.openKv ?? Deno.openKv)(p);
+          handles.push(kv);
+          return kv;
+        },
+      });
+    },
+    own<T extends Deno.Kv>(kv: T): T {
+      handles.push(kv);
+      return kv;
+    },
+    async assertAllClosed(): Promise<void> {
+      for (const kv of handles) {
+        let error: unknown = null;
+        try {
+          await kv.get(["__kv_owner_closed_probe__"]);
+        } catch (caught) {
+          error = caught;
+        }
+        if (!(error instanceof Deno.errors.BadResource)) {
+          throw new Error(
+            `KV handle was never closed (probe ${
+              error === null ? "read a live handle" : `threw ${error}`
+            })`,
+          );
+        }
+      }
+    },
+  };
+}
 
 Deno.test("viewing a feature captures a snapshot and dedupes unchanged views", async () => {
   const store = new MemorySnapshotStore();
@@ -269,86 +313,102 @@ Deno.test("captureSnapshot prefers latest() and falls back to list()", async () 
 });
 
 Deno.test("KvSnapshotStore on the real embedded backend: latest() is the newest, unchanged views store nothing", async () => {
-  const store = new KvSnapshotStore(":memory:");
-  await store.add("kv1", { at: "2026-01-01T00:00:00.000Z", data: { Name: "X", Summary: "v1" } });
-  await store.add("kv1", { at: "2026-02-01T00:00:00.000Z", data: { Name: "X", Summary: "v2" } });
+  const owner = kvOwner();
+  const store = owner.store(":memory:");
+  try {
+    await store.add("kv1", { at: "2026-01-01T00:00:00.000Z", data: { Name: "X", Summary: "v1" } });
+    await store.add("kv1", { at: "2026-02-01T00:00:00.000Z", data: { Name: "X", Summary: "v2" } });
 
-  equal((await store.latest("kv1"))!.at, "2026-02-01T00:00:00.000Z");
-  const listed = await store.list("kv1");
-  equal(listed.length, 2);
-  equal(listed[0].at, "2026-02-01T00:00:00.000Z");
+    equal((await store.latest("kv1"))!.at, "2026-02-01T00:00:00.000Z");
+    const listed = await store.list("kv1");
+    equal(listed.length, 2);
+    equal(listed[0].at, "2026-02-01T00:00:00.000Z");
 
-  equal(await captureSnapshot(store, "kv1", { name: "X", summary: "v2" }), false);
-  equal((await store.list("kv1")).length, 2);
-  equal(await captureSnapshot(store, "kv1", { name: "X", summary: "v3" }), true);
-  equal((await store.latest("kv1"))!.data["Summary"], "v3");
+    equal(await captureSnapshot(store, "kv1", { name: "X", summary: "v2" }), false);
+    equal((await store.list("kv1")).length, 2);
+    equal(await captureSnapshot(store, "kv1", { name: "X", summary: "v3" }), true);
+    equal((await store.latest("kv1"))!.data["Summary"], "v3");
+  } finally {
+    await store.close();
+    await owner.assertAllClosed();
+  }
 });
 
 Deno.test("KvSnapshotStore keeps only the newest snapshots per feature", async () => {
-  const store = new KvSnapshotStore(":memory:", { maxSnapshotsPerFeature: 5 });
-  for (let i = 1; i <= 8; i++) {
-    const at = `2026-01-0${i}T00:00:00.000Z`;
-    equal(await store.add("kvtrim", { at, data: { Summary: `v${i}` } }), true);
+  const owner = kvOwner();
+  const store = owner.store(":memory:", { maxSnapshotsPerFeature: 5 });
+  try {
+    for (let i = 1; i <= 8; i++) {
+      const at = `2026-01-0${i}T00:00:00.000Z`;
+      equal(await store.add("kvtrim", { at, data: { Summary: `v${i}` } }), true);
+    }
+    const listed = await store.list("kvtrim");
+    equal(listed.length, 5);
+    // Newest first, and the three oldest were deleted.
+    equal(listed[0].at, "2026-01-08T00:00:00.000Z");
+    equal(listed[4].at, "2026-01-04T00:00:00.000Z");
+    equal((await store.latest("kvtrim"))!.at, "2026-01-08T00:00:00.000Z");
+  } finally {
+    await store.close();
+    await owner.assertAllClosed();
   }
-  const listed = await store.list("kvtrim");
-  equal(listed.length, 5);
-  // Newest first, and the three oldest were deleted.
-  equal(listed[0].at, "2026-01-08T00:00:00.000Z");
-  equal(listed[4].at, "2026-01-04T00:00:00.000Z");
-  equal((await store.latest("kvtrim"))!.at, "2026-01-08T00:00:00.000Z");
 });
 
 Deno.test("KvSnapshotStore evicts the least-recently-captured feature when the tracked-feature cap is full", async () => {
-  const store = new KvSnapshotStore(":memory:", { maxTrackedFeatures: 2 });
-  equal(await store.add("f1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } }), true);
-  equal(await store.add("f2", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } }), true);
-
   const warnings: string[] = [];
-  const originalWarn = console.warn;
-  console.warn = (msg: unknown) => warnings.push(String(msg));
+  const owner = kvOwner();
+  const store = owner.store(":memory:", {
+    maxTrackedFeatures: 2,
+    // The diagnostics sink is injected (chrome-status-lite-5e9): tests never
+    // monkeypatch the global console.warn.
+    warn: (message) => warnings.push(message),
+  });
   try {
+    equal(await store.add("f1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } }), true);
+    equal(await store.add("f2", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } }), true);
+
     // The cap reclaims instead of denying history to new features forever.
     equal(await store.add("f3", { at: "2026-01-03T00:00:00.000Z", data: { Summary: "c" } }), true);
+    // f1 was least-recently-captured: its snapshots and marker are gone.
+    equal((await store.list("f1")).length, 0);
+    equal((await store.list("f2")).length, 1);
+    equal((await store.list("f3")).length, 1);
+    equal(warnings.length, 1);
+    const event = JSON.parse(warnings[0]);
+    equal(event.event, "snapshot_feature_evicted");
+    equal(event.reason, "tracked_feature_cap");
+    equal(event.evictedFeatureId, "f1");
+    equal(event.maxTrackedFeatures, 2);
   } finally {
-    console.warn = originalWarn;
+    await store.close();
+    await owner.assertAllClosed();
   }
-  // f1 was least-recently-captured: its snapshots and marker are gone.
-  equal((await store.list("f1")).length, 0);
-  equal((await store.list("f2")).length, 1);
-  equal((await store.list("f3")).length, 1);
-  equal(warnings.length, 1);
-  const event = JSON.parse(warnings[0]);
-  equal(event.event, "snapshot_feature_evicted");
-  equal(event.reason, "tracked_feature_cap");
-  equal(event.evictedFeatureId, "f1");
-  equal(event.maxTrackedFeatures, 2);
 });
 
 Deno.test("KvSnapshotStore eviction follows recency: a fresh capture protects its feature", async () => {
-  const store = new KvSnapshotStore(":memory:", { maxTrackedFeatures: 2 });
-  await store.add("f1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } });
-  await store.add("f2", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } });
-  // f1 captured again most recently; f2 is now the eviction candidate.
-  await store.add("f1", { at: "2026-01-03T00:00:00.000Z", data: { Summary: "a2" } });
-  const originalWarn = console.warn;
-  console.warn = () => {};
+  const owner = kvOwner();
+  const store = owner.store(":memory:", { maxTrackedFeatures: 2, warn: () => {} });
   try {
+    await store.add("f1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } });
+    await store.add("f2", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } });
+    // f1 captured again most recently; f2 is now the eviction candidate.
+    await store.add("f1", { at: "2026-01-03T00:00:00.000Z", data: { Summary: "a2" } });
     equal(await store.add("f3", { at: "2026-01-04T00:00:00.000Z", data: { Summary: "c" } }), true);
+    equal((await store.list("f1")).length, 2);
+    equal((await store.list("f2")).length, 0);
+    equal((await store.list("f3")).length, 1);
   } finally {
-    console.warn = originalWarn;
+    await store.close();
+    await owner.assertAllClosed();
   }
-  equal((await store.list("f1")).length, 2);
-  equal((await store.list("f2")).length, 0);
-  equal((await store.list("f3")).length, 1);
 });
 
 Deno.test("KvSnapshotStore holds the tracked-feature cap under concurrent first-captures", async () => {
   // The threat model is anonymous concurrent GETs of distinct features:
   // every full-index commit must remove one marker for every one it
   // inserts, so bursts cannot ratchet the index past the cap (6kk).
-  const store = new KvSnapshotStore(":memory:", { maxTrackedFeatures: 3 });
-  const originalWarn = console.warn;
-  console.warn = () => {};
+  const owner = kvOwner();
+  const store = owner.store(":memory:", { maxTrackedFeatures: 3, warn: () => {} });
   const ids: string[] = [];
   try {
     for (let burst = 0; burst < 4; burst++) {
@@ -369,17 +429,17 @@ Deno.test("KvSnapshotStore holds the tracked-feature cap under concurrent first-
       equal(tracked <= 3, true);
     }
   } finally {
-    console.warn = originalWarn;
+    await store.close();
+    await owner.assertAllClosed();
   }
 });
 
 Deno.test("KvSnapshotStore touch() refreshes eviction recency past the throttle window", async () => {
-  const store = new KvSnapshotStore(":memory:", { maxTrackedFeatures: 2 });
-  await store.add("t1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } });
-  await store.add("t2", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } });
-  const originalWarn = console.warn;
-  console.warn = () => {};
+  const owner = kvOwner();
+  const store = owner.store(":memory:", { maxTrackedFeatures: 2, warn: () => {} });
   try {
+    await store.add("t1", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } });
+    await store.add("t2", { at: "2026-01-02T00:00:00.000Z", data: { Summary: "b" } });
     // A touch inside the 24h window is throttled: t1 stays oldest.
     await store.touch("t1", new Date("2026-01-01T06:00:00.000Z"));
     await store.add("t3", { at: "2026-01-03T00:00:00.000Z", data: { Summary: "c" } });
@@ -392,7 +452,8 @@ Deno.test("KvSnapshotStore touch() refreshes eviction recency past the throttle 
     equal((await store.list("t3")).length, 0);
     equal((await store.list("t4")).length, 1);
   } finally {
-    console.warn = originalWarn;
+    await store.close();
+    await owner.assertAllClosed();
   }
 });
 
@@ -429,15 +490,21 @@ Deno.test("snapshotKeysToTrim picks the oldest by timestamp regardless of input 
 });
 
 Deno.test("KvSnapshotStore trims by snapshot timestamp, not insertion or iteration order", async () => {
-  const store = new KvSnapshotStore(":memory:", { maxSnapshotsPerFeature: 2 });
-  await store.add("ord", { at: "2026-03-01T00:00:00.000Z", data: { Summary: "new" } });
-  await store.add("ord", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "old" } });
-  // A late-arriving backdated snapshot must not evict newer history.
-  await store.add("ord", { at: "2026-02-01T00:00:00.000Z", data: { Summary: "mid" } });
-  const listed = await store.list("ord");
-  equal(listed.length, 2);
-  equal(listed[0].at, "2026-03-01T00:00:00.000Z");
-  equal(listed[1].at, "2026-02-01T00:00:00.000Z");
+  const owner = kvOwner();
+  const store = owner.store(":memory:", { maxSnapshotsPerFeature: 2 });
+  try {
+    await store.add("ord", { at: "2026-03-01T00:00:00.000Z", data: { Summary: "new" } });
+    await store.add("ord", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "old" } });
+    // A late-arriving backdated snapshot must not evict newer history.
+    await store.add("ord", { at: "2026-02-01T00:00:00.000Z", data: { Summary: "mid" } });
+    const listed = await store.list("ord");
+    equal(listed.length, 2);
+    equal(listed[0].at, "2026-03-01T00:00:00.000Z");
+    equal(listed[1].at, "2026-02-01T00:00:00.000Z");
+  } finally {
+    await store.close();
+    await owner.assertAllClosed();
+  }
 });
 
 Deno.test("MemorySnapshotStore enforces the tracked-feature cap with the same recency eviction", async () => {
@@ -489,7 +556,8 @@ Deno.test("a re-capture holding a stale marker cannot resurrect it past the cap"
   // commit fails (the real marker is gone) and the retry re-enters through
   // the counter path - without it the commit resurrects the marker and the
   // index stays over the cap.
-  const baseKv = await Deno.openKv(":memory:");
+  const owner = kvOwner();
+  const baseKv = owner.own(await Deno.openKv(":memory:"));
   let staleReads = 0;
   let staleEntry: Deno.KvEntryMaybe<unknown> | null = null;
   const kv = new Proxy(baseKv, {
@@ -513,9 +581,8 @@ Deno.test("a re-capture holding a stale marker cannot resurrect it past the cap"
   const store = new KvSnapshotStore(undefined, {
     maxTrackedFeatures: 1,
     openKv: async () => kv,
+    warn: () => {},
   });
-  const originalWarn = console.warn;
-  console.warn = () => {};
   try {
     await store.add("raceA", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "a" } });
     // Capture raceA's real marker entry (real versionstamp) before eviction.
@@ -533,7 +600,9 @@ Deno.test("a re-capture holding a stale marker cannot resurrect it past the cap"
     }
     equal(tracked <= 1, true);
   } finally {
-    console.warn = originalWarn;
+    // The store's openKv seam wraps this same handle: close it once, here.
+    baseKv.close();
+    await owner.assertAllClosed();
   }
 });
 
@@ -543,7 +612,8 @@ Deno.test("evicting a victim re-captured mid-flight deletes its newest keys too"
   // commit. The eviction must notice the victim marker's versionstamp change
   // and retry - without that check it deletes only the keys it listed and
   // the re-capture's newest snapshot key is left orphaned under no marker.
-  const baseKv = await Deno.openKv(":memory:");
+  const owner = kvOwner();
+  const baseKv = owner.own(await Deno.openKv(":memory:"));
   let armed = false;
   let inject: () => Promise<void> = () => Promise.resolve();
   const kv = new Proxy(baseKv, {
@@ -576,15 +646,15 @@ Deno.test("evicting a victim re-captured mid-flight deletes its newest keys too"
   const store = new KvSnapshotStore(undefined, {
     maxTrackedFeatures: 1,
     openKv: async () => kv,
+    warn: () => {},
   });
   // The racing re-capture runs against the raw KV, like a concurrent
   // request's store would.
   const racingStore = new KvSnapshotStore(undefined, {
     maxTrackedFeatures: 1,
     openKv: async () => baseKv,
+    warn: () => {},
   });
-  const originalWarn = console.warn;
-  console.warn = () => {};
   try {
     await store.add("V", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "v1" } });
     armed = true;
@@ -603,7 +673,9 @@ Deno.test("evicting a victim re-captured mid-flight deletes its newest keys too"
     equal((await store.list("F")).length, 1);
     equal((await baseKv.get(["feature_count"])).value, 1);
   } finally {
-    console.warn = originalWarn;
+    // Both stores wrap this same raw handle via the openKv seam: close once.
+    baseKv.close();
+    await owner.assertAllClosed();
   }
 });
 
@@ -650,17 +722,23 @@ Deno.test("KvSnapshotStore trim keeps the newest snapshots even when the backend
       },
     });
   };
-  const store = new KvSnapshotStore(":memory:", {
+  const owner = kvOwner();
+  const store = owner.store(":memory:", {
     maxSnapshotsPerFeature: 2,
     openKv: reversedOpenKv,
   });
-  await store.add("rev", { at: "2026-03-01T00:00:00.000Z", data: { Summary: "new" } });
-  await store.add("rev", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "old" } });
-  await store.add("rev", { at: "2026-02-01T00:00:00.000Z", data: { Summary: "mid" } });
-  const listed = await store.list("rev");
-  equal(listed.length, 2);
-  equal(listed[0].at, "2026-03-01T00:00:00.000Z");
-  equal(listed[1].at, "2026-02-01T00:00:00.000Z");
+  try {
+    await store.add("rev", { at: "2026-03-01T00:00:00.000Z", data: { Summary: "new" } });
+    await store.add("rev", { at: "2026-01-01T00:00:00.000Z", data: { Summary: "old" } });
+    await store.add("rev", { at: "2026-02-01T00:00:00.000Z", data: { Summary: "mid" } });
+    const listed = await store.list("rev");
+    equal(listed.length, 2);
+    equal(listed[0].at, "2026-03-01T00:00:00.000Z");
+    equal(listed[1].at, "2026-02-01T00:00:00.000Z");
+  } finally {
+    await store.close(); // the proxy delegates close() to the raw handle
+    await owner.assertAllClosed();
+  }
 });
 
 Deno.test("history caps the rendered list at 25 and counts the withheld captures (chrome-status-lite-2yt3)", async () => {

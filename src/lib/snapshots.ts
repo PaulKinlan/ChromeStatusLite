@@ -96,6 +96,10 @@ export type KvSnapshotStoreOptions = {
   /** Testing seam: override the KV opener (e.g. to fake a backend whose
    * prefix lists are not ascending). Defaults to Deno.openKv. */
   openKv?: (path?: string) => Promise<Deno.Kv>;
+  /** Diagnostics sink for eviction/contention events (the message is the
+   * JSON-encoded event). Defaults to console.warn; tests inject their own
+   * sink so they never have to monkeypatch the global (chrome-status-lite-5e9). */
+  warn?: (message: string) => void;
 };
 
 /** Deno KV-backed store; KV is GA on Deno Deploy and Deno 2.x locally. */
@@ -103,6 +107,7 @@ export class KvSnapshotStore implements SnapshotStore {
   #kv: Promise<Deno.Kv>;
   #maxSnapshotsPerFeature: number;
   #maxTrackedFeatures: number;
+  #warn: (message: string) => void;
 
   constructor(path?: string, options: KvSnapshotStoreOptions = {}) {
     this.#kv = (options.openKv ?? Deno.openKv)(path);
@@ -110,11 +115,19 @@ export class KvSnapshotStore implements SnapshotStore {
       options.maxSnapshotsPerFeature ?? MAX_SNAPSHOTS_PER_FEATURE;
     this.#maxTrackedFeatures =
       options.maxTrackedFeatures ?? MAX_TRACKED_FEATURES;
+    this.#warn = options.warn ?? ((message) => console.warn(message));
     // openKv rejects asynchronously (a corrupt/unavailable KV file passes
     // the constructor); without a handler attached now, that rejection is
     // unhandled and kills the process before any route can catch it.
     // Callers still see the error: they await this.#kv inside list/add.
     this.#kv.catch(() => {});
+  }
+
+  /** Close the underlying KV handle. An open failure (already surfaced to
+   * callers of list/add) is not re-thrown here. Stores that share one raw
+   * handle (via the openKv seam) must be closed once, not per wrapper. */
+  async close(): Promise<void> {
+    await this.#kv.then((kv) => kv.close(), () => {});
   }
 
   async list(featureId: string): Promise<FeatureSnapshot[]> {
@@ -251,7 +264,7 @@ export class KvSnapshotStore implements SnapshotStore {
       const res = await op.commit();
       if (res.ok) {
         if (victim) {
-          console.warn(JSON.stringify({
+          this.#warn(JSON.stringify({
             event: "snapshot_feature_evicted",
             reason: "tracked_feature_cap",
             evictedFeatureId: victim.featureId,
@@ -262,7 +275,7 @@ export class KvSnapshotStore implements SnapshotStore {
         return true;
       }
       if (attempt >= MAX_EVICTION_ATTEMPTS) {
-        console.warn(JSON.stringify({
+        this.#warn(JSON.stringify({
           event: "snapshot_capture_dropped",
           reason: "index_contention",
           featureId,
