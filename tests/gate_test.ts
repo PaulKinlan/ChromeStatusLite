@@ -209,12 +209,12 @@ Deno.test("fast gate maps a static page change to the shell and handler suites p
     includes(gate.invocations[1], "--allow-net=127.0.0.1", "smoke sandbox");
   }));
 
-Deno.test("fast gate maps a route change to its own suite plus the smoke", () =>
+Deno.test("fast gate maps a feature change to its suite and cross-route policy", () =>
   withScratch(async (scratch) => {
     await touch(scratch.dir, "src/routes/feature.ts");
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
-    setEqual(gate.suites, ["tests/feature_test.ts", SMOKE], "selected suites");
+    setEqual(gate.suites, ["tests/feature_test.ts", "tests/handler_test.ts", SMOKE], "selected suites");
   }));
 
 Deno.test("fast gate maps diff route to its focused suite", () =>
@@ -222,24 +222,43 @@ Deno.test("fast gate maps diff route to its focused suite", () =>
     await touch(scratch.dir, "src/routes/diff.ts");
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
-    setEqual(gate.suites, ["tests/diff_test.ts", SMOKE], "selected suites");
+    setEqual(gate.suites, ["tests/diff_test.ts", "tests/handler_test.ts", SMOKE], "selected suites");
   }));
 
-Deno.test("fast gate runs the owned route suite on a source change", () =>
-  withScratch(async (scratch) => {
-    const routes = [
-      ["src/routes/feed.ts", "tests/feed_test.ts"],
-      ["src/routes/api-version.ts", "tests/api_version_test.ts"],
-      ["src/routes/breaking.ts", "tests/timeline_test.ts"],
-      ["src/routes/origin-trials.ts", "tests/timeline_test.ts"],
+Deno.test("fast gate runs focused suites and cross-route policy where asserted", () =>
+  withScratch(async (_scratch) => {
+    const routes: Array<[string, string, boolean]> = [
+      ["src/routes/feed.ts", "tests/feed_test.ts", true],
+      ["src/routes/api-version.ts", "tests/api_version_test.ts", true],
+      ["src/routes/index.ts", "tests/index_test.ts", true],
+      ["src/routes/deprecations.ts", "tests/deprecations_test.ts", true],
+      ["src/routes/breaking.ts", "tests/timeline_test.ts", false],
+      ["src/routes/origin-trials.ts", "tests/timeline_test.ts", false],
     ];
-    for (const [route, suite] of routes) {
+    for (const [route, suite, hasHandlerPolicy] of routes) {
       const probe = await makeScratch();
       try {
         await touch(probe.dir, route);
         const gate = await fastGate(probe);
         equal(gate.code, 0, `exit code for ${route}`);
-        setEqual(gate.suites, [suite, SMOKE], `selected suites for ${route}`);
+        setEqual(gate.suites, [suite, ...(hasHandlerPolicy ? ["tests/handler_test.ts"] : []), SMOKE], `selected suites for ${route}`);
+      } finally {
+        await Deno.remove(probe.dir, { recursive: true });
+      }
+    }
+  }));
+
+Deno.test("fast gate fails on the cross-route policy suite for feed and API changes", () =>
+  withScratch(async (_scratch) => {
+    for (const route of ["src/routes/feed.ts", "src/routes/api-version.ts"]) {
+      const probe = await makeScratch();
+      try {
+        await touch(probe.dir, route);
+        probe.env.GATE_FAIL_SUITE = "tests/handler_test.ts";
+        const gate = await fastGate(probe);
+        equal(gate.code, 1, `handler policy failure fails fast gate for ${route}`);
+        includes(gate.invocations[0], "tests/handler_test.ts", `handler suite ran for ${route}`);
+        equal(gate.invocations.length, 1, "gate stops before smoke on policy failure");
       } finally {
         await Deno.remove(probe.dir, { recursive: true });
       }
@@ -263,7 +282,7 @@ Deno.test("fast gate maps a deleted route even in a mixed diff, and surfaces its
     scratch.env.GATE_FAIL_SUITE = "tests/feature_test.ts";
     const gate = await fastGate(scratch);
     equal(gate.code, 1, "deleted route's suite failure must fail the gate");
-    setEqual(gate.suites, ["tests/feature_test.ts", "tests/index_test.ts"], "selected suites");
+    setEqual(gate.suites, ["tests/feature_test.ts", "tests/handler_test.ts", "tests/index_test.ts"], "selected suites");
     includes(gate.invocations[0], "tests/feature_test.ts", "deleted route's suite ran");
     equal(gate.invocations.length, 1, "gate stops after failed route suites");
   }));
