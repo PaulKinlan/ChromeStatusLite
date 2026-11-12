@@ -63,6 +63,28 @@ function kvOwner() {
   };
 }
 
+Deno.test("KV owner refuses a vacuous close check when no handle was recorded", async () => {
+  const owner = kvOwner();
+  // Model a handle opened without owner.store()/owner.own(). Deno's resource
+  // sanitizer misses embedded KV handles, so a zero-handle owner must fail
+  // rather than treating its empty loop as proof the raw handle was closed.
+  const rawKv = await Deno.openKv(":memory:");
+  try {
+    let failure: unknown;
+    try {
+      await owner.assertAllClosed();
+    } catch (error) {
+      failure = error;
+    }
+    if (!(failure instanceof Error)) {
+      throw new Error("Expected the zero-handle KV owner guard to reject");
+    }
+    includes(failure.message, "KV handle guard is vacuous");
+  } finally {
+    rawKv.close();
+  }
+});
+
 Deno.test("viewing a feature captures a snapshot and dedupes unchanged views", async () => {
   const store = new MemorySnapshotStore();
   let feature: any = {
