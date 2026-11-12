@@ -15,6 +15,10 @@ import {
 // handles" itself: every handle a test opens is recorded through store() or
 // own(), and assertAllClosed() proves each one rejects operations with
 // BadResource - a dropped close() fails the test that dropped it.
+// assertAllClosed() also fails when fewer handles were recorded than expected
+// (chrome-status-lite-8fi7): an empty handles array would pass vacuously, so
+// a test that opens a KV handle without recording it through the owner must
+// not stay green.
 function kvOwner() {
   const handles: Deno.Kv[] = [];
   return {
@@ -32,7 +36,14 @@ function kvOwner() {
       handles.push(kv);
       return kv;
     },
-    async assertAllClosed(): Promise<void> {
+    async assertAllClosed(expect = 1): Promise<void> {
+      if (handles.length < expect) {
+        throw new Error(
+          `KV handle guard is vacuous: expected at least ${expect} recorded ` +
+            `handle(s), recorded ${handles.length} - open KV handles through ` +
+            `owner.store()/owner.own() so their close is verified`,
+        );
+      }
       for (const kv of handles) {
         let error: unknown = null;
         try {
