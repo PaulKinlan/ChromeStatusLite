@@ -35,7 +35,7 @@ A public, read-only Deno HTTP site serves Chrome feature pages, wiki topics, dif
 
 - Never promote client-controlled paths or upstream fields into a fetch origin, filesystem path, unsanitized executable URL, or unescaped HTML/XML. `raw()` requires proof that the string is already trusted markup; URLs require scheme validation **as well as** context-appropriate output escaping.
 - Validate feature IDs and milestones at the route seam before upstream/cache/KV work. Bound new query cardinality, concurrent requests, response sizes, processing time and persistent writes; check both cold-cache bursts and upstream failures.
-- Preserve the GET/HEAD/OPTIONS policy and shared security headers on successes, redirects, missing assets, thrown routes and HEAD responses; do not leak internal error details to clients.
+- Preserve the GET/HEAD/OPTIONS policy and shared security headers on successes, redirects, missing assets, thrown routes and HEAD responses. HEAD may render but must not capture/touch KV snapshots; do not leak internal error details to clients.
 - Treat ChromeStatus data as malformed or hostile until shape-checked; never assume dates, counts, field types or complete pagination. Failure handling should not falsely assert an empty/not-found result or poison a long-lived cache.
 
 ## 7. Explicit exclusions and residual risks
