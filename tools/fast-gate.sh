@@ -11,6 +11,9 @@ gate=0
 for path in "${paths[@]}"; do
   # Map deleted paths too: their former suites must verify that the removal is safe.
   case "$path" in
+    # Policy-only documentation has no runtime import; use the small HTTP
+    # policy suite plus the unconditional fixture-backed smoke, not all routes.
+    THREAT_MODEL.md) add tests/handler_test.ts ;;
     static/*.html) add tests/handler_test.ts; add tests/shell_test.ts ;;
     src/routes/index.ts|static/scripts/index.js) add tests/index_test.ts; add tests/handler_test.ts ;;
     src/routes/feature.ts) add tests/feature_test.ts; add tests/handler_test.ts ;;

@@ -307,6 +307,15 @@ Deno.test("fast gate maps shared modules and the smoke test itself to all suites
     equal(gate.invocations.length, 2, "route + smoke invocations");
   }));
 
+Deno.test("fast gate maps threat-model documentation without selecting unrelated route suites", () =>
+  withScratch(async (scratch) => {
+    await touch(scratch.dir, "THREAT_MODEL.md");
+    const gate = await fastGate(scratch);
+    equal(gate.code, 0, "exit code");
+    setEqual(gate.suites, ["tests/handler_test.ts", SMOKE], "policy and smoke suites");
+    equal(gate.invocations.length, 2, "route + smoke invocations");
+  }));
+
 Deno.test("fast gate runs this harness test when gate tooling changes", () =>
   withScratch(async (scratch) => {
     await touch(scratch.dir, "tools/extra.sh");
