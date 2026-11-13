@@ -189,6 +189,19 @@ const themeMeasure = `(() => {
   lines.push("WRAP|heading=" + getComputedStyle(document.getElementById("heading")).textWrap +
     "|date=" + getComputedStyle(document.getElementById("date")).textWrap +
     "|canvas=" + getComputedStyle(document.getElementById("canvas")).textWrap);
+  // The select's dropdown arrow is a baked-fill data-URI SVG (chrome-status-lite-bh0):
+  // the fill is parsed out of the computed backgroundImage and contrast-measured
+  // against the control's own background, like the tokens above - so a fill that
+  // fails WCAG 1.4.11's 3:1 in either scheme fails here, not just in review.
+  const arrowStyle = getComputedStyle(document.getElementById("select"));
+  const arrowFill = arrowStyle.backgroundImage.match(/fill='rgb\\(([\\d.]+), ([\\d.]+), ([\\d.]+)\\)'/);
+  if (arrowFill) {
+    const rgb = "rgb(" + arrowFill.slice(1).join(", ") + ")";
+    lines.push("ARROW|fill=" + rgb + "|surface=" + arrowStyle.backgroundColor +
+      "|contrast=" + ratio(rgb, arrowStyle.backgroundColor).toFixed(2));
+  } else {
+    lines.push("ARROW|fill=none");
+  }
   return lines;
 })()`;
 
@@ -294,6 +307,9 @@ const LIGHT_THEME = {
   ADD: "bg=rgb(230, 255, 236)|color=rgb(17, 99, 41)",
   DATE: "color=rgb(102, 102, 102)",
   WRAP: "heading=balance|date=pretty|canvas=wrap",
+  // The arrow fill is baked into the data URI, so it is the same literal in
+  // both schemes; the contrast loop above proves it against each surface.
+  ARROW: "fill=rgb(118, 118, 118)",
 };
 const DARK_THEME = {
   PAGE: "bg=rgb(20, 22, 26)|color=rgb(236, 238, 241)",
@@ -303,16 +319,19 @@ const DARK_THEME = {
   ADD: "bg=rgb(18, 48, 28)|color=rgb(126, 226, 168)",
   DATE: "color=rgb(194, 199, 207)",
   WRAP: "heading=balance|date=pretty|canvas=wrap",
+  ARROW: "fill=rgb(118, 118, 118)",
 };
 
 function assertThemeTokens(lines: string[], expected: Record<string, string>): void {
   for (const [tag, needle] of Object.entries(expected)) includes(probeLine(lines, tag), needle);
   // Not just "the colours changed": body text has to stay readable in both
-  // schemes (WCAG 2.1 AA asks 4.5:1 for normal text).
-  for (const tag of ["PAGE", "SURFACE"]) {
+  // schemes (WCAG 2.1 AA asks 4.5:1 for normal text), and the select arrow -
+  // a baked-fill SVG - must clear WCAG 1.4.11's 3:1 for meaningful graphics
+  // in both schemes too (chrome-status-lite-bh0).
+  for (const [tag, minimum] of [["PAGE", 4.5], ["SURFACE", 4.5], ["ARROW", 3]] as const) {
     const match = probeLine(lines, tag).match(/contrast=([\d.]+)/);
     if (!match) throw new Error(`Style probe reported no contrast for ${tag}`);
-    if (!(Number(match[1]) >= 4.5)) throw new Error(`${tag} contrast ${match[1]} is below 4.5:1: ${probeLine(lines, tag)}`);
+    if (!(Number(match[1]) >= minimum)) throw new Error(`${tag} contrast ${match[1]} is below ${minimum}:1: ${probeLine(lines, tag)}`);
   }
 }
 
