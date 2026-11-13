@@ -263,7 +263,12 @@ a,dd,li,p,blockquote{overflow-wrap:break-word;word-break:break-word}
 /* Feature snapshot history and visual diff (chrome-status-lite-33u). */
 .snapshot-history { padding-left: 1.2em; }
 .snapshot-history li { margin: 0.6em 0; }
-.diff { border: 1px solid var(--border-panel); border-radius: 4px; overflow: hidden; }
+/* The panel clips its row backgrounds to its 4px radius, but it is not a scroll
+   container, so it clips with overflow: clip rather than hidden
+   (chrome-status-lite-wde): hidden would make every diff programmatically
+   scrollable, introduce scroll anchoring, and break inner sticky positioning.
+   clip is Baseline widely available. */
+.diff { border: 1px solid var(--border-panel); border-radius: 4px; overflow: clip; }
 .diff-block { border-bottom: 1px solid var(--border-faint); }
 .diff-block:last-child { border-bottom: none; }
 .diff-field { padding: 0.4em 0.8em; background: var(--surface-sunken); font-weight: 600; font-size: 0.85em; color: var(--subtle); }
