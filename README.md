@@ -29,7 +29,10 @@ tagged-template renderer.
 
 - **`/feature/:id`** — Detail page for a single feature: summary, motivation, standards position,
   cross-browser signals (Firefox, Safari, web developers), tracking bug, and links to docs,
-  samples, and explainers. `:id` is the chromestatus feature id.
+  samples, and explainers. `:id` is the chromestatus feature id. If too many distinct,
+  uncached feature pages are requested at once, the server returns `429 Too Many Requests` with a
+  `Retry-After` header (in seconds). Its shared per-process budget allows a burst of 30 new feature
+  fetches and refills at one per second; cached lookups do not consume it.
 
 - **`/feature/:id/history`** — Snapshot history for a feature: every capture, newest first, with the
   tracked fields that changed since the previous capture. Up to 25 captures are listed; older ones
