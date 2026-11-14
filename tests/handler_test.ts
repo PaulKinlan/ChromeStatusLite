@@ -1,6 +1,6 @@
 import { createHandler, stripBodyForHead } from "../src/handler.ts";
 import { MemorySnapshotStore, type SnapshotStore } from "../src/lib/snapshots.ts";
-import { equal, fixtureClient, includes } from "./fixture.ts";
+import { equal, fixtureClient, includes, sampleFeature } from "./fixture.ts";
 
 Deno.test("import-safe handler redirects Deno hosts without querying upstream", async () => {
   const handler = createHandler(fixtureClient({ getVersions: () => { throw Error("unexpected fetch"); } }));
@@ -59,6 +59,23 @@ Deno.test("a rejecting route returns a hardened 500, not Deno.serve's bare one (
   equal(head.status, 500);
   equal(await head.text(), "");
   equal(head.headers.get("content-length"), String(new TextEncoder().encode("Internal Server Error").length));
+  equal(head.headers.get("x-frame-options"), "DENY");
+});
+
+Deno.test("a HEAD stream rejection returns a hardened 500 instead of escaping the header gate (chrome-status-lite-tlgi)", async () => {
+  // Flora renders nested values asynchronously. The route returns a Response
+  // before this interpolated value throws; only draining the HEAD body sees it.
+  const badName = { toString() { throw new Error("nested render failed"); } };
+  const handler = createHandler(fixtureClient({
+    getFeaturesForVersion: async () => ({ "Enabled by default": [{ ...sampleFeature, name: badName }] }),
+  }));
+  const head = await handler(new Request("https://chromestatuslite.com/", { method: "HEAD" }));
+  equal(head.status, 500);
+  equal(head.body, null);
+  equal(head.headers.get("content-length"), "21");
+  equal(head.headers.get("content-security-policy"), "default-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'");
+  equal(head.headers.get("x-content-type-options"), "nosniff");
+  equal(head.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
   equal(head.headers.get("x-frame-options"), "DENY");
 });
 
