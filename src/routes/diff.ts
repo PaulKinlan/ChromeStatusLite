@@ -109,6 +109,10 @@ export default async function render(
       </div>`;
   }
 
+  // TODO(baseline/webmcp-form-attributes): Annotate the milestone <form> below
+  // with toolname/tooldescription (agentic-forms) once WebMCP declarative form
+  // attributes reach Baseline; they are Chromium-origin-trial today
+  // (chrome-status-lite-1zoa).
   return template`<!doctype html>
 <html lang="en">
 <head>

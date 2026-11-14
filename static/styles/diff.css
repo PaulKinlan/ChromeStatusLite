@@ -1,10 +1,16 @@
-/* Each column is a complete milestone; on narrow screens they stack instead
-   of shrinking release-note text to an unreadable width. */
-body main{max-width:80rem}
+/* Each column is a complete milestone; when the page is too narrow for two
+   readable panels they stack instead of shrinking release-note text to an
+   unreadable width. The breakpoint keys on the PAGE's own width (main is this
+   file's 80rem shell and an inline-size container), not the viewport's, so the
+   same available width always renders the same layout - and the grid keeps
+   working unchanged if it is ever rendered inside a narrower panel
+   (chrome-status-lite-1zoa, modern-web size-aware-styling; @container is
+   Baseline 2023-02-14). */
+body main{max-width:80rem;container-type:inline-size}
 .diff-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem;align-items:start;margin-top:1.5rem}
 .diff-columns>.diff-milestone{margin-top:0}
 .diff-milestone{min-width:0;padding:0 1rem 1rem;border:1px solid var(--border-panel);border-radius:4px}
 .diff-milestone h2,.diff-milestone h3{margin-top:1rem;text-wrap:balance}
 .diff-milestone li{margin-bottom:1rem;overflow-wrap:anywhere}
 .diff-milestone li p{margin:.2rem 0 0;text-wrap:pretty}
-@media(max-width:48rem){.diff-columns{grid-template-columns:1fr}}
+@container (max-width:48rem){.diff-columns{grid-template-columns:1fr}}
