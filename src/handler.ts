@@ -171,6 +171,10 @@ export function createHandler(
     let response: Response;
     try {
       response = await route(request);
+      // Draining a dynamic HEAD body can reject after the route has returned
+      // (flora renders nested values asynchronously). Keep that rejection in
+      // the same error gate as route failures, before headers are finalised.
+      if (request.method === "HEAD") response = await stripBodyForHead(response);
     } catch (error) {
       // The header gate is total (chrome-status-lite-0nj): a route that
       // rejects must not fall through to Deno.serve's synthesised bare 500,
@@ -182,9 +186,8 @@ export function createHandler(
         error,
       );
       response = new Response("Internal Server Error", { status: 500 });
+      if (request.method === "HEAD") response = await stripBodyForHead(response);
     }
-    response = withSecurityHeaders(response);
-    if (request.method === "HEAD") return stripBodyForHead(response);
-    return response;
+    return withSecurityHeaders(response);
   };
 }
