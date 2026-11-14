@@ -546,3 +546,28 @@ Deno.test("real HTTP and headless browser render a fixture page and load its sty
     for (const profile of profiles) await Deno.remove(profile, { recursive: true });
   }
 });
+
+// The deploy entrypoint is the only code path Deno Deploy runs, and no suite
+// executed it: every other test builds createHandler() directly, so a wiring
+// regression in main() - serve never started, handler unwired - passed both
+// gates with only a typeof assertion guarding it (chrome-status-lite-knek).
+// main(0) binds an ephemeral port so the gate can never collide with another
+// listener, and the loopback hostname keeps the listener inside the gate's
+// --allow-net=127.0.0.1 sandbox (main's production default stays 0.0.0.0).
+// GET /missing 404s in the dispatch gate before any client or store touch, so
+// the request stays fixture-free and offline. The snapshot-store argument and
+// the PORT default stay unpinned: pinning them needs upstream-free seams
+// main() does not expose (a DI parameter), a larger change than this gap
+// warrants.
+Deno.test("main() binds Deno.serve to createHandler on the requested port and shuts down", async () => {
+  const server = main(0, "127.0.0.1");
+  try {
+    const addr = server.addr as Deno.NetAddr;
+    equal(addr.port > 0, true); // serve ran with the port main() was given
+    const res = await fetch(`http://127.0.0.1:${addr.port}/missing`);
+    equal(res.status, 404);
+    includes(await res.text(), "Not found"); // createHandler answered, not a bare listener
+  } finally {
+    await server.shutdown();
+  }
+});
