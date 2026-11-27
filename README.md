@@ -70,6 +70,27 @@ renderer.
   `total_features`, `features_by_type`, `features`). Accepts `latest` or an integer milestone and
   sets `access-control-allow-origin: *`.
 
+- **`/about`** — Background on Paul Kinlan, why ChromeStatusLite was built, and links to related
+  projects.
+
+- **`/llms.txt`** — Concise `llmstxt.org`-style agent index documenting every page, all topic wiki
+  slugs, `Accept: text/markdown`, and machine-readable endpoints.
+
+### Agent & Markdown support (`Accept: text/markdown`)
+
+Every HTML page supports RFC-compliant `Accept: text/markdown` content negotiation:
+
+```sh
+curl -H "Accept: text/markdown" https://chromestatuslite.com/
+curl -H "Accept: text/markdown" https://chromestatuslite.com/deprecations
+curl -H "Accept: text/markdown" https://chromestatuslite.com/about
+```
+
+Markdown responses return `Content-Type: text/markdown; charset=utf-8`, `Vary: Accept`, and
+`X-Markdown-Tokens`, extracting `<main>` into clean Markdown with absolute canonical links and GFM
+tables while stripping navigation chrome and interactive form pickers. Cloudflare's edge cache
+keys HTML and Markdown variants separately so browsers never receive cached Markdown.
+
 ## Snapshot history & Wiki cache (Cloudflare D1)
 
 Both durable features share a single Cloudflare D1 database (`migrations/0001_init.sql`):
@@ -102,7 +123,10 @@ Both durable features share a single Cloudflare D1 database (`migrations/0001_in
 - **`src/handler.ts`** — Runtime-agnostic request router, explicit static asset allowlist,
   RFC 9110 streaming `HEAD` handler, and total security-header gate.
 - **`src/routes/`** — One module per page (`index`, `deprecations`, `diff`, `breaking`,
-  `origin-trials`, `feature`, `feature-history`, `wiki`, `wiki-topic`, `feed`, `api-version`).
+  `origin-trials`, `feature`, `feature-history`, `wiki`, `wiki-topic`, `about`, `feed`,
+  `api-version`).
+- **`src/lib/markdown.ts`** — Zero-dependency `Accept: text/markdown` negotiation and single-pass
+  HTML-to-Markdown converter.
 - **`src/ui-components/`** — Shared HTML shell (`layout.ts`), zero-JS popover nav (`nav.ts`), and
   feature metadata badges (`feature-metadata.ts`).
 - **`src/lib/utils.ts`** — `ChromeStatusAPI` client (fixed origins `chromestatus.com` and

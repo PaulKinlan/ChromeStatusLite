@@ -1,8 +1,13 @@
 import { ChromeStatusAPI } from "./lib/utils.ts";
+import {
+  convertHtmlResponseToMarkdown,
+  prefersMarkdown,
+} from "./lib/markdown.ts";
 import { renderDiff, renderHistory } from "./routes/feature-history.ts";
 import type { SnapshotStore } from "./lib/snapshots.ts";
 import type { WikiTopicStore } from "./lib/wiki-data.ts";
 import { NO_STORE_CACHE_CONTROL } from "./ui-components/layout.ts";
+import about from "./routes/about.ts";
 import index from "./routes/index.ts";
 import deprecations from "./routes/deprecations.ts";
 import feature from "./routes/feature.ts";
@@ -61,7 +66,7 @@ const FEATURE_PATTERN = new URLPattern({ pathname: "/feature/:id" });
 
 // Explicit allowlist of static asset paths served from static/ via env.ASSETS.
 const STATIC_ASSET_RE =
-  /^\/(?:styles\/[\w.-]+|google1bf7ef037ae116eb\.html|robots\.txt|favicon\.svg|speculation-rules\.json)$/;
+  /^\/(?:styles\/[\w.-]+|google1bf7ef037ae116eb\.html|robots\.txt|llms\.txt|favicon\.svg|speculation-rules\.json)$/;
 
 // Baseline hardening applied to every outgoing response. The markup uses no
 // inline scripts or styles and loads assets only from this origin; the only
@@ -173,6 +178,7 @@ export function createHandler(
     }
 
     if (url.pathname === "/") return index(request, client);
+    if (url.pathname === "/about") return about(request);
     if (url.pathname === "/deprecations") return deprecations(request, client);
     if (url.pathname === "/diff") return diff(request, client);
     if (url.pathname === "/breaking") return breaking(request, client);
@@ -237,6 +243,8 @@ export function createHandler(
           "content-type",
           "application/speculationrules+json; charset=utf-8",
         );
+      } else if (url.pathname === "/llms.txt") {
+        headers.set("content-type", "text/plain; charset=utf-8");
       }
       return new Response(assetRes.body, {
         status: assetRes.status,
@@ -253,8 +261,21 @@ export function createHandler(
 
   return async (request: Request): Promise<Response> => {
     let response: Response;
+    const wantsMarkdown = prefersMarkdown(request);
     try {
       response = await route(request);
+      // Content negotiation: convert HTML pages (those carrying Vary: Accept)
+      // to clean Markdown when the caller explicitly prefers `text/markdown`.
+      // Static assets (incl. Google verification HTML), JSON API, RSS, and
+      // /llms.txt keep their native representation.
+      const contentType = response.headers.get("content-type")?.toLowerCase() ??
+        "";
+      const variesOnAccept = (response.headers.get("vary") ?? "")
+        .toLowerCase()
+        .includes("accept");
+      if (wantsMarkdown && variesOnAccept && contentType.startsWith("text/html")) {
+        response = await convertHtmlResponseToMarkdown(response, request.url);
+      }
       // Draining a dynamic HEAD body can reject after the route has returned.
       if (request.method === "HEAD") {
         response = await stripBodyForHead(response);

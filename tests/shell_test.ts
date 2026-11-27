@@ -6,6 +6,7 @@ test("every HTML page shell declares lang=en, charset=utf-8, favicon, RSS autodi
   const handler = createHandler({ client: fixtureClient() });
   const htmlRoutes = [
     "/",
+    "/about",
     "/deprecations",
     "/feature/123",
     "/feature/123/history",
@@ -19,6 +20,7 @@ test("every HTML page shell declares lang=en, charset=utf-8, favicon, RSS autodi
     );
     equal(res.status, 200);
     equal(res.headers.get("content-type"), "text/html; charset=utf-8");
+    includes(res.headers.get("vary") || "", "Accept");
     const html = await res.text();
     includes(html, '<html lang="en">');
     includes(html, '<link rel="icon" href="/favicon.svg" type="image/svg+xml">');
@@ -51,6 +53,7 @@ test("every page has one main landmark and a first-of-body skip link (chrome-sta
   const handler = createHandler({ client: fixtureClient() });
   const htmlRoutes = [
     "/",
+    "/about",
     "/deprecations",
     "/feature/123",
     "/feature/123/history",
@@ -94,6 +97,7 @@ test("every page has exactly one h1 (chrome-status-lite-axi)", async () => {
   const htmlRoutes = [
     "/",
     "/?version=118",
+    "/about",
     "/deprecations",
     "/feature/123",
     "/feature/123/history",
@@ -136,6 +140,7 @@ test("the collapsed nav ships its popover wiring server-side (chrome-status-lite
   const handler = createHandler({ client: fixtureClient() });
   const paths = [
     "/",
+    "/about",
     "/diff",
     "/breaking",
     "/origin-trials",
@@ -172,10 +177,12 @@ test("primary nav marks the current section with aria-current (chrome-status-lit
     "/origin-trials",
     "/deprecations",
     "/wiki",
+    "/about",
   ];
   const cases: Array<[string, string | null]> = [
     ["/", "/"],
     ["/?version=118", "/"],
+    ["/about", "/about"],
     ["/breaking", "/breaking"],
     ["/origin-trials", "/origin-trials"],
     ["/deprecations", "/deprecations"],

@@ -1,0 +1,57 @@
+# ChromeStatusLite
+
+> Fast, zero-JavaScript, server-rendered reader over the Chrome Platform Status API (`chromestatus.com/api/v0`) with Baseline status from `webstatus.dev`. Built by Paul Kinlan for quick access to Chrome release details for both humans and agents that cannot run JavaScript.
+
+## For Agents & Content Negotiation
+
+- **Markdown on every page:** Send `Accept: text/markdown` to any HTML route (for example `curl -H "Accept: text/markdown" https://chromestatuslite.com/`) to receive clean Markdown with `Content-Type: text/markdown; charset=utf-8`, `Vary: Accept`, absolute links, and GFM tables.
+- **No JavaScript required:** Every HTML page is complete server-rendered semantic HTML.
+- **Public JSON API:** Milestone data is available as CORS-enabled JSON at `https://chromestatuslite.com/api/version/latest` and `https://chromestatuslite.com/api/version/{milestone}`.
+
+## Core Pages
+
+- [Home / Latest Chrome Release](https://chromestatuslite.com/): Release summary grouped by Enabled by default, Origin trial, Behind a flag, Deprecated, and Removed. Pass `?version={milestone}` (e.g. `https://chromestatuslite.com/?version=135`) for any Chrome milestone.
+- [Compare Releases](https://chromestatuslite.com/diff): Side-by-side comparison of two Chrome releases (`?from={m1}&to={m2}`).
+- [Breaking Changes Timeline](https://chromestatuslite.com/breaking): Deprecated APIs, removals, and breaking changes across recent Chrome milestones with enterprise impact.
+- [Origin Trials Tracker](https://chromestatuslite.com/origin-trials): Active, upcoming, and historical Chrome Origin Trials.
+- [Deprecation Calendar](https://chromestatuslite.com/deprecations): Table of deprecated/removed features sorted by Chrome milestone and estimated UTC stable date.
+- [Feature Detail](https://chromestatuslite.com/feature/{id}): Full details for a ChromeStatus feature ID — summary, motivation, Baseline status & browser versions (`webstatus.dev`), cross-browser signals (Firefox, Safari, web developers), WPT results, specs, docs, and samples.
+- [Feature Snapshot History](https://chromestatuslite.com/feature/{id}/history): Change history captured lazily as readers view `/feature/{id}`.
+- [Feature Snapshot Diff](https://chromestatuslite.com/feature/{id}/diff): Field-by-field diff between stored captures (`?from={iso}&to={iso}`).
+- [Topic Wiki Directory](https://chromestatuslite.com/wiki): Curated web platform topic pages with cross-browser consensus, stage groupings, and timelines.
+- [About ChromeStatusLite](https://chromestatuslite.com/about): Background on Paul Kinlan and why ChromeStatusLite was created.
+
+## Topic Wiki Slugs
+
+Each slug resolves at `https://chromestatuslite.com/wiki/{slug}`:
+
+- [WebGPU](https://chromestatuslite.com/wiki/webgpu)
+- [CSS Anchor Positioning](https://chromestatuslite.com/wiki/css-anchor-positioning)
+- [Built-in Web AI](https://chromestatuslite.com/wiki/web-ai)
+- [Storage & Files](https://chromestatuslite.com/wiki/storage)
+- [Privacy & Identity](https://chromestatuslite.com/wiki/privacy)
+- [Media & Real-time Communication](https://chromestatuslite.com/wiki/media)
+- [Progressive Web Apps](https://chromestatuslite.com/wiki/pwa)
+- [Security & Authentication](https://chromestatuslite.com/wiki/security)
+- [WebAssembly](https://chromestatuslite.com/wiki/webassembly)
+- [Fonts & Text](https://chromestatuslite.com/wiki/fonts)
+- [Payments](https://chromestatuslite.com/wiki/payments)
+- [Device & Hardware](https://chromestatuslite.com/wiki/device)
+- [CSS Layout](https://chromestatuslite.com/wiki/css-layout)
+- [JavaScript Language](https://chromestatuslite.com/wiki/javascript)
+- [Performance & Scheduling](https://chromestatuslite.com/wiki/performance)
+
+## Machine-Readable Endpoints
+
+- [Latest Milestone JSON](https://chromestatuslite.com/api/version/latest): JSON payload with `version`, `stable_date`, `total_features`, `features_by_type`, and `features`.
+- [Milestone JSON by Number](https://chromestatuslite.com/api/version/{milestone}): Same JSON schema for any available integer Chrome milestone.
+- [RSS 2.0 Feed](https://chromestatuslite.com/feed.xml): Recent Chrome releases (`?limit=1..25`, default 10).
+
+## Optional
+
+- [Paul Kinlan](https://paul.kinlan.me/): Creator of ChromeStatusLite.
+- [Source Repository](https://github.com/PaulKinlan/ChromeStatusLite): GitHub repository (Cloudflare Workers + D1).
+- [Chrome Platform Showcase](https://chrome-platform-showcase.com): Interactive demos for new Chrome platform features.
+- [GenDN](https://gendn.dev): Generated API reference documentation for Chrome features not yet on MDN.
+- [Web Platform Dashboard](https://webstatus.dev): Baseline status and browser interoperability tracker.
+- [Chrome Platform Status](https://chromestatus.com): Upstream data source.

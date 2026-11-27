@@ -51,8 +51,12 @@ for path in "${paths[@]+"${paths[@]}"}"; do
   case "$path" in
     THREAT_MODEL.md)
       add tests/handler_test.ts ;;
-    static/*.html|static/robots.txt|static/favicon.svg|static/speculation-rules.json)
+    static/*.html|static/robots.txt|static/llms.txt|static/favicon.svg|static/speculation-rules.json)
       add tests/handler_test.ts; add tests/shell_test.ts ;;
+    src/routes/about.ts)
+      add tests/handler_test.ts; add tests/shell_test.ts ;;
+    src/lib/markdown.ts)
+      add_app ;;
     src/routes/index.ts|static/scripts/index.js)
       add tests/index_test.ts; add tests/handler_test.ts ;;
     src/routes/feature.ts)

@@ -70,6 +70,7 @@ export async function htmlResponse({
   const responseHeaders: Record<string, string> = {
     "content-type": "text/html; charset=utf-8",
     "cache-control": resolvedCache,
+    vary: "Accept",
     ...headers,
   };
   if (status === 200 && resolvedCache !== NO_STORE_CACHE_CONTROL) {

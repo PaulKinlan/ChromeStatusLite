@@ -478,7 +478,7 @@ function numberField(line: string, key: string): number {
 
 function assertTapTargets(lines: string[]): void {
   const line = probeLine(lines, "TARGETS");
-  equal(numberField(line, "navCount"), 7);
+  equal(numberField(line, "navCount"), 8);
   for (const key of ["navMinW", "navMinH", "chipW", "chipH"]) {
     const measured = numberField(line, key);
     if (!(measured >= MIN_TARGET_PX)) {
@@ -652,6 +652,22 @@ test("real HTTP and headless browser render a fixture page and load its styleshe
     const robots = await fetch(`${root}/robots.txt`);
     equal(robots.status, 200);
     includes(await robots.text(), "User-agent: *");
+
+    const llms = await fetch(`${root}/llms.txt`);
+    equal(llms.status, 200);
+    includes(llms.headers.get("content-type") || "", "text/plain");
+    includes(await llms.text(), "# ChromeStatusLite");
+
+    const aboutHtml = await fetch(`${root}/about`);
+    equal(aboutHtml.status, 200);
+    includes(await aboutHtml.text(), "About ChromeStatusLite");
+
+    const aboutMd = await fetch(`${root}/about`, {
+      headers: { accept: "text/markdown" },
+    });
+    equal(aboutMd.status, 200);
+    includes(aboutMd.headers.get("content-type") || "", "text/markdown");
+    includes(await aboutMd.text(), "# About ChromeStatusLite");
 
     const favicon = await fetch(`${root}/favicon.svg`);
     equal(favicon.status, 200);

@@ -14,6 +14,7 @@ const LINKS: Array<[string, string]> = [
   ["/deprecations", "Deprecation Calendar"],
   ["/wiki", "Topic Wiki"],
   ["/feed.xml", "RSS"],
+  ["/about", "About"],
 ];
 
 function isCurrent(href: string, currentPath: string): boolean {

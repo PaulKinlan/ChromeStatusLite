@@ -1,4 +1,5 @@
 import { createHandler, shouldRedirectToCanonical } from "./handler.ts";
+import { prefersMarkdown } from "./lib/markdown.ts";
 import { D1SnapshotStore } from "./lib/snapshots.ts";
 import { ChromeStatusAPI, type EdgeCacheLike } from "./lib/utils.ts";
 import { D1WikiTopicStore, refreshStaleWikiTopics } from "./lib/wiki-data.ts";
@@ -17,6 +18,7 @@ export interface Env {
 function isEdgeCacheableGet(pathname: string): boolean {
   if (
     pathname === "/" ||
+    pathname === "/about" ||
     pathname === "/deprecations" ||
     pathname === "/diff" ||
     pathname === "/breaking" ||
@@ -27,6 +29,17 @@ function isEdgeCacheableGet(pathname: string): boolean {
     return true;
   }
   return pathname.startsWith("/wiki/") || pathname.startsWith("/api/version/");
+}
+
+// Cloudflare's caches.default does not partition entries by `Vary: Accept`, so
+// Markdown-negotiated responses use a distinct internal cache key URL to avoid
+// serving Markdown to browsers or HTML to Markdown-requesting agents.
+function edgeCacheKey(request: Request): Request {
+  const url = new URL(request.url);
+  if (prefersMarkdown(request)) {
+    url.searchParams.set("__csl_format", "markdown");
+  }
+  return new Request(url.toString(), { method: "GET" });
 }
 
 function defaultEdgeCache(): EdgeCacheLike | null {
@@ -50,8 +63,9 @@ export default {
       !shouldRedirectToCanonical(url.hostname, redirectWorkersDev) &&
       isEdgeCacheableGet(url.pathname);
 
-    if (canEdgeCache && edgeCache) {
-      const cached = await edgeCache.match(request).catch(() => undefined);
+    const cacheKey = canEdgeCache ? edgeCacheKey(request) : null;
+    if (cacheKey && edgeCache) {
+      const cached = await edgeCache.match(cacheKey).catch(() => undefined);
       if (cached) return cached;
     }
 
@@ -74,10 +88,10 @@ export default {
 
     const response = await handler(request);
 
-    if (canEdgeCache && edgeCache && response.status === 200) {
+    if (cacheKey && edgeCache && response.status === 200) {
       const cc = response.headers.get("cache-control") || "";
       if (!cc.includes("no-store") && !cc.includes("private")) {
-        ctx.waitUntil(edgeCache.put(request, response.clone()).catch(() => {}));
+        ctx.waitUntil(edgeCache.put(cacheKey, response.clone()).catch(() => {}));
       }
     }
 

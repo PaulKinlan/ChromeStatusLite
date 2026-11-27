@@ -1,7 +1,9 @@
 import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
 import { test } from "vitest";
 import { createHandler, stripBodyForHead } from "../src/handler.ts";
+import { htmlToMarkdown, prefersMarkdown } from "../src/lib/markdown.ts";
 import { MemorySnapshotStore, type SnapshotStore } from "../src/lib/snapshots.ts";
+import { WIKI_TOPICS } from "../src/lib/wiki.ts";
 import worker from "../src/worker.ts";
 import { equal, fixtureClient, includes, sampleFeature } from "./fixture.ts";
 
@@ -643,4 +645,225 @@ test("feature detail and feed render error-notices on upstream service failure",
   const feedText = await resFeed.text();
   includes(feedText, "Unable to load release data from chromestatus.com");
   equal((feedText.match(/<item>/g) || []).length, 1);
+});
+
+test("prefersMarkdown negotiates Accept headers with quality weights", () => {
+  const req = (accept?: string) =>
+    new Request(
+      "https://chromestatuslite.com/",
+      accept === undefined ? undefined : { headers: { accept } },
+    );
+  equal(prefersMarkdown(req()), false);
+  equal(prefersMarkdown(req("*/*")), false);
+  equal(prefersMarkdown(req("text/html, application/xhtml+xml, */*;q=0.8")), false);
+  equal(prefersMarkdown(req("text/markdown")), true);
+  equal(prefersMarkdown(req("text/markdown, text/html;q=0.9")), true);
+  equal(prefersMarkdown(req("text/html;q=0.5, text/markdown;q=0.9")), true);
+  equal(prefersMarkdown(req("text/html, text/markdown;q=0.5")), false);
+  equal(prefersMarkdown(req("text/markdown;q=0, */*")), false);
+  equal(prefersMarkdown(req("text/markdown; charset=utf-8; q=1.0")), true);
+});
+
+test("Accept: text/markdown returns clean Markdown for HTML pages and leaves non-HTML routes untouched", async () => {
+  const store = new MemorySnapshotStore();
+  const handler = createHandler({
+    client: fixtureClient(),
+    assets: env.ASSETS,
+    store,
+  });
+  const mdHeaders = { accept: "text/markdown" };
+
+  // Home page
+  const homeRes = await handler(
+    new Request("https://chromestatuslite.com/?version=120", {
+      headers: mdHeaders,
+    }),
+  );
+  equal(homeRes.status, 200);
+  equal(homeRes.headers.get("content-type"), "text/markdown; charset=utf-8");
+  includes(homeRes.headers.get("vary") || "", "Accept");
+  equal(Number(homeRes.headers.get("x-markdown-tokens")) > 0, true);
+  equal(homeRes.headers.get("speculation-rules"), null);
+  equal(homeRes.headers.get("x-frame-options"), "DENY");
+  const homeMd = await homeRes.text();
+  includes(homeMd, "Source: https://chromestatuslite.com/?version=120");
+  includes(homeMd, "# Chrome 120");
+  includes(homeMd, "[Fixture feature](https://chromestatuslite.com/feature/123)");
+  equal(homeMd.includes("<!doctype html>"), false);
+  equal(homeMd.includes("Skip to content"), false);
+
+  // Deprecations page renders a GFM Markdown table
+  const depRes = await handler(
+    new Request("https://chromestatuslite.com/deprecations", {
+      headers: mdHeaders,
+    }),
+  );
+  equal(depRes.headers.get("content-type"), "text/markdown; charset=utf-8");
+  const depMd = await depRes.text();
+  includes(depMd, "| Date | Name | Intent Stage | Chrome Version |");
+  includes(depMd, "| --- | --- | --- | --- |");
+  includes(
+    depMd,
+    "[Deprecated fixture](https://chromestatuslite.com/feature/123)",
+  );
+
+  // Feature detail renders definition list + links
+  const featRes = await handler(
+    new Request("https://chromestatuslite.com/feature/123", {
+      headers: mdHeaders,
+    }),
+  );
+  equal(featRes.headers.get("content-type"), "text/markdown; charset=utf-8");
+  const featMd = await featRes.text();
+  includes(featMd, "# Fixture feature");
+  includes(featMd, "- **Status:** Enabled by default");
+  includes(featMd, "## Ecosystem");
+
+  // HEAD + Accept: text/markdown measures Markdown byte length and does not mutate snapshots
+  const headStore = new MemorySnapshotStore();
+  const headHandler = createHandler({
+    client: fixtureClient(),
+    store: headStore,
+  });
+  const headMd = await headHandler(
+    new Request("https://chromestatuslite.com/feature/123", {
+      method: "HEAD",
+      headers: mdHeaders,
+    }),
+  );
+  equal(headMd.status, 200);
+  equal(headMd.headers.get("content-type"), "text/markdown; charset=utf-8");
+  equal(await headMd.text(), "");
+  equal(
+    headMd.headers.get("content-length"),
+    String(new TextEncoder().encode(featMd).length),
+  );
+  equal((await headStore.list("123")).length, 0);
+
+  // Non-HTML routes & Google verification HTML ignore Accept: text/markdown
+  const apiRes = await handler(
+    new Request("https://chromestatuslite.com/api/version/120", {
+      headers: mdHeaders,
+    }),
+  );
+  includes(apiRes.headers.get("content-type") || "", "application/json");
+
+  const rssRes = await handler(
+    new Request("https://chromestatuslite.com/feed.xml", {
+      headers: mdHeaders,
+    }),
+  );
+  includes(rssRes.headers.get("content-type") || "", "application/rss+xml");
+
+  const verifyRes = await handler(
+    new Request("https://chromestatuslite.com/google1bf7ef037ae116eb.html", {
+      headers: mdHeaders,
+    }),
+  );
+  includes(verifyRes.headers.get("content-type") || "", "text/html");
+  includes(
+    await verifyRes.text(),
+    "google-site-verification: google1bf7ef037ae116eb.html",
+  );
+});
+
+test("/about renders Paul Kinlan's background and why ChromeStatusLite exists in HTML and Markdown", async () => {
+  const handler = createHandler({ client: fixtureClient() });
+  const htmlRes = await handler(
+    new Request("https://chromestatuslite.com/about"),
+  );
+  equal(htmlRes.status, 200);
+  equal(htmlRes.headers.get("content-type"), "text/html; charset=utf-8");
+  includes(htmlRes.headers.get("vary") || "", "Accept");
+  const html = await htmlRes.text();
+  includes(html, "<h1>About ChromeStatusLite</h1>");
+  includes(html, "Paul Kinlan");
+  includes(html, 'href="https://paul.kinlan.me/"');
+  includes(html, 'href="https://github.com/PaulKinlan/ChromeStatusLite"');
+  includes(html, "chromestatus.com");
+  includes(html, "can't run JavaScript");
+  includes(html, 'href="/llms.txt"');
+
+  const mdRes = await handler(
+    new Request("https://chromestatuslite.com/about", {
+      headers: { accept: "text/markdown" },
+    }),
+  );
+  equal(mdRes.status, 200);
+  equal(mdRes.headers.get("content-type"), "text/markdown; charset=utf-8");
+  const md = await mdRes.text();
+  includes(md, "# About ChromeStatusLite");
+  includes(md, "[Paul Kinlan](https://paul.kinlan.me/)");
+  includes(md, "<https://paul.kinlan.me/>");
+  includes(md, "<https://github.com/PaulKinlan/ChromeStatusLite>");
+  includes(md, "[/llms.txt](https://chromestatuslite.com/llms.txt)");
+
+  // Entity-decoded angle brackets and autolinks must not be stripped or double-decoded.
+  const tricky = htmlToMarkdown(
+    '<!doctype html><html><head><link rel="canonical" href="https://chromestatuslite.com/feature/9"></head><body><main id="main"><h1>HTML &lt;dialog&gt; closedby</h1><p>Use <code>&lt;dialog&gt;</code> and &amp;lt;tag&amp;gt;. See <a href="https://example.com/">https://example.com/</a>.</p></main></body></html>',
+  );
+  includes(tricky, "# HTML <dialog> closedby");
+  includes(tricky, "`<dialog>`");
+  includes(tricky, "&lt;tag&gt;");
+  includes(tricky, "<https://example.com/>");
+});
+
+test("/llms.txt serves agent index with security headers and lists every wiki topic", async () => {
+  const handler = createHandler({ client: fixtureClient(), assets: env.ASSETS });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/llms.txt"),
+  );
+  equal(res.status, 200);
+  equal(res.headers.get("content-type"), "text/plain; charset=utf-8");
+  equal(res.headers.get("x-frame-options"), "DENY");
+  equal(res.headers.get("x-content-type-options"), "nosniff");
+  const body = await res.text();
+  includes(body, "# ChromeStatusLite");
+  includes(body, "Accept: text/markdown");
+  includes(body, "https://chromestatuslite.com/about");
+  includes(body, "https://chromestatuslite.com/api/version/latest");
+  for (const topic of WIKI_TOPICS) {
+    includes(body, `https://chromestatuslite.com/wiki/${topic.slug}`);
+  }
+});
+
+test("Worker edge cache keeps HTML and Accept: text/markdown entries separated", async () => {
+  const ctxHtml = createExecutionContext();
+  const htmlRes = await worker.fetch(
+    new Request("https://chromestatuslite.com/about", {
+      headers: { accept: "text/html" },
+    }),
+    env,
+    ctxHtml,
+  );
+  await waitOnExecutionContext(ctxHtml);
+  equal(htmlRes.status, 200);
+  equal(htmlRes.headers.get("content-type"), "text/html; charset=utf-8");
+  includes(await htmlRes.text(), "<!doctype html>");
+
+  const ctxMd = createExecutionContext();
+  const mdRes = await worker.fetch(
+    new Request("https://chromestatuslite.com/about", {
+      headers: { accept: "text/markdown" },
+    }),
+    env,
+    ctxMd,
+  );
+  await waitOnExecutionContext(ctxMd);
+  equal(mdRes.status, 200);
+  equal(mdRes.headers.get("content-type"), "text/markdown; charset=utf-8");
+  includes(await mdRes.text(), "# About ChromeStatusLite");
+
+  // Subsequent browser HTML request must still get HTML, not cached Markdown.
+  const ctxHtml2 = createExecutionContext();
+  const htmlRes2 = await worker.fetch(
+    new Request("https://chromestatuslite.com/about", {
+      headers: { accept: "text/html" },
+    }),
+    env,
+    ctxHtml2,
+  );
+  await waitOnExecutionContext(ctxHtml2);
+  equal(htmlRes2.headers.get("content-type"), "text/html; charset=utf-8");
+  includes(await htmlRes2.text(), "<!doctype html>");
 });
