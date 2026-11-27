@@ -1,34 +1,16 @@
-// Shared wiki topic data: paginated query fetching plus a per-client
-// in-memory cache of assembled topic feature sets. The /wiki directory and
-// the /wiki/:slug topic pages both read through getTopicData, so they count
-// the same deduped union of features and a warm cache makes both load
-// without any upstream requests. The cache is keyed by client (WeakMap), so
-// tests with fresh fixture clients stay isolated while production's shared
-// singleton shares assembled data across requests.
+// Shared wiki topic data: paginated query fetching, per-client in-memory cache
+// of assembled topic feature sets, and optional durable D1 backing refreshed
+// by a Cloudflare Cron Trigger so /wiki stays within Workers Free plan
+// external subrequest limits and serves in a single D1 query.
 
 import type { StatusClient } from "../handler.ts";
-import { collectTopicFeatures, type WikiTopic } from "./wiki.ts";
+import { collectTopicFeatures, WIKI_TOPICS, type WikiTopic } from "./wiki.ts";
 
-// The upstream search defaults to 100 results per page; topics can match
-// several hundred features, so fetch continuation pages in parallel (one
-// retry each). The cap bounds upstream load for very broad queries. A failed
-// continuation or a capped result sets complete=false, and callers must say
-// so rather than presenting a partial inventory as the whole topic.
 const PAGE_SIZE = 100;
 const MAX_FEATURES_PER_QUERY = 1000;
 
-// Continuation pages share one small per-client pool instead of launching
-// every start offset at once: a cold /wiki can otherwise hold hundreds of
-// upstream fetches and their buffers open inside a single anonymous request
-// (chrome-status-lite-9nh). Four in flight keeps pages overlapping (a
-// serialized pool would multiply a capped topic's load time) while capping
-// the worst case. The pool is keyed by client like the topic cache, so the
-// production singleton bounds concurrency across concurrent requests while
-// tests with fresh fixture clients stay isolated.
 export const CONTINUATION_POOL_SIZE = 4;
 
-// Runs job() as soon as a slot is free; slots are handed to queued callers
-// in FIFO order as earlier jobs settle.
 class Semaphore {
   private inFlight = 0;
   private readonly limit: number;
@@ -42,12 +24,7 @@ class Semaphore {
     return new Promise<T>((resolve, reject) => {
       const start = () => {
         this.inFlight++;
-        // job() may throw SYNCHRONOUSLY: StatusClient is structural, so a
-        // non-async double or future implementation is legal. Invoking it
-        // through .then turns a sync throw into a rejection, so the finally
-        // below always releases the slot — a direct job() call would skip it
-        // and leak slots until every pool.run() queued forever
-        // (chrome-status-lite-1qp).
+        // Invoke through .then so a synchronous throw still releases the slot.
         Promise.resolve().then(job).then(resolve, reject).finally(() => {
           this.inFlight--;
           this.waiters.shift()?.();
@@ -74,12 +51,9 @@ export const fetchQueryFeatures = async (
   query: string,
   chromeStatusAPI: StatusClient,
 ): Promise<{ total_count: number; features: any[]; complete: boolean }> => {
-  const first = await chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE });
-  // A 200 without a numeric total_count is not evidence of a complete
-  // inventory: treat it as unknown (count 0 for sizing) and incomplete, so
-  // the assembled topic data is not cached as authoritative (i11). null must
-  // be rejected explicitly - Number(null) coerces to 0 and would pass the
-  // finite check (bzs). Numeric strings still coerce.
+  const first = await chromeStatusAPI.getFeaturesByQuery(query, {
+    num: PAGE_SIZE,
+  });
   const rawTotal = first?.total_count == null ? NaN : Number(first.total_count);
   const totalKnown = Number.isFinite(rawTotal);
   const total = totalKnown ? rawTotal : 0;
@@ -91,14 +65,11 @@ export const fetchQueryFeatures = async (
     for (let start = features.length; start < wanted; start += PAGE_SIZE) {
       starts.push(start);
     }
-    // Continuations queue on the shared pool; the one retry per page
-    // re-queues rather than bypassing the cap.
     const pool = continuationPoolFor(chromeStatusAPI);
     const attempt = (start: number) =>
       chromeStatusAPI.getFeaturesByQuery(query, { num: PAGE_SIZE, start });
     const fetchPage = (start: number) =>
       pool.run(() => attempt(start))
-        // One retry for transient upstream failures before giving up.
         .catch(() => pool.run(() => attempt(start)))
         .catch(() => null);
     for (const page of await Promise.all(starts.map(fetchPage))) {
@@ -109,43 +80,174 @@ export const fetchQueryFeatures = async (
       }
     }
   }
-  // A continuation can also succeed with a short or empty page, or repeat
-  // records already seen, so check the unique assembled count against what
-  // upstream said exists, not just for errors or raw length.
   const byId = new Map<string, any>();
   for (const feature of features) {
-    if (!feature || typeof feature !== "object" || feature.id === undefined) continue;
+    if (!feature || typeof feature !== "object" || feature.id === undefined) {
+      continue;
+    }
     const key = String(feature.id);
     if (!byId.has(key)) byId.set(key, feature);
   }
   const unique = [...byId.values()];
   if (unique.length < wanted) complete = false;
-  return { total_count: total, features: unique.slice(0, MAX_FEATURES_PER_QUERY), complete };
+  return {
+    total_count: total,
+    features: unique.slice(0, MAX_FEATURES_PER_QUERY),
+    complete,
+  };
 };
 
 export interface TopicData {
-  // Deduped union of every query's features, ordered by name — the single
-  // source of truth for both the directory count and the topic page list.
   features: any[];
-  // False when any query failed outright, lost a continuation page, or hit
-  // the cap: the feature set is then a partial inventory.
   complete: boolean;
-  // True when every query failed: there is no data to show at all.
   failed: boolean;
 }
 
-// Assembled topic data is cached briefly. Freshness beyond the TTL falls
-// through to the client, whose own LRU still shields upstream for an hour,
-// so a TTL refetch is assembly work, not necessarily network work.
-const TOPIC_CACHE_TTL = 15 * 60 * 1000;
+export interface StoredTopicEntry {
+  slug: string;
+  data: TopicData;
+  updatedAt: number;
+}
 
-// An incomplete assembly is kept only briefly instead of being deleted: the
-// short retry window rate-limits and shares retries across callers, so the
-// next anonymous visit inside the window does not re-run the whole
-// continuation fan-out (chrome-status-lite-9nh) — while a partial inventory
-// still expires quickly enough never to masquerade as the full TTL answer
-// (chrome-status-lite-3mh). Total failures are still dropped: there is no
-// data to show, so the next visit retries immediately.
+export interface WikiTopicStore {
+  get(slug: string): Promise<StoredTopicEntry | null>;
+  getAll(): Promise<Map<string, StoredTopicEntry>>;
+  set(slug: string, data: TopicData, updatedAt?: number): Promise<void>;
+}
+
+// Keep only the fields rendered by /wiki and /wiki/:topic when persisting to
+// D1 so each cached topic stays compact (well under D1 row/payload limits).
+function slimFeatureForWiki(feature: any): any {
+  const chrome = feature?.browsers?.chrome;
+  return {
+    id: feature?.id,
+    name: feature?.name,
+    summary: feature?.summary,
+    motivation: feature?.motivation,
+    spec_link: feature?.spec_link,
+    standards: feature?.standards?.spec
+      ? { spec: feature.standards.spec }
+      : undefined,
+    search_tags: Array.isArray(feature?.search_tags)
+      ? feature.search_tags
+      : undefined,
+    blink_components: Array.isArray(feature?.blink_components)
+      ? feature.blink_components
+      : undefined,
+    browsers: {
+      chrome: chrome
+        ? {
+          status: chrome.status
+            ? {
+              text: chrome.status.text,
+              milestone_str: chrome.status.milestone_str,
+            }
+            : undefined,
+          blink_components: Array.isArray(chrome.blink_components)
+            ? chrome.blink_components
+            : undefined,
+        }
+        : undefined,
+      ff: feature?.browsers?.ff?.view?.text
+        ? { view: { text: feature.browsers.ff.view.text } }
+        : undefined,
+      safari: feature?.browsers?.safari?.view?.text
+        ? { view: { text: feature.browsers.safari.view.text } }
+        : undefined,
+      webdev: feature?.browsers?.webdev?.view?.text
+        ? { view: { text: feature.browsers.webdev.view.text } }
+        : undefined,
+    },
+  };
+}
+
+/** D1-backed persistent cache for pre-warmed /wiki topic inventories. */
+export class D1WikiTopicStore implements WikiTopicStore {
+  readonly #db: D1Database;
+
+  constructor(db: D1Database) {
+    this.#db = db;
+  }
+
+  async get(slug: string): Promise<StoredTopicEntry | null> {
+    const row = await this.#db
+      .prepare(
+        `SELECT slug, payload, complete, updated_at
+         FROM wiki_topic_cache
+         WHERE slug = ?`,
+      )
+      .bind(slug)
+      .first<{
+        slug: string;
+        payload: string;
+        complete: number;
+        updated_at: number;
+      }>();
+    if (!row) return null;
+    return {
+      slug: row.slug,
+      data: {
+        features: JSON.parse(row.payload) as any[],
+        complete: row.complete === 1,
+        failed: false,
+      },
+      updatedAt: Number(row.updated_at),
+    };
+  }
+
+  async getAll(): Promise<Map<string, StoredTopicEntry>> {
+    const { results } = await this.#db
+      .prepare(
+        `SELECT slug, payload, complete, updated_at
+         FROM wiki_topic_cache`,
+      )
+      .all<{
+        slug: string;
+        payload: string;
+        complete: number;
+        updated_at: number;
+      }>();
+    const map = new Map<string, StoredTopicEntry>();
+    for (const row of results) {
+      map.set(row.slug, {
+        slug: row.slug,
+        data: {
+          features: JSON.parse(row.payload) as any[],
+          complete: row.complete === 1,
+          failed: false,
+        },
+        updatedAt: Number(row.updated_at),
+      });
+    }
+    return map;
+  }
+
+  async set(
+    slug: string,
+    data: TopicData,
+    updatedAt = Date.now(),
+  ): Promise<void> {
+    if (data.failed) return;
+    const slimmed = data.features.map(slimFeatureForWiki);
+    await this.#db
+      .prepare(
+        `INSERT INTO wiki_topic_cache (slug, payload, complete, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(slug) DO UPDATE SET
+           payload = excluded.payload,
+           complete = excluded.complete,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(slug, JSON.stringify(slimmed), data.complete ? 1 : 0, updatedAt)
+      .run();
+  }
+}
+
+const TOPIC_CACHE_TTL = 15 * 60 * 1000;
+// Durable D1 topic entries remain fresh for 6 hours (cron refreshes them every
+// ~75 min on a rotating schedule), and stale entries are still served while
+// the cron refreshes them so /wiki never triggers a 100-subrequest stampede.
+export const DURABLE_TOPIC_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 export const TOPIC_RETRY_TTL = 45 * 1000;
 
 interface CacheEntry {
@@ -155,12 +257,14 @@ interface CacheEntry {
 
 const topicCaches = new WeakMap<StatusClient, Map<string, CacheEntry>>();
 
-const assembleTopicData = async (
+export const assembleTopicData = async (
   topic: WikiTopic,
   chromeStatusAPI: StatusClient,
 ): Promise<TopicData> => {
   const results = await Promise.all(
-    topic.queries.map((query) => fetchQueryFeatures(query, chromeStatusAPI).catch(() => null)),
+    topic.queries.map((query) =>
+      fetchQueryFeatures(query, chromeStatusAPI).catch(() => null)
+    ),
   );
   const loaded = results.filter((result) => result !== null);
   return {
@@ -170,19 +274,16 @@ const assembleTopicData = async (
   };
 };
 
-// Returns the assembled feature set for a topic, serving from the shared
-// per-client cache when fresh. Concurrent callers share one in-flight
-// assembly (single-flight). Complete assemblies keep the full TTL. A partial
-// inventory (a continuation page was lost, or the cap bit) is re-dated to the
-// short retry TTL so callers within the window share one partial answer
-// instead of each re-running the fan-out (chrome-status-lite-9nh), while a
-// total failure is dropped so the next visit retries immediately (4p4).
-// Neither partial ever pins a stale count for the whole TTL. `now` is
-// injectable so tests can cross the retry window without sleeping.
+// Returns the assembled feature set for a topic. When a durable WikiTopicStore
+// (D1) is supplied and holds a fresh entry, it is served directly without
+// touching chromestatus.com; on a miss, the topic is assembled and written
+// back to the durable store (non-blocking via waitUntil when provided).
 export const getTopicData = (
   topic: WikiTopic,
   chromeStatusAPI: StatusClient,
   now: () => number = Date.now,
+  wikiStore: WikiTopicStore | null = null,
+  waitUntil?: (promise: Promise<unknown>) => void,
 ): Promise<TopicData> => {
   let cache = topicCaches.get(chromeStatusAPI);
   if (!cache) {
@@ -192,22 +293,81 @@ export const getTopicData = (
   const requestedAt = now();
   const hit = cache.get(topic.slug);
   if (hit && hit.expires > requestedAt) return hit.promise;
-  const promise = assembleTopicData(topic, chromeStatusAPI);
-  // Cache the in-flight promise immediately so concurrent directory/topic
-  // renders share one assembly; the entry's expiry is then corrected for
-  // the assembled outcome below.
+
+  const promise = (async (): Promise<TopicData> => {
+    if (wikiStore) {
+      const stored = await wikiStore.get(topic.slug).catch(() => null);
+      if (stored && (requestedAt - stored.updatedAt) < DURABLE_TOPIC_MAX_AGE_MS) {
+        return stored.data;
+      }
+      const assembled = await assembleTopicData(topic, chromeStatusAPI);
+      if (!assembled.failed) {
+        const persist = wikiStore.set(topic.slug, assembled, now()).catch(() => {});
+        if (waitUntil) waitUntil(persist);
+        else await persist;
+        return assembled;
+      }
+      // If upstream is completely down, serve stale D1 inventory rather than
+      // failing the page completely.
+      if (stored) return stored.data;
+      return assembled;
+    }
+    return assembleTopicData(topic, chromeStatusAPI);
+  })();
+
   cache.set(topic.slug, { expires: requestedAt + TOPIC_CACHE_TTL, promise });
   promise.then((data) => {
     const entry = cache.get(topic.slug);
-    if (entry?.promise !== promise) return; // superseded by a newer assembly
-    if (data.complete) return; // full TTL stands
+    if (entry?.promise !== promise) return;
+    if (data.complete) return;
     if (data.failed) {
       cache.delete(topic.slug);
       return;
     }
-    // Partial: re-date to the retry window, anchored at resolution so a
-    // slow assembly does not leave an already-expired entry behind.
     entry.expires = now() + TOPIC_RETRY_TTL;
   });
   return promise;
 };
+
+// Refreshes the stalest `batchSize` wiki topics into D1. Designed for a
+// Cloudflare Cron Trigger on the Workers Free plan (50 external subrequests
+// per invocation): refreshing 3 topics per tick keeps external fetches well
+// below the limit while cycling through all 15 topics every ~75 minutes.
+export async function refreshStaleWikiTopics(
+  chromeStatusAPI: StatusClient,
+  wikiStore: WikiTopicStore,
+  options: { batchSize?: number; now?: () => number } = {},
+): Promise<{ refreshed: string[]; failed: string[] }> {
+  const batchSize = options.batchSize ?? 3;
+  const now = options.now ?? Date.now;
+  const existing = await wikiStore.getAll().catch(
+    () => new Map<string, StoredTopicEntry>(),
+  );
+
+  // Prioritize never-cached topics first, then oldest updated_at.
+  const ordered = [...WIKI_TOPICS].sort((a, b) => {
+    const aTime = existing.get(a.slug)?.updatedAt ?? -1;
+    const bTime = existing.get(b.slug)?.updatedAt ?? -1;
+    return aTime - bTime;
+  });
+
+  const batch = ordered.slice(0, batchSize);
+  const refreshed: string[] = [];
+  const failed: string[] = [];
+
+  for (const topic of batch) {
+    try {
+      const data = await assembleTopicData(topic, chromeStatusAPI);
+      if (!data.failed) {
+        await wikiStore.set(topic.slug, data, now());
+        refreshed.push(topic.slug);
+      } else {
+        failed.push(topic.slug);
+      }
+    } catch {
+      failed.push(topic.slug);
+    }
+  }
+
+  return { refreshed, failed };
+}

@@ -1,6 +1,10 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-import nav from "../ui-components/nav.ts";
+import linkify from "../lib/linkify.ts";
+import {
+  htmlResponse,
+  NO_STORE_CACHE_CONTROL,
+} from "../ui-components/layout.ts";
 
 const STATUSES = [
   "Enabled by default",
@@ -11,13 +15,10 @@ const STATUSES = [
 ];
 
 // A milestone response records what happened *in that release*, not the full
-// set of features currently available. Avoid describing an absent record as a
-// feature removed from the web platform.
+// set of features currently available.
 const renderMilestone = (version: string, groups: Record<string, any[]>) =>
   template`
-  <section class="diff-milestone" aria-label="Chrome ${
-    version
-  } release notes">
+  <section class="diff-milestone" aria-label="Chrome ${version} release notes">
     <h2>Chrome ${version}</h2>
     ${
     STATUSES.map((status) => {
@@ -29,14 +30,8 @@ const renderMilestone = (version: string, groups: Record<string, any[]>) =>
           ? template`<ul>${
             items.map((item) =>
               template`<li>
-          <a href="/feature/${encodeURIComponent(String(item.id))}">${
-                item.name
-              }</a>
-          ${
-                item.summary
-                  ? template`<p>${item.summary}</p>`
-                  : template``
-              }
+          <a href="/feature/${encodeURIComponent(String(item.id))}">${item.name}</a>
+          ${item.summary ? template`<p>${linkify(item.summary)}</p>` : template``}
         </li>`
             )
           }</ul>`
@@ -63,8 +58,8 @@ export default async function render(
 
   const from = url.searchParams.get("from") ?? versions[1] ?? versions[0] ?? "";
   const to = url.searchParams.get("to") ?? versions[0] ?? "";
-  const valid = !upstreamError && from && to && versions.includes(from) && versions.includes(to);
-  // Do not send an arbitrary user-supplied milestone to the upstream API.
+  const valid = !upstreamError && Boolean(from) && Boolean(to) &&
+    versions.includes(from) && versions.includes(to);
   const status = upstreamError ? 200 : (valid ? 200 : 400);
 
   let groups: any[] = [];
@@ -86,23 +81,23 @@ export default async function render(
   }`;
   const option = (version: string, selected: string) =>
     template`<option value="${version}"${
-      version === selected ? " selected" : ""
+      version === selected ? template` selected` : template``
     }>Chrome ${version}</option>`;
 
-  let diffContent;
+  let diffContent: unknown;
   if (upstreamError) {
-    diffContent = template`<p class="error-notice">Unable to load release comparison from chromestatus.com. Please try again later.</p>`;
+    diffContent =
+      template`<p class="error-notice">Unable to load release comparison from chromestatus.com. Please try again later.</p>`;
   } else if (!valid) {
-    diffContent = template`<p role="alert">Choose two available Chrome milestones to compare.</p>`;
+    diffContent =
+      template`<p role="alert">Choose two available Chrome milestones to compare.</p>`;
   } else {
     diffContent = template`
       ${
-        from === to
-          ? template`<p>Both selections are Chrome ${
-            from
-          }. Choose different milestones to compare releases.</p>`
-          : template``
-      }
+      from === to
+        ? template`<p>Both selections are Chrome ${from}. Choose different milestones to compare releases.</p>`
+        : template``
+    }
       <div class="diff-columns">
         ${renderMilestone(from, fromGroups)}
         ${renderMilestone(to, toGroups)}
@@ -110,39 +105,32 @@ export default async function render(
   }
 
   // TODO(baseline/webmcp-form-attributes): Annotate the milestone <form> below
-  // with toolname/tooldescription (agentic-forms) once WebMCP declarative form
-  // attributes reach Baseline; they are Chromium-origin-trial today
-  // (chrome-status-lite-1zoa).
-  return template`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Compare Chrome milestones — Chrome Platform Status</title>
-  <link rel="canonical" href="${canonical}">
-  <link rel="stylesheet" href="/styles/index.css">
-  <link rel="stylesheet" href="/styles/diff.css">
-</head>
-<body>
-  ${nav(url.pathname)}
-  <main id="main">
-    <h1>Compare Chrome milestones</h1>
+  // with toolname/tooldescription once WebMCP declarative form attributes
+  // reach Baseline.
+  return htmlResponse({
+    status,
+    cacheControl: upstreamError || status !== 200
+      ? NO_STORE_CACHE_CONTROL
+      : undefined,
+    title: "Compare Chrome milestones — Chrome Platform Status",
+    canonical,
+    description:
+      "Compare Chrome features side by side across any two Chrome milestones.",
+    currentPath: url.pathname,
+    extraStylesheets: ["/styles/diff.css"],
+    body: template`<h1>Compare Chrome milestones</h1>
     <p>Compare features recorded for two Chrome releases, grouped by their milestone status. These are release notes, not a complete inventory of browser support.</p>
     <form method="get" action="/diff">
       <label for="from">From milestone</label>
       <select id="from" name="from" required>${
-    versions.map((version: string) => option(version, from))
-  }</select>
+      versions.map((version: string) => option(version, from))
+    }</select>
       <label for="to">To milestone</label>
       <select id="to" name="to" required>${
-    versions.map((version: string) => option(version, to))
-  }</select>
+      versions.map((version: string) => option(version, to))
+    }</select>
       <button type="submit">Compare milestones</button>
     </form>
-    ${diffContent}
-  </main>
-</body>
-</html>`.then((html) =>
-    new Response(html, { status, headers: { "content-type": "text/html" } })
-  );
+    ${diffContent}`,
+  });
 }

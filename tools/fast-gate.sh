@@ -1,73 +1,117 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
 base="${GATE_BASE:-$(git merge-base HEAD origin/main)}"
-mapfile -t paths < <( { git diff --name-only "$base" HEAD; git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; } | sort -u )
-declare -A selected=()
-add() { selected["$1"]=1; }
-add_app() { add tests/handler_test.ts; add tests/shell_test.ts; add tests/feed_test.ts; add tests/api_version_test.ts; add tests/timeline_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/diff_test.ts; add tests/wiki_test.ts; add tests/history_test.ts; }
-add_all() { add_app; add tests/flora_test.ts; add tests/client_test.ts; }
+paths=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && paths+=("$line")
+done < <(
+  {
+    git diff --name-only "$base" HEAD
+    git diff --name-only
+    git diff --cached --name-only
+    git ls-files --others --exclude-standard
+  } | sort -u
+)
+
+selected=()
+add() {
+  local item="$1"
+  local existing
+  for existing in "${selected[@]+"${selected[@]}"}"; do
+    [[ "$existing" == "$item" ]] && return 0
+  done
+  selected+=("$item")
+}
+
+add_app() {
+  add tests/handler_test.ts
+  add tests/shell_test.ts
+  add tests/feed_test.ts
+  add tests/api_version_test.ts
+  add tests/timeline_test.ts
+  add tests/index_test.ts
+  add tests/feature_test.ts
+  add tests/deprecations_test.ts
+  add tests/diff_test.ts
+  add tests/wiki_test.ts
+  add tests/history_test.ts
+}
+
+add_all() {
+  add_app
+  add tests/flora_test.ts
+  add tests/client_test.ts
+}
+
 gate=0
-for path in "${paths[@]}"; do
+for path in "${paths[@]+"${paths[@]}"}"; do
   # Map deleted paths too: their former suites must verify that the removal is safe.
   case "$path" in
-    # Policy-only documentation has no runtime import; use the small HTTP
-    # policy suite plus the unconditional fixture-backed smoke, not all routes.
-    THREAT_MODEL.md) add tests/handler_test.ts ;;
-    static/*.html) add tests/handler_test.ts; add tests/shell_test.ts ;;
-    src/routes/index.ts|static/scripts/index.js) add tests/index_test.ts; add tests/handler_test.ts ;;
-    src/routes/feature.ts) add tests/feature_test.ts; add tests/handler_test.ts ;;
-    src/lib/linkify.ts) add tests/feature_test.ts; add tests/index_test.ts ;;
-    src/lib/url.ts) add tests/feature_test.ts; add tests/index_test.ts; add tests/handler_test.ts; add tests/timeline_test.ts ;;
-    src/lib/snapshots.ts|src/routes/feature-history.ts|tests/history_test.ts) add tests/feature_test.ts; add tests/history_test.ts ;;
-    src/lib/buckets.ts) add tests/index_test.ts; add tests/handler_test.ts; add tests/feed_test.ts ;;
-    src/routes/diff.ts) add tests/diff_test.ts; add tests/handler_test.ts ;;
-    # Shared utils are consumed by feed, api-version, breaking/origin-trials,
-    # feature-history, feature and deprecations, plus the direct client test.
-    # tests/gate_test.ts pins this selection to the real route import graph.
-    src/lib/utils.ts|tests/client_test.ts) add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/handler_test.ts; add tests/history_test.ts; add tests/feed_test.ts; add tests/api_version_test.ts; add tests/timeline_test.ts ;;
-    # Cross-route failure and HTTP-policy assertions still live in handler_test.ts.
-    # Keep that suite selected for every route whose behaviour they assert.
-    src/routes/deprecations.ts|static/scripts/deprecations.js) add tests/deprecations_test.ts; add tests/handler_test.ts ;;
-    src/routes/feed.ts) add tests/feed_test.ts; add tests/handler_test.ts ;;
-    src/routes/api-version.ts) add tests/api_version_test.ts; add tests/handler_test.ts ;;
-    src/routes/breaking.ts|src/routes/origin-trials.ts) add tests/timeline_test.ts ;;
-    src/routes/wiki.ts|src/routes/wiki-topic.ts|src/lib/wiki.ts|src/lib/wiki-data.ts) add tests/wiki_test.ts ;;
-    # .fleet/coverage-contract.json declares suite attribution only for paths with a
-    # real transitive import into the executed suites (chrome-status-lite-74e);
-    # tests/gate_test.ts pins the contract and this mapping to each other.
-    # Only select suites that import each changed module at runtime. The
-    # standalone flora tests do not load stream-utils or UI components, and
-    # client tests do not load flora or UI components.
-    src/flora.ts) add_app; add tests/flora_test.ts ;;
-    src/stream-utils.ts) add_app; add tests/client_test.ts ;;
-    src/ui-components/*) add_app ;;
-    main.ts|src/handler.ts|static/styles/*|README.md|deno.json|deno.lock|docs/speed.md|tests/fixture.ts|tests/http_smoke_test.ts)
+    THREAT_MODEL.md)
+      add tests/handler_test.ts ;;
+    static/*.html|static/robots.txt|static/favicon.svg|static/speculation-rules.json)
+      add tests/handler_test.ts; add tests/shell_test.ts ;;
+    src/routes/index.ts|static/scripts/index.js)
+      add tests/index_test.ts; add tests/handler_test.ts ;;
+    src/routes/feature.ts)
+      add tests/feature_test.ts; add tests/handler_test.ts ;;
+    src/lib/linkify.ts)
+      add tests/feature_test.ts; add tests/index_test.ts; add tests/diff_test.ts; add tests/timeline_test.ts; add tests/wiki_test.ts ;;
+    src/lib/url.ts)
+      add tests/feature_test.ts; add tests/index_test.ts; add tests/handler_test.ts; add tests/timeline_test.ts ;;
+    src/lib/snapshots.ts|src/routes/feature-history.ts|tests/history_test.ts)
+      add tests/feature_test.ts; add tests/history_test.ts ;;
+    src/lib/buckets.ts)
+      add tests/index_test.ts; add tests/handler_test.ts; add tests/feed_test.ts ;;
+    src/routes/diff.ts)
+      add tests/diff_test.ts; add tests/handler_test.ts ;;
+    src/lib/utils.ts|src/lib/lru.ts|tests/client_test.ts)
+      add tests/client_test.ts; add tests/index_test.ts; add tests/feature_test.ts; add tests/deprecations_test.ts; add tests/handler_test.ts; add tests/history_test.ts; add tests/feed_test.ts; add tests/api_version_test.ts; add tests/timeline_test.ts ;;
+    src/routes/deprecations.ts|static/scripts/deprecations.js)
+      add tests/deprecations_test.ts; add tests/handler_test.ts ;;
+    src/routes/feed.ts)
+      add tests/feed_test.ts; add tests/handler_test.ts ;;
+    src/routes/api-version.ts)
+      add tests/api_version_test.ts; add tests/handler_test.ts ;;
+    src/routes/breaking.ts|src/routes/origin-trials.ts)
+      add tests/timeline_test.ts ;;
+    src/routes/wiki.ts|src/routes/wiki-topic.ts|src/lib/wiki.ts|src/lib/wiki-data.ts)
+      add tests/wiki_test.ts ;;
+    src/flora.ts)
+      add_app; add tests/flora_test.ts ;;
+    src/stream-utils.ts)
+      add_app; add tests/client_test.ts ;;
+    src/ui-components/*)
+      add_app ;;
+    main.ts|src/worker.ts|src/handler.ts|static/styles/*|migrations/*|README.md|wrangler.jsonc|package.json|package-lock.json|tsconfig.json|vitest.config.ts|vitest.node.config.ts|deno.json|deno.lock|.gitignore|docs/*|tests/fixture.ts|tests/apply-migrations.ts|tests/env.d.ts|tests/http_smoke_test.ts)
       add_all ;;
-    tools/*|.fleet/*|tests/gate_test.ts) add_all; gate=1 ;;
-    tests/index_test.ts|tests/feature_test.ts|tests/deprecations_test.ts|tests/handler_test.ts|tests/shell_test.ts|tests/feed_test.ts|tests/api_version_test.ts|tests/timeline_test.ts|tests/flora_test.ts|tests/diff_test.ts|tests/wiki_test.ts|tests/history_test.ts) add "$path" ;;
-    *) echo "Unmapped changed path: $path" >&2; exit 1 ;;
+    tools/*|.fleet/*|tests/gate_test.ts)
+      add_all; gate=1 ;;
+    tests/index_test.ts|tests/feature_test.ts|tests/deprecations_test.ts|tests/handler_test.ts|tests/shell_test.ts|tests/feed_test.ts|tests/api_version_test.ts|tests/timeline_test.ts|tests/flora_test.ts|tests/diff_test.ts|tests/wiki_test.ts|tests/history_test.ts)
+      add "$path" ;;
+    *)
+      echo "Unmapped changed path: $path" >&2; exit 1 ;;
   esac
 done
-# No diff must still prove nonzero test coverage (e.g. an installed host gate).
+
 if (( ${#selected[@]} == 0 )); then
   add_all
 fi
-mapfile -t suites < <(printf '%s\n' "${!selected[@]}" | sort)
-printf 'Fast gate: %s + tests/http_smoke_test.ts' "${suites[*]}"
+
+suites=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && suites+=("$line")
+done < <(printf '%s\n' "${selected[@]}" | sort)
+
+printf 'Fast gate: tsc --noEmit + %s + tests/http_smoke_test.ts' "${suites[*]}"
 if (( gate )); then printf ' + tests/gate_test.ts'; fi
 printf '\n'
-deno test --no-check --cached-only --unstable-kv --allow-read=static "${suites[@]}"
-# The fixture-backed HTTP + headless-browser smoke always runs (chrome-status-lite-tor):
-# a changed test file is only 'placed' in fleet-check coverage by its own execution,
-# and the shared modules every route suite imports (src/handler.ts, tests/fixture.ts)
-# count the smoke suite as a covering candidate. Without it every fast verdict reads
-# PARTIAL. Offline, fixture-backed, ~2 s. Same sandbox as the full gate's smoke run.
-deno test --no-check --cached-only --allow-read=static,/tmp --allow-write --allow-net=127.0.0.1 --allow-run --allow-env=CHROME_BIN tests/http_smoke_test.ts
-# Gate harness changes also run the behavioural gate test (chrome-status-lite-74e):
-# it drives both gate scripts in scratch git repos with a stubbed deno and pins
-# .fleet/coverage-contract.json to this mapping, so tools/* is covered by real
-# execution rather than declared coverage.
+
+npx tsc --noEmit
+npx vitest run "${suites[@]}"
+npx vitest run --config vitest.node.config.ts tests/http_smoke_test.ts
 if (( gate )); then
-  deno test --no-check --cached-only --allow-read --allow-write --allow-run --allow-env tests/gate_test.ts
+  npx vitest run --config vitest.node.config.ts tests/gate_test.ts
 fi

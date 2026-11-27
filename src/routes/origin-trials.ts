@@ -1,9 +1,12 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
+import linkify from "../lib/linkify.ts";
 import { formatStableDate } from "../lib/utils.ts";
-
 import { sanitizeUrl } from "../lib/url.ts";
-import nav from "../ui-components/nav.ts";
+import {
+  htmlResponse,
+  NO_STORE_CACHE_CONTROL,
+} from "../ui-components/layout.ts";
 
 interface OriginTrialFeature {
   id: number | string;
@@ -27,7 +30,9 @@ export default async function render(
   try {
     const rawVersions = await chromeStatusAPI.getVersions();
     if (Array.isArray(rawVersions)) {
-      versions = rawVersions.map((v) => Number(v)).filter((v) => Number.isFinite(v));
+      versions = rawVersions.map((v) => Number(v)).filter((v) =>
+        Number.isFinite(v)
+      );
     }
   } catch {
     upstreamError = true;
@@ -46,10 +51,12 @@ export default async function render(
       totalFeatureCalls = recentVersions.length;
       const results = await Promise.all([
         chromeStatusAPI.getChannels().catch(() => ({})),
-        chromeStatusAPI.getChannels(
-          recentVersions[recentVersions.length - 1],
-          recentVersions[0],
-        ).catch(() => ({})),
+        chromeStatusAPI
+          .getChannels(
+            recentVersions[recentVersions.length - 1],
+            recentVersions[0],
+          )
+          .catch(() => ({})),
         ...recentVersions.map((v) =>
           chromeStatusAPI.getFeaturesForVersion(v).catch(() => {
             featureErrors++;
@@ -61,7 +68,6 @@ export default async function render(
       const milestoneChannels = results[1];
       milestonesFeatures = results.slice(2);
 
-      // Merge milestone channels into channelsData if needed
       if (milestoneChannels && typeof milestoneChannels === "object") {
         channelsData = { ...channelsData, ...milestoneChannels };
       }
@@ -70,13 +76,13 @@ export default async function render(
     }
   }
 
-  // Determine current stable and dev versions
-  const stableVersion = Number.parseInt(channelsData?.stable?.version || "", 10) ||
+  const stableVersion =
+    Number.parseInt(channelsData?.stable?.version || "", 10) ||
     (recentVersions.length > 2 ? recentVersions[2] : recentVersions[0]);
   const devVersion = Number.parseInt(channelsData?.dev?.version || "", 10) ||
     recentVersions[0];
 
-  const trialsByMilestone: Map<number, OriginTrialFeature[]> = new Map();
+  const trialsByMilestone = new Map<number, OriginTrialFeature[]>();
   let totalActiveTrialsCount = 0;
   let totalPastTrialsCount = 0;
 
@@ -94,24 +100,32 @@ export default async function render(
     }
   }
 
-  const milestonesWithTrials = Array.from(trialsByMilestone.keys()).sort((a, b) => b - a);
+  const milestonesWithTrials = Array.from(trialsByMilestone.keys()).sort(
+    (a, b) => b - a,
+  );
 
-  if (featureErrors > 0 && (featureErrors === totalFeatureCalls || (totalActiveTrialsCount === 0 && totalPastTrialsCount === 0))) {
+  if (
+    featureErrors > 0 &&
+    (featureErrors === totalFeatureCalls ||
+      (totalActiveTrialsCount === 0 && totalPastTrialsCount === 0))
+  ) {
     upstreamError = true;
   }
 
   const renderTrialItem = (item: OriginTrialFeature, milestone: number) => {
     const safeId = encodeURIComponent(String(item.id));
     const name = item.name || "Unnamed origin trial";
-    const summary = item.summary ? item.summary : "";
+    const summary = item.summary ? linkify(item.summary) : template``;
     const stage = item.intent_stage ? item.intent_stage : "Origin trial";
     const spec = sanitizeUrl(item.standards?.spec);
 
     let statusBadge = template`<span class="badge ot">Active in ${milestone}</span>`;
     if (milestone > devVersion) {
-      statusBadge = template`<span class="badge ot upcoming">Upcoming in ${milestone}</span>`;
+      statusBadge =
+        template`<span class="badge ot upcoming">Upcoming in ${milestone}</span>`;
     } else if (milestone < stableVersion) {
-      statusBadge = template`<span class="badge ot past">Ended (Chrome ${milestone})</span>`;
+      statusBadge =
+        template`<span class="badge ot past">Ended (Chrome ${milestone})</span>`;
     }
 
     return template`
@@ -121,17 +135,27 @@ export default async function render(
         ${statusBadge}
       </h3>
       <p>${summary}</p>
-      <p><small>Stage: ${stage}</small>${spec ? template` | <small><a href="${spec}">Specification</a></small>` : template``}</p>
-      ${item.motivation ? template`<blockquote><small>${item.motivation}</small></blockquote>` : template``}
+      <p><small>Stage: ${stage}</small>${
+      spec
+        ? template` | <small><a href="${spec}">Specification</a></small>`
+        : template``
+    }</p>
+      ${
+      item.motivation
+        ? template`<blockquote><small>${linkify(item.motivation)}</small></blockquote>`
+        : template``
+    }
     </article>`;
   };
 
   const renderMilestoneSection = (milestone: number) => {
     const trials = trialsByMilestone.get(milestone) || [];
-    const channelData = channelsData?.[String(milestone)] ?? channelsData?.[milestone];
+    const channelData = channelsData?.[String(milestone)] ??
+      channelsData?.[milestone];
     const stableDate = formatStableDate(channelData?.stable_date);
 
-    const isCurrentActive = milestone >= stableVersion && milestone <= devVersion;
+    const isCurrentActive = milestone >= stableVersion &&
+      milestone <= devVersion;
     const isUpcoming = milestone > devVersion;
     const count = trials.length;
     const trialWord = count === 1 ? "trial" : "trials";
@@ -145,50 +169,39 @@ export default async function render(
     <section class="milestone-trials">
       <h2>
         Chrome ${milestone}
-        ${stableDate ? template`<small class="milestone-date">(${stableDate})</small>` : template``}
+        ${
+      stableDate
+        ? template`<small class="milestone-date">(${stableDate})</small>`
+        : template``
+    }
       </h2>
       <p>${windowLabel} in this milestone</p>
       ${trials.map((t) => renderTrialItem(t, milestone))}
     </section>`;
   };
 
-  let contentBody;
+  let contentBody: unknown;
   if (upstreamError) {
-    contentBody = template`<p class="error-notice">Unable to load origin trial data from chromestatus.com. Please try again later.</p>`;
+    contentBody =
+      template`<p class="error-notice">Unable to load origin trial data from chromestatus.com. Please try again later.</p>`;
   } else if (milestonesWithTrials.length > 0) {
     contentBody = milestonesWithTrials.map((m) => renderMilestoneSection(m));
   } else {
-    contentBody = template`<p>No active origin trials found in recent milestones.</p>`;
+    contentBody =
+      template`<p>No active origin trials found in recent milestones.</p>`;
   }
 
-  return template`
-  <!doctype html>
-<html lang="en">
-
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chrome Origin Trials Tracker</title>
-  <link rel="canonical" href="https://chromestatuslite.com${url.pathname + url.search}">
-  <link rel="stylesheet" href="/styles/index.css">
-</head>
-
-<body>
-  ${nav(url.pathname)}
-  <main id="main">
-  <h1>Origin Trials Tracker</h1>
+  return htmlResponse({
+    title: "Chrome Origin Trials Tracker",
+    canonical: `https://chromestatuslite.com${url.pathname + url.search}`,
+    description:
+      "Active, upcoming, and historical Chrome Origin Trials across recent releases.",
+    currentPath: url.pathname,
+    cacheControl: upstreamError ? NO_STORE_CACHE_CONTROL : undefined,
+    body: template`<h1>Origin Trials Tracker</h1>
   <p>Track active experimental Origin Trials running in Chrome ${stableVersion}–${devVersion}, plus recent trial history (${totalActiveTrialsCount} active trials, ${totalPastTrialsCount} past trials).</p>
   <div id="output">
     ${contentBody}
-  </div>
-  </main>
-</body>
-
-</html>`.then(
-    (data) =>
-      new Response(data, {
-        status: 200,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      })
-  );
+  </div>`,
+  });
 }

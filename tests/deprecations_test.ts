@@ -1,8 +1,11 @@
+import { test } from "vitest";
 import { createHandler } from "../src/handler.ts";
 import { equal, fixtureClient, includes } from "./fixture.ts";
 
-Deno.test("deprecation calendar renders sorted fixture and stable date", async () => {
-  const response = await createHandler(fixtureClient())(new Request("https://chromestatuslite.com/deprecations?view=all"));
+test("deprecation calendar renders sorted fixture and stable date", async () => {
+  const response = await createHandler({ client: fixtureClient() })(
+    new Request("https://chromestatuslite.com/deprecations?view=all"),
+  );
   equal(response.status, 200);
   const html = await response.text();
   includes(html, 'href="https://chromestatuslite.com/deprecations?view=all"');
@@ -11,61 +14,83 @@ Deno.test("deprecation calendar renders sorted fixture and stable date", async (
   includes(html, "Intent to Deprecate");
 });
 
-Deno.test("deprecation calendar renders features without a browsers property instead of serving the error notice", async () => {
+test("deprecation calendar renders features without a browsers property instead of serving the error notice", async () => {
   const client = fixtureClient({
     getFeaturesByType: async () => ({
       features: [
-        { id: 1, name: "Feature 1", intent_stage: "Stage 1", browsers: { chrome: { desktop: "120" } } },
+        {
+          id: 1,
+          name: "Feature 1",
+          intent_stage: "Stage 1",
+          browsers: { chrome: { desktop: "120" } },
+        },
         { id: 2, name: "Feature 2", intent_stage: "Stage 2" },
         { id: 3, name: "Feature 3", intent_stage: "Stage 3" },
       ],
     }),
   });
-  const response = await createHandler(client)(new Request("https://chromestatuslite.com/deprecations"));
+  const response = await createHandler({ client })(
+    new Request("https://chromestatuslite.com/deprecations"),
+  );
   equal(response.status, 200);
   const html = await response.text();
   equal(html.includes("error-notice"), false);
   includes(html, "Feature 1");
   includes(html, "Feature 2");
   includes(html, "Feature 3");
-  // Features without a desktop version sort to the end of the table.
   const feature1 = html.indexOf("Feature 1");
   const feature2 = html.indexOf("Feature 2");
   const feature3 = html.indexOf("Feature 3");
   if (!(feature1 < feature2 && feature1 < feature3)) {
-    throw new Error(`Expected versioned feature first; got order at ${feature1}, ${feature2}, ${feature3}`);
+    throw new Error(
+      `Expected versioned feature first; got order at ${feature1}, ${feature2}, ${feature3}`,
+    );
   }
 });
 
-Deno.test("versionless deprecations render N/A, not an empty ?version= anchor (chrome-status-lite-5i3)", async () => {
+test("versionless deprecations render N/A, not an empty ?version= anchor (chrome-status-lite-5i3)", async () => {
   const client = fixtureClient({
     getFeaturesByType: async () => ({
       features: [
-        { id: 1, name: "Versioned", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "120" } } },
+        {
+          id: 1,
+          name: "Versioned",
+          intent_stage: "Intent to Deprecate",
+          browsers: { chrome: { desktop: "120" } },
+        },
         { id: 2, name: "Versionless", intent_stage: "Intent to Deprecate" },
       ],
     }),
   });
-  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/deprecations"))).text();
-  // The versioned row keeps its release link...
+  const html = await (await createHandler({ client })(
+    new Request("https://chromestatuslite.com/deprecations"),
+  )).text();
   includes(html, 'href="/?version=120"');
-  // ...and the versionless row is plain text: no empty anchor may exist.
   equal(html.includes('href="/?version="'), false);
 });
 
-Deno.test("deprecation with an empty desktop milestone renders N/A instead of the error notice (chrome-status-lite-b6s)", async () => {
-  // desktop: "" passes the undefined filter but parseInts to NaN; if it
-  // reaches getChannels' bounds it throws on the strict coercion and the
-  // catch block replaces the whole calendar with the error notice.
+test("deprecation with an empty desktop milestone renders N/A instead of the error notice (chrome-status-lite-b6s)", async () => {
   const client = fixtureClient({
     getFeaturesByType: async () => ({
       features: [
-        { id: 1, name: "Normal", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "120" } } },
-        { id: 2, name: "Pending", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "" } } },
+        {
+          id: 1,
+          name: "Normal",
+          intent_stage: "Intent to Deprecate",
+          browsers: { chrome: { desktop: "120" } },
+        },
+        {
+          id: 2,
+          name: "Pending",
+          intent_stage: "Intent to Deprecate",
+          browsers: { chrome: { desktop: "" } },
+        },
       ],
     }),
   });
-  const response = await createHandler(client)(new Request("https://chromestatuslite.com/deprecations"));
+  const response = await createHandler({ client })(
+    new Request("https://chromestatuslite.com/deprecations"),
+  );
   equal(response.status, 200);
   const html = await response.text();
   equal(html.includes("error-notice"), false);
@@ -75,19 +100,28 @@ Deno.test("deprecation with an empty desktop milestone renders N/A instead of th
   equal(html.includes('href="/?version="'), false);
 });
 
-Deno.test("calendar of only empty-desktop deprecations renders every row without the error notice (chrome-status-lite-b6s)", async () => {
-  // With no valid milestone at all the channel-range bounds fall back to
-  // the unbounded getChannels() call, exactly as when no feature has a
-  // desktop field.
+test("calendar of only empty-desktop deprecations renders every row without the error notice (chrome-status-lite-b6s)", async () => {
   const client = fixtureClient({
     getFeaturesByType: async () => ({
       features: [
-        { id: 1, name: "Pending A", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "" } } },
-        { id: 2, name: "Pending B", intent_stage: "Intent to Deprecate", browsers: { chrome: { desktop: "" } } },
+        {
+          id: 1,
+          name: "Pending A",
+          intent_stage: "Intent to Deprecate",
+          browsers: { chrome: { desktop: "" } },
+        },
+        {
+          id: 2,
+          name: "Pending B",
+          intent_stage: "Intent to Deprecate",
+          browsers: { chrome: { desktop: "" } },
+        },
       ],
     }),
   });
-  const response = await createHandler(client)(new Request("https://chromestatuslite.com/deprecations"));
+  const response = await createHandler({ client })(
+    new Request("https://chromestatuslite.com/deprecations"),
+  );
   equal(response.status, 200);
   const html = await response.text();
   equal(html.includes("error-notice"), false);
@@ -95,19 +129,23 @@ Deno.test("calendar of only empty-desktop deprecations renders every row without
   includes(html, "Pending B");
 });
 
-Deno.test("deprecation calendar feature name links to the local /feature/:id route", async () => {
-  const response = await createHandler(fixtureClient())(new Request("https://chromestatuslite.com/deprecations?view=all"));
+test("deprecation calendar feature name links to the local /feature/:id route", async () => {
+  const response = await createHandler({ client: fixtureClient() })(
+    new Request("https://chromestatuslite.com/deprecations?view=all"),
+  );
   equal(response.status, 200);
   const html = await response.text();
   includes(html, '<td><a href="/feature/123">Deprecated fixture</a></td>');
   equal(html.includes('href="https://chromestatus.com/feature/'), false);
 });
 
-Deno.test("deprecation calendar falls back to N/A for an unparseable stable_date", async () => {
+test("deprecation calendar falls back to N/A for an unparseable stable_date", async () => {
   const client = fixtureClient({
     getChannels: async () => ({ "120": { stable_date: "unknown" } }),
   });
-  const response = await createHandler(client)(new Request("https://chromestatuslite.com/deprecations?view=all"));
+  const response = await createHandler({ client })(
+    new Request("https://chromestatuslite.com/deprecations?view=all"),
+  );
   equal(response.status, 200);
   const html = await response.text();
   includes(html, "Deprecated fixture");
@@ -115,12 +153,8 @@ Deno.test("deprecation calendar falls back to N/A for an unparseable stable_date
   equal(html.includes("NaN-NaN-NaN"), false);
 });
 
-Deno.test("deprecation calendar ships no client script: the version picker is gone (chrome-status-lite-3ux)", async () => {
-  // The 2022 removal of the version picker (de73025) left deprecations.js
-  // behind: it queried the removed #version element and threw a TypeError
-  // on every page load. The markup no longer carries any script for this
-  // page, so nothing can query dead elements.
-  const html = await (await createHandler(fixtureClient())(
+test("deprecation calendar ships no client script: the version picker is gone (chrome-status-lite-3ux)", async () => {
+  const html = await (await createHandler({ client: fixtureClient() })(
     new Request("https://chromestatuslite.com/deprecations"),
   )).text();
   equal(html.includes("/scripts/deprecations.js"), false);

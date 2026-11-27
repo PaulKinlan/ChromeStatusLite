@@ -1,13 +1,19 @@
-// Behavioural test for the gate harness (chrome-status-lite-74e): drives
-// tools/fast-gate.sh and tools/full-gate.sh in scratch git repos with a stubbed
-// `deno` that records every invocation, and pins .fleet/coverage-contract.json
-// to the fast gate's path -> suite mapping.
+// Behavioural test for the gate harness: drives tools/fast-gate.sh and
+// tools/full-gate.sh in scratch git repos with a stubbed `npx` that records
+// every invocation, and pins .fleet/coverage-contract.json to the fast gate's
+// path -> suite mapping.
 //
-// Deliberately self-contained (no imports): importing tests/fixture.ts would
-// make this suite a covering candidate for fixture.ts, and fixture.ts changes
-// would then report PARTIAL coverage whenever this suite did not run.
+// Deliberately self-contained (no imports from tests/fixture.ts).
 
-const repoRoot = Deno.cwd();
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import { test } from "vitest";
+
+const execFileAsync = promisify(execFile);
+const repoRoot = process.cwd();
 
 const ROUTE_SUITES = [
   "tests/api_version_test.ts",
@@ -33,13 +39,21 @@ function fail(message: string): never {
 
 function equal<T>(actual: T, expected: T, context: string): void {
   if (actual !== expected) {
-    fail(`${context}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    fail(
+      `${context}: expected ${JSON.stringify(expected)}, got ${
+        JSON.stringify(actual)
+      }`,
+    );
   }
 }
 
 function includes(haystack: string, needle: string, context: string): void {
   if (!haystack.includes(needle)) {
-    fail(`${context}: expected ${JSON.stringify(haystack)} to include ${JSON.stringify(needle)}`);
+    fail(
+      `${context}: expected ${JSON.stringify(haystack)} to include ${
+        JSON.stringify(needle)
+      }`,
+    );
   }
 }
 
@@ -59,18 +73,19 @@ async function run(
   cmd: string[],
   opts: { cwd?: string; env?: Record<string, string> } = {},
 ): Promise<RunResult> {
-  const out = await new Deno.Command(cmd[0], {
-    args: cmd.slice(1),
-    cwd: opts.cwd,
-    env: opts.env,
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
-  return {
-    code: out.code,
-    stdout: new TextDecoder().decode(out.stdout),
-    stderr: new TextDecoder().decode(out.stderr),
-  };
+  try {
+    const { stdout, stderr } = await execFileAsync(cmd[0], cmd.slice(1), {
+      cwd: opts.cwd,
+      env: opts.env,
+    });
+    return { code: 0, stdout, stderr };
+  } catch (err: any) {
+    return {
+      code: typeof err.code === "number" ? err.code : 1,
+      stdout: String(err.stdout ?? ""),
+      stderr: String(err.stderr ?? ""),
+    };
+  }
 }
 
 interface Scratch {
@@ -78,21 +93,31 @@ interface Scratch {
   env: Record<string, string>;
 }
 
-// A scratch repo holding copies of both gate scripts and a stub `deno` (first on
-// PATH) that appends every invocation to deno.log, one space-joined line per call.
 async function makeScratch(): Promise<Scratch> {
-  const dir = await Deno.makeTempDir();
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "csl-gate-"));
   try {
-    await Deno.mkdir(`${dir}/tools`, { recursive: true });
-    await Deno.copyFile(`${repoRoot}/tools/fast-gate.sh`, `${dir}/tools/fast-gate.sh`);
-    await Deno.copyFile(`${repoRoot}/tools/full-gate.sh`, `${dir}/tools/full-gate.sh`);
-    await Deno.writeTextFile(`${dir}/.gitignore`, "bin/\ndeno.log\n");
-    await Deno.mkdir(`${dir}/bin`);
-    await Deno.writeTextFile(
-      `${dir}/bin/deno`,
-      `#!/usr/bin/env bash\necho "$*" >> "${dir}/deno.log"\n[[ " $* " == *" $GATE_FAIL_SUITE "* ]] && exit 1\nif [[ -n "$GATE_CHECK_SUITE_EXISTS" && " $* " == *" $GATE_CHECK_SUITE_EXISTS "* && ! -f "$GATE_CHECK_SUITE_EXISTS" ]]; then exit 1; fi\nexit 0\n`,
+    await fs.mkdir(path.join(dir, "tools"), { recursive: true });
+    await fs.copyFile(
+      path.join(repoRoot, "tools/fast-gate.sh"),
+      path.join(dir, "tools/fast-gate.sh"),
     );
-    await Deno.chmod(`${dir}/bin/deno`, 0o755);
+    await fs.copyFile(
+      path.join(repoRoot, "tools/full-gate.sh"),
+      path.join(dir, "tools/full-gate.sh"),
+    );
+    await fs.writeFile(path.join(dir, ".gitignore"), "bin/\nnpx.log\n");
+    await fs.mkdir(path.join(dir, "bin"));
+    await fs.writeFile(
+      path.join(dir, "bin/npx"),
+      `#!/usr/bin/env bash
+echo "$*" >> "${dir}/npx.log"
+[[ " $* " == *" $GATE_FAIL_SUITE "* ]] && exit 1
+if [[ -n "$GATE_CHECK_SUITE_EXISTS" && " $* " == *" $GATE_CHECK_SUITE_EXISTS "* && ! -f "$GATE_CHECK_SUITE_EXISTS" ]]; then exit 1; fi
+exit 0
+`,
+    );
+    await fs.chmod(path.join(dir, "bin/npx"), 0o755);
+
     const git = async (args: string[]): Promise<string> => {
       const result = await run(["git", ...args], { cwd: dir });
       if (result.code !== 0) fail(`git ${args.join(" ")}: ${result.stderr}`);
@@ -107,24 +132,23 @@ async function makeScratch(): Promise<Scratch> {
     return {
       dir,
       env: {
-        PATH: `${dir}/bin:${Deno.env.get("PATH") || ""}`,
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        ),
+        PATH: `${path.join(dir, "bin")}:${process.env.PATH || ""}`,
         GATE_BASE: base,
         GATE_FAIL_SUITE: "__no_such_suite__",
         GATE_CHECK_SUITE_EXISTS: "",
       },
     };
   } catch (error) {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
     throw error;
   }
 }
 
-// Discovers src files that import src/lib/utils.ts by scanning real import
-// statements — deliberately not a hand-maintained list (chrome-status-lite-4li):
-// a new route consuming a utils helper fails the coverage pin below until the
-// fast-gate mapping selects its suite. Matches any ../ or ./ run into
-// lib/utils.ts (src/routes/x.ts, src/handler.ts) and the sibling ./utils.ts
-// form used inside src/lib itself.
 function utilsImportRegex(): RegExp {
   return /from "(?:[.]{1,2}\/)+lib\/utils\.ts"|from "[.]\/utils\.ts"/;
 }
@@ -132,16 +156,16 @@ function utilsImportRegex(): RegExp {
 async function utilsImporters(): Promise<string[]> {
   const importRe = utilsImportRegex();
   const found: string[] = [];
-  // dir is repo-relative ("src", "src/routes", ...) so returned paths compare
-  // against the gate's repo-relative changed-path list.
   async function scan(dir: string): Promise<void> {
-    for await (const entry of Deno.readDir(`${repoRoot}/${dir}`)) {
-      if (entry.isDirectory) await scan(`${dir}/${entry.name}`);
-      else if (entry.isFile && entry.name.endsWith(".ts")) {
-        const path = `${dir}/${entry.name}`;
-        if (importRe.test(await Deno.readTextFile(`${repoRoot}/${path}`))) {
-          found.push(path);
-        }
+    const entries = await fs.readdir(path.join(repoRoot, dir), {
+      withFileTypes: true,
+    });
+    for (const entry of entries) {
+      if (entry.isDirectory()) await scan(`${dir}/${entry.name}`);
+      else if (entry.isFile() && entry.name.endsWith(".ts")) {
+        const relPath = `${dir}/${entry.name}`;
+        const text = await fs.readFile(path.join(repoRoot, relPath), "utf8");
+        if (importRe.test(text)) found.push(relPath);
       }
     }
   }
@@ -149,22 +173,27 @@ async function utilsImporters(): Promise<string[]> {
   return found.sort();
 }
 
-// An untracked change the gate's diff collection will pick up.
 async function touch(dir: string, rel: string): Promise<void> {
-  const slash = rel.lastIndexOf("/");
-  if (slash > 0) await Deno.mkdir(`${dir}/${rel.slice(0, slash)}`, { recursive: true });
-  await Deno.writeTextFile(`${dir}/${rel}`, "changed\n");
+  const full = path.join(dir, rel);
+  await fs.mkdir(path.dirname(full), { recursive: true });
+  await fs.writeFile(full, "changed\n");
 }
 
-// Stage a tracked deletion against the scratch baseline so the gate sees the
-// same git diff shape as a real removed file (not merely an absent path).
 async function removeTracked(scratch: Scratch, rel: string): Promise<void> {
   await touch(scratch.dir, rel);
-  for (const args of [["add", rel], ["commit", "-qm", "add tracked path"], ["rm", "-q", rel]]) {
+  for (
+    const args of [
+      ["add", rel],
+      ["commit", "-qm", "add tracked path"],
+      ["rm", "-q", rel],
+    ]
+  ) {
     const result = await run(["git", ...args], { cwd: scratch.dir });
     equal(result.code, 0, `git ${args.join(" ")}: ${result.stderr}`);
   }
-  scratch.env.GATE_BASE = (await run(["git", "rev-parse", "HEAD"], { cwd: scratch.dir })).stdout.trim();
+  scratch.env.GATE_BASE = (
+    await run(["git", "rev-parse", "HEAD"], { cwd: scratch.dir })
+  ).stdout.trim();
 }
 
 interface GateRun {
@@ -185,48 +214,73 @@ function suitesOf(invocations: string[]): string[] {
 }
 
 async function fastGate(scratch: Scratch): Promise<GateRun> {
-  const result = await run(["bash", "tools/fast-gate.sh"], { cwd: scratch.dir, env: scratch.env });
-  const log = await Deno.readTextFile(`${scratch.dir}/deno.log`).catch(() => "");
+  const result = await run(["bash", "tools/fast-gate.sh"], {
+    cwd: scratch.dir,
+    env: scratch.env,
+  });
+  const log = await fs
+    .readFile(path.join(scratch.dir, "npx.log"), "utf8")
+    .catch(() => "");
   const invocations = log.split("\n").filter((line) => line.length > 0);
-  return { code: result.code, stderr: result.stderr, invocations, suites: suitesOf(invocations) };
+  return {
+    code: result.code,
+    stderr: result.stderr,
+    invocations,
+    suites: suitesOf(invocations),
+  };
 }
 
-async function withScratch(fn: (scratch: Scratch) => Promise<void>): Promise<void> {
+async function withScratch(
+  fn: (scratch: Scratch) => Promise<void>,
+): Promise<void> {
   const scratch = await makeScratch();
   try {
     await fn(scratch);
   } finally {
-    await Deno.remove(scratch.dir, { recursive: true });
+    await fs.rm(scratch.dir, { recursive: true, force: true });
   }
 }
 
-Deno.test("fast gate maps a static page change to the shell and handler suites plus smoke", () =>
+test("fast gate maps a static page change to the shell and handler suites plus smoke and runs tsc", () =>
   withScratch(async (scratch) => {
-    await touch(scratch.dir, "static/index.html");
+    await touch(scratch.dir, "static/robots.txt");
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
-    setEqual(gate.suites, ["tests/handler_test.ts", "tests/shell_test.ts", SMOKE], "selected suites");
-    includes(gate.invocations[1], "--allow-net=127.0.0.1", "smoke sandbox");
+    setEqual(
+      gate.suites,
+      ["tests/handler_test.ts", "tests/shell_test.ts", SMOKE],
+      "selected suites",
+    );
+    equal(gate.invocations[0], "tsc --noEmit", "runs strict typecheck first");
+    includes(gate.invocations[2], "vitest.node.config.ts", "smoke node config");
   }));
 
-Deno.test("fast gate maps a feature change to its suite and cross-route policy", () =>
+test("fast gate maps a feature change to its suite and cross-route policy", () =>
   withScratch(async (scratch) => {
     await touch(scratch.dir, "src/routes/feature.ts");
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
-    setEqual(gate.suites, ["tests/feature_test.ts", "tests/handler_test.ts", SMOKE], "selected suites");
+    setEqual(
+      gate.suites,
+      ["tests/feature_test.ts", "tests/handler_test.ts", SMOKE],
+      "selected suites",
+    );
   }));
 
-Deno.test("fast gate maps diff route to its focused suite", () =>
+test("fast gate maps diff route to its focused suite", () =>
   withScratch(async (scratch) => {
     await touch(scratch.dir, "src/routes/diff.ts");
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
-    setEqual(gate.suites, ["tests/diff_test.ts", "tests/handler_test.ts", SMOKE], "selected suites");
+    setEqual(
+      gate.suites,
+      ["tests/diff_test.ts", "tests/handler_test.ts", SMOKE],
+      "selected suites",
+    );
   }));
 
-Deno.test("fast gate runs focused suites and cross-route policy where asserted", () =>
-  withScratch(async (_scratch) => {
+test("fast gate runs focused suites and cross-route policy where asserted", () =>
+  withScratch(async () => {
     const routes: Array<[string, string, boolean]> = [
       ["src/routes/feed.ts", "tests/feed_test.ts", true],
       ["src/routes/api-version.ts", "tests/api_version_test.ts", true],
@@ -236,140 +290,174 @@ Deno.test("fast gate runs focused suites and cross-route policy where asserted",
       ["src/routes/origin-trials.ts", "tests/timeline_test.ts", false],
     ];
     for (const [route, suite, hasHandlerPolicy] of routes) {
-      const probe = await makeScratch();
-      try {
+      await withScratch(async (probe) => {
         await touch(probe.dir, route);
         const gate = await fastGate(probe);
         equal(gate.code, 0, `exit code for ${route}`);
-        setEqual(gate.suites, [suite, ...(hasHandlerPolicy ? ["tests/handler_test.ts"] : []), SMOKE], `selected suites for ${route}`);
-      } finally {
-        await Deno.remove(probe.dir, { recursive: true });
-      }
+        setEqual(
+          gate.suites,
+          [suite, ...(hasHandlerPolicy ? ["tests/handler_test.ts"] : []), SMOKE],
+          `selected suites for ${route}`,
+        );
+      });
     }
   }));
 
-Deno.test("fast gate fails on the cross-route policy suite for feed and API changes", () =>
-  withScratch(async (_scratch) => {
+test("fast gate fails on the cross-route policy suite for feed and API changes", () =>
+  withScratch(async () => {
     for (const route of ["src/routes/feed.ts", "src/routes/api-version.ts"]) {
-      const probe = await makeScratch();
-      try {
+      await withScratch(async (probe) => {
         await touch(probe.dir, route);
         probe.env.GATE_FAIL_SUITE = "tests/handler_test.ts";
         const gate = await fastGate(probe);
         equal(gate.code, 1, `handler policy failure fails fast gate for ${route}`);
-        includes(gate.invocations[0], "tests/handler_test.ts", `handler suite ran for ${route}`);
-        equal(gate.invocations.length, 1, "gate stops before smoke on policy failure");
-      } finally {
-        await Deno.remove(probe.dir, { recursive: true });
-      }
+        includes(
+          gate.invocations[1],
+          "tests/handler_test.ts",
+          `handler suite ran for ${route}`,
+        );
+        equal(gate.invocations.length, 2, "gate stops before smoke on failure");
+      });
     }
   }));
 
-Deno.test("fast gate fails closed when a new suite is deleted", () =>
+test("fast gate fails closed when a suite is deleted", () =>
   withScratch(async (scratch) => {
     await removeTracked(scratch, "tests/feed_test.ts");
     scratch.env.GATE_CHECK_SUITE_EXISTS = "tests/feed_test.ts";
     const gate = await fastGate(scratch);
     equal(gate.code, 1, "deleted suite must fail the gate");
     setEqual(gate.suites, ["tests/feed_test.ts"], "selected suite");
-    equal(gate.invocations.length, 1, "gate stops after missing suite");
+    equal(gate.invocations.length, 2, "gate stops after missing suite");
   }));
 
-Deno.test("fast gate maps a deleted route even in a mixed diff, and surfaces its suite failure", () =>
+test("fast gate maps a deleted route even in a mixed diff, and surfaces its suite failure", () =>
   withScratch(async (scratch) => {
     await removeTracked(scratch, "src/routes/feature.ts");
     await touch(scratch.dir, "src/routes/index.ts");
     scratch.env.GATE_FAIL_SUITE = "tests/feature_test.ts";
     const gate = await fastGate(scratch);
     equal(gate.code, 1, "deleted route's suite failure must fail the gate");
-    setEqual(gate.suites, ["tests/feature_test.ts", "tests/handler_test.ts", "tests/index_test.ts"], "selected suites");
-    includes(gate.invocations[0], "tests/feature_test.ts", "deleted route's suite ran");
-    equal(gate.invocations.length, 1, "gate stops after failed route suites");
+    setEqual(
+      gate.suites,
+      ["tests/feature_test.ts", "tests/handler_test.ts", "tests/index_test.ts"],
+      "selected suites",
+    );
+    includes(
+      gate.invocations[1],
+      "tests/feature_test.ts",
+      "deleted route's suite ran",
+    );
+    equal(gate.invocations.length, 2, "gate stops after failed route suites");
   }));
 
-Deno.test("fast gate refuses an unmapped deleted path", () =>
+test("fast gate refuses an unmapped deleted path", () =>
   withScratch(async (scratch) => {
     await removeTracked(scratch, "src/unknown_widget.ts");
     const gate = await fastGate(scratch);
     equal(gate.code, 1, "exit code");
-    includes(gate.stderr, "Unmapped changed path: src/unknown_widget.ts", "refusal");
+    includes(
+      gate.stderr,
+      "Unmapped changed path: src/unknown_widget.ts",
+      "refusal",
+    );
     equal(gate.invocations.length, 0, "no suite ran after refusal");
   }));
 
-Deno.test("fast gate maps shared modules and the smoke test itself to all suites", () =>
+test("fast gate maps shared modules, worker entrypoint and smoke test to all suites", () =>
   withScratch(async (scratch) => {
-    for (const rel of ["src/stream-utils.ts", "tests/http_smoke_test.ts", "main.ts"]) {
+    for (
+      const rel of [
+        "src/stream-utils.ts",
+        "tests/http_smoke_test.ts",
+        "src/worker.ts",
+      ]
+    ) {
       await touch(scratch.dir, rel);
     }
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
     setEqual(gate.suites, [...ROUTE_SUITES, SMOKE], "selected suites");
-    equal(gate.invocations.length, 2, "route + smoke invocations");
+    equal(gate.invocations.length, 3, "tsc + route + smoke invocations");
   }));
 
-Deno.test("fast gate maps threat-model documentation without selecting unrelated route suites", () =>
+test("fast gate maps threat-model documentation without selecting unrelated route suites", () =>
   withScratch(async (scratch) => {
     await touch(scratch.dir, "THREAT_MODEL.md");
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
-    setEqual(gate.suites, ["tests/handler_test.ts", SMOKE], "policy and smoke suites");
-    equal(gate.invocations.length, 2, "route + smoke invocations");
+    setEqual(
+      gate.suites,
+      ["tests/handler_test.ts", SMOKE],
+      "policy and smoke suites",
+    );
+    equal(gate.invocations.length, 3, "tsc + route + smoke invocations");
   }));
 
-Deno.test("fast gate runs this harness test when gate tooling changes", () =>
+test("fast gate runs this harness test when gate tooling changes", () =>
   withScratch(async (scratch) => {
     await touch(scratch.dir, "tools/extra.sh");
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
     setEqual(gate.suites, [...ROUTE_SUITES, SMOKE, GATE], "selected suites");
-    equal(gate.invocations.length, 3, "route + smoke + harness invocations");
+    equal(
+      gate.invocations.length,
+      4,
+      "tsc + route + smoke + harness invocations",
+    );
   }));
 
-Deno.test("fast gate refuses an unmapped path", () =>
+test("fast gate refuses an unmapped path", () =>
   withScratch(async (scratch) => {
     await touch(scratch.dir, "src/unknown_widget.ts");
     const gate = await fastGate(scratch);
     equal(gate.code, 1, "exit code");
-    includes(gate.stderr, "Unmapped changed path: src/unknown_widget.ts", "refusal");
+    includes(
+      gate.stderr,
+      "Unmapped changed path: src/unknown_widget.ts",
+      "refusal",
+    );
     equal(gate.invocations.length, 0, "no suite ran after refusal");
   }));
 
-Deno.test("fast gate with no diff still runs every suite", () =>
+test("fast gate with no diff still runs every suite", () =>
   withScratch(async (scratch) => {
     const gate = await fastGate(scratch);
     equal(gate.code, 0, "exit code");
     setEqual(gate.suites, [...ROUTE_SUITES, SMOKE], "selected suites");
   }));
 
-Deno.test("full gate runs the offline suites, then the smoke in a wider sandbox", () =>
+test("full gate runs tsc, all Workers suites, then the Node smoke suite", () =>
   withScratch(async (scratch) => {
-    const result = await run(["bash", "tools/full-gate.sh"], { cwd: scratch.dir, env: scratch.env });
+    const result = await run(["bash", "tools/full-gate.sh"], {
+      cwd: scratch.dir,
+      env: scratch.env,
+    });
     equal(result.code, 0, "exit code");
-    const log = await Deno.readTextFile(`${scratch.dir}/deno.log`);
+    const log = await fs.readFile(path.join(scratch.dir, "npx.log"), "utf8");
     const invocations = log.split("\n").filter((line) => line.length > 0);
-    equal(invocations.length, 2, "offline + smoke invocations");
-    // Pin the EXACT offline suite set and the KV flag (chrome-status-lite-pfo):
-    // a per-suite includes() loop let the full gate silently drop
-    // tests/history_test.ts (kc1) without any test going red.
-    const offlineSuites = invocations[0].split(/\s+/).filter((token) => token.startsWith("tests/"));
-    setEqual(offlineSuites, ROUTE_SUITES, "full gate offline suite list is exactly the pinned set");
-    includes(invocations[0], "--unstable-kv", "offline invocation enables Deno.openKv for history_test");
-    if (invocations[0].includes(SMOKE)) fail("smoke must run in the second, wider invocation");
-    includes(invocations[1], SMOKE, "smoke invocation");
-    includes(invocations[1], "--allow-net=127.0.0.1", "smoke sandbox");
+    equal(invocations.length, 3, "tsc + workers suites + smoke invocations");
+    equal(invocations[0], "tsc --noEmit", "runs strict typecheck");
+    const workerSuites = invocations[1]
+      .split(/\s+/)
+      .filter((token) => token.startsWith("tests/"));
+    setEqual(
+      workerSuites,
+      ROUTE_SUITES,
+      "full gate workers suite list is exactly the pinned set",
+    );
+    if (invocations[1].includes(SMOKE)) {
+      fail("smoke must run in the third, Node invocation");
+    }
+    includes(invocations[2], SMOKE, "smoke invocation");
+    includes(invocations[2], "vitest.node.config.ts", "smoke node config");
   }));
 
-Deno.test("fast gate covers every src route that imports the shared lib/utils.ts", () =>
+test("fast gate covers every src route that imports the shared lib/utils.ts", () =>
   withScratch(async (scratch) => {
     await touch(scratch.dir, "src/lib/utils.ts");
     const base = await fastGate(scratch);
     equal(base.code, 0, "exit code");
-    // feed (parseStableDate), timeline (formatStableDate) and api-version
-    // (parseMilestoneParam) assert through their owned suites;
-    // feature-history (isValidFeatureId) through the history suite. This exact
-    // set is the regression the mapping used to miss (chrome-status-lite-4li):
-    // a date-format regression in feed/breaking/origin-trials used to pass the
-    // implementer fast gate and first fail at the merger's full gate.
     setEqual(
       base.suites,
       [
@@ -386,59 +474,73 @@ Deno.test("fast gate covers every src route that imports the shared lib/utils.ts
       ],
       "suites selected for src/lib/utils.ts",
     );
-    // Every src/routes file that really imports the shared util must be covered
-    // by the selection above: if a new consumer's suite is missing from the
-    // utils mapping, this fails. src/handler.ts is excluded — it is the shared
-    // router whose own attribution selects all suites by design.
-    const importers = (await utilsImporters()).filter((path) =>
-      path.startsWith("src/routes/")
+    const importers = (await utilsImporters()).filter((rel) =>
+      rel.startsWith("src/routes/")
     );
     if (importers.length === 0) {
-      fail("discovery found no src/routes importer of lib/utils.ts — the scan is broken");
+      fail(
+        "discovery found no src/routes importer of lib/utils.ts — the scan is broken",
+      );
     }
     for (const importer of importers) {
-      const probe = await makeScratch();
-      try {
+      await withScratch(async (probe) => {
         await touch(probe.dir, importer);
         const gate = await fastGate(probe);
         equal(gate.code, 0, `exit code for ${importer}`);
-        const uncovered = gate.suites.filter((suite) => !base.suites.includes(suite));
+        const uncovered = gate.suites.filter(
+          (suite) => !base.suites.includes(suite),
+        );
         if (uncovered.length > 0) {
           fail(
             `${importer} imports lib/utils.ts, but its suites (${uncovered.join(", ")}) are not selected when the shared util changes`,
           );
         }
-      } finally {
-        await Deno.remove(probe.dir, { recursive: true });
-      }
+      });
     }
   }));
 
-Deno.test("coverage contract declares only transitively loaded paths and matches the gate mapping", () =>
-  withScratch(async (scratch) => {
-    const contract = JSON.parse(await Deno.readTextFile(`${repoRoot}/.fleet/coverage-contract.json`));
-    const keys = Object.keys(contract).filter((key) => !key.startsWith("//")).sort();
-    // Updating the contract without updating this test fails here on purpose.
-    setEqual(keys, ["src/flora.ts", "src/lib/buckets.ts", "src/lib/linkify.ts", "src/lib/snapshots.ts", "src/lib/url.ts", "src/routes/feature-history.ts", "src/stream-utils.ts", "src/ui-components/*"], "contract keys");
-    const samples: Record<string, string> = {
-      "src/flora.ts": "src/flora.ts",
-      "src/lib/linkify.ts": "src/lib/linkify.ts",
-      "src/lib/url.ts": "src/lib/url.ts",
-      "src/lib/buckets.ts": "src/lib/buckets.ts",
-      "src/lib/snapshots.ts": "src/lib/snapshots.ts",
-      "src/routes/feature-history.ts": "src/routes/feature-history.ts",
-      "src/stream-utils.ts": "src/stream-utils.ts",
-      "src/ui-components/*": "src/ui-components/probe.ts",
-    };
-    for (const key of keys) {
-      const probe = await makeScratch();
-      try {
-        await touch(probe.dir, samples[key]);
-        const gate = await fastGate(probe);
-        equal(gate.code, 0, `exit code for ${key}`);
-        setEqual(gate.suites, contract[key], `suites declared for ${key}`);
-      } finally {
-        await Deno.remove(probe.dir, { recursive: true });
-      }
-    }
-  }));
+test("coverage contract declares only transitively loaded paths and matches the gate mapping", async () => {
+  const contract = JSON.parse(
+    await fs.readFile(
+      path.join(repoRoot, ".fleet/coverage-contract.json"),
+      "utf8",
+    ),
+  ) as Record<string, string[]>;
+  const keys = Object.keys(contract)
+    .filter((key) => !key.startsWith("//"))
+    .sort();
+  setEqual(
+    keys,
+    [
+      "src/flora.ts",
+      "src/lib/buckets.ts",
+      "src/lib/linkify.ts",
+      "src/lib/lru.ts",
+      "src/lib/snapshots.ts",
+      "src/lib/url.ts",
+      "src/routes/feature-history.ts",
+      "src/stream-utils.ts",
+      "src/ui-components/*",
+    ],
+    "contract keys",
+  );
+  const samples: Record<string, string> = {
+    "src/flora.ts": "src/flora.ts",
+    "src/lib/linkify.ts": "src/lib/linkify.ts",
+    "src/lib/lru.ts": "src/lib/lru.ts",
+    "src/lib/url.ts": "src/lib/url.ts",
+    "src/lib/buckets.ts": "src/lib/buckets.ts",
+    "src/lib/snapshots.ts": "src/lib/snapshots.ts",
+    "src/routes/feature-history.ts": "src/routes/feature-history.ts",
+    "src/stream-utils.ts": "src/stream-utils.ts",
+    "src/ui-components/*": "src/ui-components/probe.ts",
+  };
+  for (const key of keys) {
+    await withScratch(async (probe) => {
+      await touch(probe.dir, samples[key]);
+      const gate = await fastGate(probe);
+      equal(gate.code, 0, `exit code for ${key}`);
+      setEqual(gate.suites, contract[key], `suites declared for ${key}`);
+    });
+  }
+});

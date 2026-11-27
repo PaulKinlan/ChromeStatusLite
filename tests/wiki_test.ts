@@ -1,22 +1,35 @@
+import { env } from "cloudflare:test";
+import { beforeEach, test } from "vitest";
 import { createHandler, type StatusClient } from "../src/handler.ts";
 import wiki from "../src/routes/wiki.ts";
 import wikiTopic, { fetchQueryFeatures } from "../src/routes/wiki-topic.ts";
 import { equal, fixtureClient, includes } from "./fixture.ts";
 import {
-  WIKI_TOPICS,
   collectTopicFeatures,
   consensus,
   getTopic,
   stageGroups,
   tagFeature,
   timeline,
+  WIKI_TOPICS,
 } from "../src/lib/wiki.ts";
-import { CONTINUATION_POOL_SIZE, TOPIC_RETRY_TTL, getTopicData } from "../src/lib/wiki-data.ts";
+import {
+  CONTINUATION_POOL_SIZE,
+  D1WikiTopicStore,
+  getTopicData,
+  refreshStaleWikiTopics,
+  TOPIC_RETRY_TTL,
+} from "../src/lib/wiki-data.ts";
+
+beforeEach(async () => {
+  await env.DB.prepare("DELETE FROM wiki_topic_cache").run();
+});
 
 const gpuFeature = {
   id: 1,
   name: "WebGPU",
-  summary: "Exposes modern GPU compute and rendering capabilities to the web.",
+  summary:
+    "Exposes modern GPU compute and rendering capabilities. See https://gpuweb.github.io/gpuweb/.",
   search_tags: ["wgpu"],
   browsers: {
     chrome: { status: { text: "Enabled by default", milestone_str: "113" } },
@@ -46,42 +59,46 @@ const proposedFeature = {
   },
 };
 
-Deno.test("wiki tagger classifies deterministically and offline", () => {
+test("wiki tagger classifies deterministically and offline", () => {
   equal(tagFeature(gpuFeature).join(","), "webgpu");
   equal(tagFeature(aiFeature).join(","), "web-ai");
-  // Cross-tagging: a GPU AI feature belongs to both topics, sorted by slug.
-  const cross = tagFeature({ name: "WebGPU AI accelerator", summary: "Prompt API on GPU." });
+  const cross = tagFeature({
+    name: "WebGPU AI accelerator",
+    summary: "Prompt API on GPU.",
+  });
   includes(cross.join(","), "webgpu");
   includes(cross.join(","), "web-ai");
   equal(cross.join(","), [...cross].sort().join(","));
   equal(tagFeature(null).length, 0);
   equal(tagFeature({}).length, 0);
-  // Every topic definition has a unique slug and a query.
   const slugs = WIKI_TOPICS.map((topic) => topic.slug);
   equal(new Set(slugs).size, slugs.length);
   for (const topic of WIKI_TOPICS) {
-    if (topic.queries.length === 0) throw new Error(`${topic.slug} has no queries`);
+    if (topic.queries.length === 0) {
+      throw new Error(`${topic.slug} has no queries`);
+    }
   }
 });
 
-Deno.test("wiki grouping, consensus, and timeline helpers", () => {
+test("wiki grouping, consensus, and timeline helpers", () => {
   const features = [aiFeature, gpuFeature, proposedFeature];
 
   const groups = stageGroups(features);
-  equal(groups.map((group) => group.stage).join(","), "Enabled by default,Origin trial,Proposed");
+  equal(
+    groups.map((group) => group.stage).join(","),
+    "Enabled by default,Origin trial,Proposed",
+  );
 
   const tally = consensus(features);
   equal(tally.Firefox["Shipped/Shipping"], 1);
   equal(tally.Safari["No signal"], 1);
   equal(tally["Web developers"]["Strongly positive"], 1);
 
-  // Non-numeric milestone labels ("Proposed") are not timeline entries.
   const entries = timeline(features);
   equal(entries.length, 2);
   equal(entries[0].milestone, 131);
   equal(entries[1].milestone, 113);
 
-  // collectTopicFeatures dedupes by id across query results and sorts by name.
   const merged = collectTopicFeatures([
     { features: [gpuFeature, aiFeature] },
     { features: [gpuFeature] },
@@ -92,40 +109,49 @@ Deno.test("wiki grouping, consensus, and timeline helpers", () => {
   equal(merged[0].id, 2);
 });
 
-Deno.test("/wiki lists every topic with links and counts", async () => {
-  const handler = createHandler(fixtureClient());
+test("/wiki lists every topic with links and counts", async () => {
+  const handler = createHandler({ client: fixtureClient() });
   const res = await handler(new Request("https://chromestatuslite.com/wiki"));
   equal(res.status, 200);
   const html = await res.text();
   includes(html, "Web Platform Topic Wiki");
   includes(html, '<a href="/wiki/webgpu">WebGPU</a>');
   includes(html, '<a href="/wiki/web-ai">Built-in Web AI</a>');
-  includes(html, "1 feature</a>"); // fixture total_count: 1, singular form
+  includes(html, "1 feature</a>");
 });
 
-Deno.test("/wiki tolerates a topic whose queries all fail", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: () => Promise.reject(new Error("upstream down")),
-  }));
+test("/wiki tolerates a topic whose queries all fail", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: () => Promise.reject(new Error("upstream down")),
+    }),
+  });
   const res = await handler(new Request("https://chromestatuslite.com/wiki"));
   equal(res.status, 200);
   const html = await res.text();
   includes(html, '<a href="/wiki/webgpu">WebGPU</a>');
 });
 
-Deno.test("/wiki/:topic groups features by stage with consensus and timeline", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async (query: string) => {
-      if (query === "webgpu") {
-        return { total_count: 3, features: [gpuFeature, gpuFeature, proposedFeature] };
-      }
-      return { total_count: 0, features: [] };
-    },
-  }));
-  const res = await handler(new Request("https://chromestatuslite.com/wiki/webgpu"));
+test("/wiki/:topic groups features by stage with consensus, timeline, and linkified summaries", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async (query: string) => {
+        if (query === "webgpu") {
+          return {
+            total_count: 3,
+            features: [gpuFeature, gpuFeature, proposedFeature],
+          };
+        }
+        return { total_count: 0, features: [] };
+      },
+    }),
+  });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/wiki/webgpu"),
+  );
   equal(res.status, 200);
   const html = await res.text();
-  includes(html, "2 features tagged with this topic"); // deduped
+  includes(html, "2 features tagged with this topic");
   includes(html, "Cross-browser consensus");
   includes(html, "Shipped/Shipping (1)");
   includes(html, "Features by stage");
@@ -134,93 +160,151 @@ Deno.test("/wiki/:topic groups features by stage with consensus and timeline", a
   includes(html, "Timeline");
   includes(html, '<a href="/?version=113">113</a>');
   includes(html, '<a href="/feature/1">WebGPU</a>');
+  includes(
+    html,
+    '<a href="https://gpuweb.github.io/gpuweb/" rel="noopener noreferrer">https://gpuweb.github.io/gpuweb/</a>.',
+  );
 });
 
-Deno.test("/wiki/:topic renders cross-topic links for multi-tagged features", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async () => ({
-      total_count: 1,
-      features: [{
-        ...gpuFeature,
-        name: "WebGPU on-device AI",
-        summary: "GPU acceleration for the Prompt API.",
-      }],
+test("/wiki/:topic renders cross-topic links for multi-tagged features", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async () => ({
+        total_count: 1,
+        features: [
+          {
+            ...gpuFeature,
+            name: "WebGPU on-device AI",
+            summary: "GPU acceleration for the Prompt API.",
+          },
+        ],
+      }),
     }),
-  }));
-  const res = await handler(new Request("https://chromestatuslite.com/wiki/webgpu"));
+  });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/wiki/webgpu"),
+  );
   const html = await res.text();
   includes(html, "Also tagged:");
   includes(html, '<a href="/wiki/web-ai">Built-in Web AI</a>');
 });
 
-Deno.test("/wiki/:topic shows an error notice when every query fails", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: () => Promise.reject(new Error("upstream down")),
-  }));
-  const res = await handler(new Request("https://chromestatuslite.com/wiki/webgpu"));
+test("/wiki/:topic shows an error notice when every query fails", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: () => Promise.reject(new Error("upstream down")),
+    }),
+  });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/wiki/webgpu"),
+  );
   equal(res.status, 200);
+  equal(res.headers.get("cache-control"), "no-store");
   includes(await res.text(), "Unable to load topic data from chromestatus.com");
 });
 
-Deno.test("/wiki/:topic is 404 for unknown slugs without querying upstream", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: () => { throw new Error("unexpected fetch"); },
-  }));
-  const res = await handler(new Request("https://chromestatuslite.com/wiki/no-such-topic"));
+test("/wiki/:topic is 404 for unknown slugs without querying upstream", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: () => {
+        throw new Error("unexpected fetch");
+      },
+    }),
+  });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/wiki/no-such-topic"),
+  );
   equal(res.status, 404);
   includes(await res.text(), "Topic not found");
 
-  // Direct route-module coverage: the 404 path must not consult the client.
-  const match = new URLPattern({ pathname: "/wiki/:topic" }).exec("https://chromestatuslite.com/wiki/no-such-topic")!;
+  const match = new URLPattern({ pathname: "/wiki/:topic" }).exec(
+    "https://chromestatuslite.com/wiki/no-such-topic",
+  )!;
   const direct = await wikiTopic(
     new Request("https://chromestatuslite.com/wiki/no-such-topic"),
     match,
-    fixtureClient({ getFeaturesByQuery: () => { throw new Error("unexpected fetch"); } }),
+    fixtureClient({
+      getFeaturesByQuery: () => {
+        throw new Error("unexpected fetch");
+      },
+    }),
   );
   equal(direct.status, 404);
 });
 
-Deno.test("/wiki route module renders the directory directly", async () => {
-  const res = await wiki(new Request("https://chromestatuslite.com/wiki"), fixtureClient());
+test("/wiki route module renders the directory directly", async () => {
+  const res = await wiki(
+    new Request("https://chromestatuslite.com/wiki"),
+    fixtureClient(),
+  );
   equal(res.status, 200);
   includes(await res.text(), "Web Platform Topic Wiki");
 });
 
-Deno.test("wiki tagger avoids bare-common-word false positives (review chrome-status-lite-asn)", () => {
-  // A WGSL memory layout is not CSS Layout, and WGSL storage buffers are not
-  // the Storage & Files topic.
+test("wiki tagger avoids bare-common-word false positives (review chrome-status-lite-asn)", () => {
   equal(
-    tagFeature({ name: "WebGPU: Uniform buffer standard layout", summary: "Uniform buffer standard layout for WGSL storage buffers." }).join(","),
+    tagFeature({
+      name: "WebGPU: Uniform buffer standard layout",
+      summary: "Uniform buffer standard layout for WGSL storage buffers.",
+    }).join(","),
     "webgpu",
   );
   equal(
-    tagFeature({ name: "WGSL: unrestricted pointer parameters", summary: "Pointers to storage/uniform/workgroup address spaces are allowed." }).join(","),
+    tagFeature({
+      name: "WGSL: unrestricted pointer parameters",
+      summary:
+        "Pointers to storage/uniform/workgroup address spaces are allowed.",
+    }).join(","),
     "webgpu",
   );
-  // A canvas text-direction getter is not the Fonts & Text topic.
   equal(
-    tagFeature({ name: "Canvas2D getConfiguration", summary: "Returns the text-direction of a canvas context." }).length,
+    tagFeature({
+      name: "Canvas2D getConfiguration",
+      summary: "Returns the text-direction of a canvas context.",
+    }).length,
     0,
   );
-  // Real topic members still tag: CSS container queries hit css-layout,
-  // IndexedDB hits storage, an install prompt hits pwa.
-  equal(tagFeature({ name: "CSS container queries", summary: "Size container queries for elements." }).join(","), "css-layout");
-  includes(tagFeature({ name: "IndexedDB 3.0", summary: "IndexedDB improvements." }).join(","), "storage");
-  includes(tagFeature({ name: "Richer install UI", summary: "App install prompt improvements." }).join(","), "pwa");
+  equal(
+    tagFeature({
+      name: "CSS container queries",
+      summary: "Size container queries for elements.",
+    }).join(","),
+    "css-layout",
+  );
+  includes(
+    tagFeature({
+      name: "IndexedDB 3.0",
+      summary: "IndexedDB improvements.",
+    }).join(","),
+    "storage",
+  );
+  includes(
+    tagFeature({
+      name: "Richer install UI",
+      summary: "App install prompt improvements.",
+    }).join(","),
+    "pwa",
+  );
 });
 
-Deno.test("fetchQueryFeatures paginates past the 100-result default page (review chrome-status-lite-9am)", async () => {
+test("fetchQueryFeatures paginates past the 100-result default page (review chrome-status-lite-9am)", async () => {
   const calls: { options: { num?: number; start?: number } }[] = [];
   const client = fixtureClient({
-    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
+    getFeaturesByQuery: async (
+      _query: string,
+      options: { num?: number; start?: number } = {},
+    ) => {
       calls.push({ options });
       const start = options.start ?? 0;
       return {
         total_count: 250,
-        features: Array.from({ length: Math.min(100, 250 - start) }, (_, i) => ({
-          id: start + i,
-          name: `Feature ${start + i}`,
-        })),
+        features: Array.from(
+          { length: Math.min(100, 250 - start) },
+          (_, i) => ({
+            id: start + i,
+            name: `Feature ${start + i}`,
+          }),
+        ),
       };
     },
   });
@@ -235,31 +319,29 @@ Deno.test("fetchQueryFeatures paginates past the 100-result default page (review
   for (const call of calls) equal(call.options.num, 100);
 });
 
-Deno.test("a synchronously throwing continuation leaks no pool slot (chrome-status-lite-1qp)", async () => {
-  // StatusClient is structural, so a non-async double whose
-  // getFeaturesByQuery throws synchronously is legal. The continuation pool
-  // used to increment inFlight and then call job() directly, so a sync throw
-  // skipped the .finally decrement: 300 total here means two continuation
-  // starts x two attempts = four sync throws = four leaked slots, after
-  // which every later fetchQueryFeatures on this client queued forever.
+test("a synchronously throwing continuation leaks no pool slot (chrome-status-lite-1qp)", async () => {
   const client = fixtureClient({
-    getFeaturesByQuery: ((_query: string, options: { num?: number; start?: number } = {}) => {
+    getFeaturesByQuery: ((
+      _query: string,
+      options: { num?: number; start?: number } = {},
+    ) => {
       if (options.start !== undefined) {
         throw new Error("sync throw from continuation");
       }
       return Promise.resolve({
         total_count: 300,
-        features: Array.from({ length: 100 }, (_, i) => ({ id: i, name: `F${i}` })),
+        features: Array.from({ length: 100 }, (_, i) => ({
+          id: i,
+          name: `F${i}`,
+        })),
       });
     }) as StatusClient["getFeaturesByQuery"],
   });
   const first = await fetchQueryFeatures("q", client);
   equal(first.complete, false);
-  // The pool must still have capacity: a second query settles (and likewise
-  // reports incomplete) instead of hanging.
   const second = await Promise.race([
     fetchQueryFeatures("q", client),
-    new Promise((resolve) => setTimeout(() => resolve("HUNG"), 1500)),
+    new Promise<"HUNG">((resolve) => setTimeout(() => resolve("HUNG"), 1500)),
   ]);
   if (second === "HUNG") {
     throw new Error("pool wedged: second fetchQueryFeatures never settled");
@@ -267,10 +349,13 @@ Deno.test("a synchronously throwing continuation leaks no pool slot (chrome-stat
   equal(second.complete, false);
 });
 
-Deno.test("fetchQueryFeatures reports incomplete when a continuation fails twice (review chrome-status-lite-lmj)", async () => {
+test("fetchQueryFeatures reports incomplete when a continuation fails twice (review chrome-status-lite-lmj)", async () => {
   let attempts = 0;
   const client = fixtureClient({
-    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
+    getFeaturesByQuery: async (
+      _query: string,
+      options: { num?: number; start?: number } = {},
+    ) => {
       const start = options.start ?? 0;
       if (start >= 200) {
         attempts++;
@@ -278,48 +363,70 @@ Deno.test("fetchQueryFeatures reports incomplete when a continuation fails twice
       }
       return {
         total_count: 300,
-        features: Array.from({ length: 100 }, (_, i) => ({ id: start + i, name: `F${start + i}` })),
+        features: Array.from({ length: 100 }, (_, i) => ({
+          id: start + i,
+          name: `F${start + i}`,
+        })),
       };
     },
   });
   const result = await fetchQueryFeatures("javascript", client);
   equal(result.features.length, 200);
   equal(result.complete, false);
-  equal(attempts, 2); // one retry, not silent acceptance
+  equal(attempts, 2);
 });
 
-Deno.test("/wiki/:topic marks the inventory incomplete when a continuation page fails (review chrome-status-lite-lmj)", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
-      if (query !== "javascript") return { total_count: 0, features: [] };
-      const start = options.start ?? 0;
-      if (start === 100) throw new Error("503 page 2");
-      return {
-        total_count: 250,
-        features: Array.from({ length: start === 200 ? 50 : 100 }, (_, i) => ({
-          id: start + i,
-          name: `${query} feature ${start + i}`,
-        })),
-      };
-    },
-  }));
-  const res = await handler(new Request("https://chromestatuslite.com/wiki/javascript"));
+test("/wiki/:topic marks the inventory incomplete when a continuation page fails (review chrome-status-lite-lmj)", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async (
+        query: string,
+        options: { num?: number; start?: number } = {},
+      ) => {
+        if (query !== "javascript") return { total_count: 0, features: [] };
+        const start = options.start ?? 0;
+        if (start === 100) throw new Error("503 page 2");
+        return {
+          total_count: 250,
+          features: Array.from(
+            { length: start === 200 ? 50 : 100 },
+            (_, i) => ({
+              id: start + i,
+              name: `${query} feature ${start + i}`,
+            }),
+          ),
+        };
+      },
+    }),
+  });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/wiki/javascript"),
+  );
   equal(res.status, 200);
+  equal(res.headers.get("cache-control"), "no-store");
   const html = await res.text();
   includes(html, "the list below is incomplete");
   includes(html, "150 features tagged with this topic");
-  includes(html, "javascript feature 200"); // later pages still render
-  if (html.includes("javascript feature 100")) throw new Error("failed page rendered as present");
+  includes(html, "javascript feature 200");
+  if (html.includes("javascript feature 100")) {
+    throw new Error("failed page rendered as present");
+  }
 });
 
-Deno.test("/wiki/:topic omits the consensus section when no feature has view data (review chrome-status-lite-098)", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async () => ({
-      total_count: 1,
-      features: [{ id: 9, name: "Bare feature", summary: "No upstream view data." }],
+test("/wiki/:topic omits the consensus section when no feature has view data (review chrome-status-lite-098)", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async () => ({
+        total_count: 1,
+        features: [
+          { id: 9, name: "Bare feature", summary: "No upstream view data." },
+        ],
+      }),
     }),
-  }));
-  const res = await handler(new Request("https://chromestatuslite.com/wiki/webgpu"));
+  });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/wiki/webgpu"),
+  );
   equal(res.status, 200);
   const html = await res.text();
   if (html.includes("Cross-browser consensus")) {
@@ -327,88 +434,131 @@ Deno.test("/wiki/:topic omits the consensus section when no feature has view dat
   }
 });
 
-Deno.test("/wiki directory counts the deduped union across ALL topic queries (review chrome-status-lite-4p4)", async () => {
-  // Device & Hardware has four queries; the directory must count the union,
-  // deduped by feature id, not just the first query's total_count.
+test("/wiki directory counts the deduped union across ALL topic queries (review chrome-status-lite-4p4)", async () => {
   const client = fixtureClient({
     getFeaturesByQuery: async (query: string) => {
-      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
-      if (query === "web bluetooth") return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      if (query === "webusb") {
+        return {
+          total_count: 2,
+          features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }],
+        };
+      }
+      if (query === "web bluetooth") {
+        return {
+          total_count: 2,
+          features: [
+            { id: 2, name: "WebSerial" },
+            { id: 3, name: "WebBluetooth" },
+          ],
+        };
+      }
       return { total_count: 0, features: [] };
     },
   });
-  const handler = createHandler(client);
+  const handler = createHandler({ client });
   const res = await handler(new Request("https://chromestatuslite.com/wiki"));
   equal(res.status, 200);
   const html = await res.text();
-  includes(html, '<a href="/wiki/device">3 features</a>'); // 1,2,3 — id 2 deduped
+  includes(html, '<a href="/wiki/device">3 features</a>');
 });
 
-Deno.test("/wiki directory count matches the /wiki/:topic page count (review chrome-status-lite-4p4)", async () => {
+test("/wiki directory count matches the /wiki/:topic page count (review chrome-status-lite-4p4)", async () => {
   const client = fixtureClient({
     getFeaturesByQuery: async (query: string) => {
-      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
-      if (query === "web bluetooth") return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      if (query === "webusb") {
+        return {
+          total_count: 2,
+          features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }],
+        };
+      }
+      if (query === "web bluetooth") {
+        return {
+          total_count: 2,
+          features: [
+            { id: 2, name: "WebSerial" },
+            { id: 3, name: "WebBluetooth" },
+          ],
+        };
+      }
       return { total_count: 0, features: [] };
     },
   });
-  const handler = createHandler(client);
-  const directory = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
-  const topic = await (await handler(new Request("https://chromestatuslite.com/wiki/device"))).text();
+  const handler = createHandler({ client });
+  const directory = await (await handler(
+    new Request("https://chromestatuslite.com/wiki"),
+  )).text();
+  const topic = await (await handler(
+    new Request("https://chromestatuslite.com/wiki/device"),
+  )).text();
   includes(directory, '<a href="/wiki/device">3 features</a>');
   includes(topic, "3 features tagged with this topic");
 });
 
-Deno.test("wiki topic data is cached and shared between directory and topic pages (review chrome-status-lite-4p4)", async () => {
+test("wiki topic data is cached and shared between directory and topic pages (review chrome-status-lite-4p4)", async () => {
   let calls = 0;
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async () => {
-      calls++;
-      return { total_count: 1, features: [{ id: 7, name: "Cached feature" }] };
-    },
-  }));
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async () => {
+        calls++;
+        return {
+          total_count: 1,
+          features: [{ id: 7, name: "Cached feature" }],
+        };
+      },
+    }),
+  });
   await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
   const afterDirectory = calls;
-  if (afterDirectory === 0) throw new Error("cold directory made no upstream calls");
-  // A second directory load and a topic page load are served entirely from
-  // the shared assembled-data cache: zero additional upstream calls.
+  if (afterDirectory === 0) {
+    throw new Error("cold directory made no upstream calls");
+  }
   await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
   equal(calls, afterDirectory);
-  const topic = await (await handler(new Request("https://chromestatuslite.com/wiki/webgpu"))).text();
+  const topic = await (await handler(
+    new Request("https://chromestatuslite.com/wiki/webgpu"),
+  )).text();
   equal(calls, afterDirectory);
   includes(topic, "1 feature tagged with this topic");
 });
 
-Deno.test("wiki topic data cache does not pin a total failure (review chrome-status-lite-4p4)", async () => {
+test("wiki topic data cache does not pin a total failure (review chrome-status-lite-4p4)", async () => {
   let down = true;
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async () => {
-      if (down) throw new Error("upstream down");
-      return { total_count: 1, features: [{ id: 8, name: "Recovered feature" }] };
-    },
-  }));
-  const first = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async () => {
+        if (down) throw new Error("upstream down");
+        return {
+          total_count: 1,
+          features: [{ id: 8, name: "Recovered feature" }],
+        };
+      },
+    }),
+  });
+  const first = await (await handler(
+    new Request("https://chromestatuslite.com/wiki"),
+  )).text();
   if (first.includes("feature</a>") || first.includes("features</a>")) {
     throw new Error("count rendered while every query failed");
   }
   down = false;
-  // Total failures are not cached: the next load retries upstream and
-  // recovers without waiting for the TTL.
-  const second = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  const second = await (await handler(
+    new Request("https://chromestatuslite.com/wiki"),
+  )).text();
   includes(second, '<a href="/wiki/webgpu">1 feature</a>');
 });
 
-
-Deno.test("/wiki/:topic shows the incomplete notice even when nothing rendered (review chrome-status-lite-lmj)", async () => {
-  // Exact round-3 repro: primary query throws, secondary returns zero
-  // results. The page must not claim "No features are currently tagged".
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async (query: string) => {
-      if (query === "javascript") throw new Error("503 primary");
-      return { total_count: 0, features: [] };
-    },
-  }));
-  const res = await handler(new Request("https://chromestatuslite.com/wiki/javascript"));
+test("/wiki/:topic shows the incomplete notice even when nothing rendered (review chrome-status-lite-lmj)", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async (query: string) => {
+        if (query === "javascript") throw new Error("503 primary");
+        return { total_count: 0, features: [] };
+      },
+    }),
+  });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/wiki/javascript"),
+  );
   equal(res.status, 200);
   const html = await res.text();
   includes(html, "is incomplete");
@@ -417,28 +567,39 @@ Deno.test("/wiki/:topic shows the incomplete notice even when nothing rendered (
   }
 });
 
-Deno.test("/wiki/:topic says no features only when every query succeeded empty", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async () => ({ total_count: 0, features: [] }),
-  }));
-  const res = await handler(new Request("https://chromestatuslite.com/wiki/webgpu"));
+test("/wiki/:topic says no features only when every query succeeded empty", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async () => ({ total_count: 0, features: [] }),
+    }),
+  });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/wiki/webgpu"),
+  );
   equal(res.status, 200);
   const html = await res.text();
   includes(html, "No features are currently tagged with this topic.");
-  if (html.includes("is incomplete")) throw new Error("false incomplete notice on clean empty result");
+  if (html.includes("is incomplete")) {
+    throw new Error("false incomplete notice on clean empty result");
+  }
 });
 
-Deno.test("fetchQueryFeatures reports incomplete on a short successful continuation (review chrome-status-lite-lmj round 4)", async () => {
+test("fetchQueryFeatures reports incomplete on a short successful continuation (review chrome-status-lite-lmj round 4)", async () => {
   const client = fixtureClient({
-    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
+    getFeaturesByQuery: async (
+      _query: string,
+      options: { num?: number; start?: number } = {},
+    ) => {
       const start = options.start ?? 0;
       return {
         total_count: 250,
-        // Page start=100 succeeds with zero features; start=200 returns 50.
-        features: Array.from({ length: start === 100 ? 0 : start === 200 ? 50 : 100 }, (_, i) => ({
-          id: start + i,
-          name: `F${start + i}`,
-        })),
+        features: Array.from(
+          { length: start === 100 ? 0 : start === 200 ? 50 : 100 },
+          (_, i) => ({
+            id: start + i,
+            name: `F${start + i}`,
+          }),
+        ),
       };
     },
   });
@@ -447,33 +608,46 @@ Deno.test("fetchQueryFeatures reports incomplete on a short successful continuat
   equal(result.complete, false);
 });
 
-Deno.test("/wiki/:topic marks the inventory incomplete on a short successful continuation (review chrome-status-lite-lmj round 4)", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
-      const start = options.start ?? 0;
-      return {
-        total_count: 250,
-        features: Array.from({ length: start === 100 ? 0 : start === 200 ? 50 : 100 }, (_, i) => ({
-          id: `${query}-${start + i}`,
-          name: `${query} feature ${start + i}`,
-        })),
-      };
-    },
-  }));
-  const res = await handler(new Request("https://chromestatuslite.com/wiki/javascript"));
+test("/wiki/:topic marks the inventory incomplete on a short successful continuation (review chrome-status-lite-lmj round 4)", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async (
+        query: string,
+        options: { num?: number; start?: number } = {},
+      ) => {
+        const start = options.start ?? 0;
+        return {
+          total_count: 250,
+          features: Array.from(
+            { length: start === 100 ? 0 : start === 200 ? 50 : 100 },
+            (_, i) => ({
+              id: `${query}-${start + i}`,
+              name: `${query} feature ${start + i}`,
+            }),
+          ),
+        };
+      },
+    }),
+  });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/wiki/javascript"),
+  );
   equal(res.status, 200);
   const html = await res.text();
   includes(html, "is incomplete");
-  includes(html, "javascript feature 200"); // later pages still render
-  if (html.includes("javascript feature 100")) throw new Error("short page rendered as present");
+  includes(html, "javascript feature 200");
+  if (html.includes("javascript feature 100")) {
+    throw new Error("short page rendered as present");
+  }
 });
 
-Deno.test("fetchQueryFeatures reports incomplete when pages repeat records (review chrome-status-lite-lmj round 5)", async () => {
+test("fetchQueryFeatures reports incomplete when pages repeat records (review chrome-status-lite-lmj round 5)", async () => {
   const client = fixtureClient({
-    getFeaturesByQuery: async (_query: string, options: { num?: number; start?: number } = {}) => {
+    getFeaturesByQuery: async (
+      _query: string,
+      options: { num?: number; start?: number } = {},
+    ) => {
       const start = options.start ?? 0;
-      // start=100 repeats the first page's ids; raw length matches
-      // total_count but unique count does not.
       const base = start === 100 ? 0 : start;
       return {
         total_count: 250,
@@ -489,57 +663,83 @@ Deno.test("fetchQueryFeatures reports incomplete when pages repeat records (revi
   equal(result.complete, false);
 });
 
-Deno.test("/wiki/:topic marks the inventory incomplete when pages repeat records (review chrome-status-lite-lmj round 5)", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
-      const start = options.start ?? 0;
-      const base = start === 100 ? 0 : start;
-      return {
-        total_count: 250,
-        features: Array.from({ length: start === 200 ? 50 : 100 }, (_, i) => ({
-          id: `${query}-${base + i}`,
-          name: `${query} feature ${base + i}`,
-        })),
-      };
-    },
-  }));
-  const res = await handler(new Request("https://chromestatuslite.com/wiki/javascript"));
+test("/wiki/:topic marks the inventory incomplete when pages repeat records (review chrome-status-lite-lmj round 5)", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async (
+        query: string,
+        options: { num?: number; start?: number } = {},
+      ) => {
+        const start = options.start ?? 0;
+        const base = start === 100 ? 0 : start;
+        return {
+          total_count: 250,
+          features: Array.from(
+            { length: start === 200 ? 50 : 100 },
+            (_, i) => ({
+              id: `${query}-${base + i}`,
+              name: `${query} feature ${base + i}`,
+            }),
+          ),
+        };
+      },
+    }),
+  });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/wiki/javascript"),
+  );
   equal(res.status, 200);
   const html = await res.text();
   includes(html, "is incomplete");
   includes(html, "javascript feature 200");
-  if (html.includes("javascript feature 100")) throw new Error("duplicate page rendered as distinct records");
+  if (html.includes("javascript feature 100")) {
+    throw new Error("duplicate page rendered as distinct records");
+  }
 });
 
-Deno.test("getTopicData unions every query, deduped, with failure flags (review chrome-status-lite-4p4)", async () => {
-  const topic = getTopic("device")!; // four queries: webusb, web bluetooth, webserial, webhid
+test("getTopicData unions every query, deduped, with failure flags (review chrome-status-lite-4p4)", async () => {
+  const topic = getTopic("device")!;
   const client = fixtureClient({
     getFeaturesByQuery: async (query: string) => {
-      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
-      if (query === "web bluetooth") return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+      if (query === "webusb") {
+        return {
+          total_count: 2,
+          features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }],
+        };
+      }
+      if (query === "web bluetooth") {
+        return {
+          total_count: 2,
+          features: [
+            { id: 2, name: "WebSerial" },
+            { id: 3, name: "WebBluetooth" },
+          ],
+        };
+      }
       if (query === "webserial") throw new Error("upstream down");
       return { total_count: 0, features: [] };
     },
   });
   const data = await getTopicData(topic, client);
-  equal(data.features.length, 3); // union of both successful queries, id 2 deduped
-  equal(data.complete, false); // webserial failed outright
+  equal(data.features.length, 3);
+  equal(data.complete, false);
   equal(data.failed, false);
-  // Sorted by name for a stable render.
-  equal(data.features.map((feature) => feature.name).join(","), "WebBluetooth,WebSerial,WebUSB");
+  equal(
+    data.features.map((feature) => feature.name).join(","),
+    "WebBluetooth,WebSerial,WebUSB",
+  );
 
-  const allDown = await getTopicData(topic, fixtureClient({
-    getFeaturesByQuery: () => Promise.reject(new Error("upstream down")),
-  }));
+  const allDown = await getTopicData(
+    topic,
+    fixtureClient({
+      getFeaturesByQuery: () => Promise.reject(new Error("upstream down")),
+    }),
+  );
   equal(allDown.failed, true);
   equal(allDown.features.length, 0);
 });
 
-Deno.test("getTopicData re-dates a partial assembly to a short retry TTL (review chrome-status-lite-3mh, revised chrome-status-lite-9nh)", async () => {
-  // Originally (3mh) the partial was dropped so the very next call retried
-  // upstream - which made every anonymous visit re-run the whole fan-out
-  // (9nh). Now the partial is kept for the short retry window: shared across
-  // callers inside it, refetched after it, never pinned for the full TTL.
+test("getTopicData re-dates a partial assembly to a short retry TTL (review chrome-status-lite-3mh, revised chrome-status-lite-9nh)", async () => {
   const topic = getTopic("device")!;
   let bluetoothDown = true;
   let calls = 0;
@@ -547,50 +747,57 @@ Deno.test("getTopicData re-dates a partial assembly to a short retry TTL (review
   const client = fixtureClient({
     getFeaturesByQuery: async (query: string) => {
       calls++;
-      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
+      if (query === "webusb") {
+        return {
+          total_count: 2,
+          features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }],
+        };
+      }
       if (query === "web bluetooth") {
         if (bluetoothDown) {
           bluetoothDown = false;
           throw new Error("503 transient");
         }
-        return { total_count: 2, features: [{ id: 2, name: "WebSerial" }, { id: 3, name: "WebBluetooth" }] };
+        return {
+          total_count: 2,
+          features: [
+            { id: 2, name: "WebSerial" },
+            { id: 3, name: "WebBluetooth" },
+          ],
+        };
       }
       return { total_count: 0, features: [] };
     },
   });
   const first = await getTopicData(topic, client, () => t);
-  equal(first.features.length, 2); // bluetooth down: only webusb's pair
+  equal(first.features.length, 2);
   equal(first.complete, false);
   const callsAfterFirst = calls;
-  // Inside the retry window the partial is shared, not re-fanned-out.
   const withinWindow = await getTopicData(topic, client, () => t);
   equal(withinWindow.features.length, 2);
   equal(withinWindow.complete, false);
   equal(calls, callsAfterFirst);
-  // After the window the assembly is refetched and picks up the recovery.
   t += TOPIC_RETRY_TTL + 1;
   const second = await getTopicData(topic, client, () => t);
-  if (calls === callsAfterFirst) throw new Error("retry window outlived the TTL");
-  equal(second.features.length, 3); // recovered bluetooth adds WebBluetooth; id 2 still deduped
+  if (calls === callsAfterFirst) {
+    throw new Error("retry window outlived the TTL");
+  }
+  equal(second.features.length, 3);
   equal(second.complete, true);
-  // The recovered, complete assembly IS cached for the full TTL: another
-  // call after another retry window refetches nothing.
   t += TOPIC_RETRY_TTL + 1;
   const third = await getTopicData(topic, client, () => t);
   equal(third.complete, true);
-  equal(calls, callsAfterFirst + 4); // device has 4 queries: one refetch each, nothing more
+  equal(calls, callsAfterFirst + 4);
 });
 
-Deno.test("fetchQueryFeatures treats a 200 with no total_count as incomplete (review chrome-status-lite-i11)", async () => {
+test("fetchQueryFeatures treats a 200 with no total_count as incomplete (review chrome-status-lite-i11)", async () => {
   const client = fixtureClient({
-    getFeaturesByQuery: async () => ({}), // HTTP 200, no total_count, no features
+    getFeaturesByQuery: async () => ({}),
   });
   const result = await fetchQueryFeatures("webgpu", client);
-  equal(result.complete, false); // unknown inventory size is not "complete"
+  equal(result.complete, false);
   equal(result.features.length, 0);
 
-  // And getTopicData keeps the empty partial only for the short retry
-  // window (9nh): shared inside it, refetched after it, never full-TTL.
   let empty = true;
   let t = 0;
   const recovering = fixtureClient({
@@ -606,43 +813,48 @@ Deno.test("fetchQueryFeatures treats a 200 with no total_count as incomplete (re
   const first = await getTopicData(topic, recovering, () => t);
   equal(first.complete, false);
   const withinWindow = await getTopicData(topic, recovering, () => t);
-  equal(withinWindow.complete, false); // retry window serves the partial
+  equal(withinWindow.complete, false);
   t += TOPIC_RETRY_TTL + 1;
   const second = await getTopicData(topic, recovering, () => t);
   equal(second.complete, true);
   equal(second.features.length, 1);
 });
 
-Deno.test("/wiki marks a partial directory count as a lower bound (review chrome-status-lite-un2)", async () => {
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async (query: string) => {
-      if (query === "webusb") return { total_count: 2, features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }] };
-      if (query === "web bluetooth") throw new Error("503 persistent");
-      return { total_count: 0, features: [] };
-    },
-  }));
+test("/wiki marks a partial directory count as a lower bound (review chrome-status-lite-un2)", async () => {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async (query: string) => {
+        if (query === "webusb") {
+          return {
+            total_count: 2,
+            features: [{ id: 1, name: "WebUSB" }, { id: 2, name: "WebSerial" }],
+          };
+        }
+        if (query === "web bluetooth") throw new Error("503 persistent");
+        return { total_count: 0, features: [] };
+      },
+    }),
+  });
   const res = await handler(new Request("https://chromestatuslite.com/wiki"));
   equal(res.status, 200);
   const html = await res.text();
-  includes(html, '<a href="/wiki/device">2+ features</a>'); // lower bound, marked
+  includes(html, '<a href="/wiki/device">2+ features</a>');
   if (html.includes('<a href="/wiki/device">2 features</a>')) {
     throw new Error("partial count rendered as exact");
   }
-  // Complete topics keep their exact count and singular/plural forms.
-  const clean = await (await createHandler(fixtureClient())(new Request("https://chromestatuslite.com/wiki"))).text();
+  const clean = await (await createHandler({ client: fixtureClient() })(
+    new Request("https://chromestatuslite.com/wiki"),
+  )).text();
   includes(clean, "1 feature</a>");
 });
 
-Deno.test("fetchQueryFeatures treats a null total_count as incomplete (review chrome-status-lite-bzs)", async () => {
-  // Number(null) coerces to 0 and would pass a bare isFinite check.
+test("fetchQueryFeatures treats a null total_count as incomplete (review chrome-status-lite-bzs)", async () => {
   const client = fixtureClient({
     getFeaturesByQuery: async () => ({ total_count: null, features: [] }),
   });
   const result = await fetchQueryFeatures("webgpu", client);
   equal(result.complete, false);
 
-  // And the empty partial is kept only for the short retry window (9nh):
-  // shared inside it with no new upstream calls, refetched after it.
   let calls = 0;
   let t = 0;
   const recovering = fixtureClient({
@@ -656,31 +868,36 @@ Deno.test("fetchQueryFeatures treats a null total_count as incomplete (review ch
   equal(first.complete, false);
   const withinWindow = await getTopicData(topic, recovering, () => t);
   equal(withinWindow.complete, false);
-  equal(calls, 1); // no upstream fan-out inside the retry window
+  equal(calls, 1);
   t += TOPIC_RETRY_TTL + 1;
   const second = await getTopicData(topic, recovering, () => t);
   equal(second.complete, true);
   equal(second.features.length, 1);
-  // A numeric total_count still works (and numeric strings coerce).
   const numeric = fixtureClient({
-    getFeaturesByQuery: async () => ({ total_count: "1", features: [{ id: 9, name: "Stringy" }] }),
+    getFeaturesByQuery: async () => ({
+      total_count: "1",
+      features: [{ id: 9, name: "Stringy" }],
+    }),
   });
   equal((await fetchQueryFeatures("webgpu", numeric)).complete, true);
 });
 
-Deno.test("getTopic resolves slugs", () => {
+test("getTopic resolves slugs", () => {
   equal(getTopic("webgpu")?.title, "WebGPU");
   equal(getTopic("nope"), undefined);
 });
 
-Deno.test("fetchQueryFeatures bounds continuation concurrency with a pool shared across queries (chrome-status-lite-9nh)", async () => {
+test("fetchQueryFeatures bounds continuation concurrency with a pool shared across queries (chrome-status-lite-9nh)", async () => {
   let inFlight = 0;
   let maxInFlight = 0;
   let continuationCalls = 0;
   const client = fixtureClient({
-    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
+    getFeaturesByQuery: async (
+      query: string,
+      options: { num?: number; start?: number } = {},
+    ) => {
       const start = options.start ?? 0;
-      if (options.start !== undefined) { // first pages are not pooled (avm)
+      if (options.start !== undefined) {
         continuationCalls++;
         inFlight++;
         maxInFlight = Math.max(maxInFlight, inFlight);
@@ -689,12 +906,13 @@ Deno.test("fetchQueryFeatures bounds continuation concurrency with a pool shared
       if (options.start !== undefined) inFlight--;
       return {
         total_count: 300,
-        features: Array.from({ length: 100 }, (_, i) => ({ id: `${query}-${start + i}`, name: `F${start + i}` })),
+        features: Array.from({ length: 100 }, (_, i) => ({
+          id: `${query}-${start + i}`,
+          name: `F${start + i}`,
+        })),
       };
     },
   });
-  // Three queries fetched concurrently through ONE client (one pool):
-  // unpooled, their six continuation pages would all be in flight together.
   const results = await Promise.all([
     fetchQueryFeatures("a", client),
     fetchQueryFeatures("b", client),
@@ -704,62 +922,157 @@ Deno.test("fetchQueryFeatures bounds continuation concurrency with a pool shared
     equal(result.features.length, 300);
     equal(result.complete, true);
   }
-  equal(continuationCalls, 6); // two continuation pages per query, no retries
-  // Bounded by the pool cap, but genuinely overlapping (a serialized pool
-  // would observe 1 and multiply a capped topic's load time).
+  equal(continuationCalls, 6);
   if (maxInFlight > CONTINUATION_POOL_SIZE) {
-    throw new Error(`unbounded fan-out: ${maxInFlight} continuation pages in flight`);
+    throw new Error(
+      `unbounded fan-out: ${maxInFlight} continuation pages in flight`,
+    );
   }
-  if (maxInFlight < 2) throw new Error("pool serialized the continuation pages");
+  if (maxInFlight < 2) {
+    throw new Error("pool serialized the continuation pages");
+  }
 });
 
-Deno.test("cold /wiki with a capped topic pins the upstream call count (chrome-status-lite-9nh)", async () => {
+test("cold /wiki with a capped topic pins the upstream call count (chrome-status-lite-9nh)", async () => {
   let calls = 0;
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
-      calls++;
-      if (query === "webgpu") {
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async (
+        query: string,
+        options: { num?: number; start?: number } = {},
+      ) => {
+        calls++;
+        if (query === "webgpu") {
+          const start = options.start ?? 0;
+          return {
+            total_count: 1200,
+            features: Array.from({ length: 100 }, (_, i) => ({
+              id: `gpu-${start + i}`,
+              name: `GPU feature ${start + i}`,
+            })),
+          };
+        }
+        return { total_count: 0, features: [] };
+      },
+    }),
+  });
+  const html = await (await handler(
+    new Request("https://chromestatuslite.com/wiki"),
+  )).text();
+  const totalQueries = WIKI_TOPICS.reduce(
+    (n, topic) => n + topic.queries.length,
+    0,
+  );
+  equal(calls, totalQueries - 1 + 10);
+  includes(html, '<a href="/wiki/webgpu">1000+ features</a>');
+});
+
+test("two consecutive /wiki renders after a failed continuation share one retry window (chrome-status-lite-9nh)", async () => {
+  let calls = 0;
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async (
+        query: string,
+        options: { num?: number; start?: number } = {},
+      ) => {
+        calls++;
+        if (query !== "javascript") return { total_count: 0, features: [] };
         const start = options.start ?? 0;
-        // Over the 1000 cap: one first page + 9 continuations, then the
-        // assembly is flagged incomplete and capped at 1000.
+        if (start === 100) throw new Error("503 page 2");
         return {
-          total_count: 1200,
-          features: Array.from({ length: 100 }, (_, i) => ({ id: `gpu-${start + i}`, name: `GPU feature ${start + i}` })),
+          total_count: 250,
+          features: Array.from(
+            { length: start === 200 ? 50 : 100 },
+            (_, i) => ({
+              id: `js-${start + i}`,
+              name: `JS feature ${start + i}`,
+            }),
+          ),
         };
-      }
-      return { total_count: 0, features: [] };
-    },
-  }));
-  const html = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
-  // webgpu's single query costs 10 calls (1 + 9 continuations); every other
-  // query costs exactly its first page. Derived from the topic table so the
-  // pin survives topic definitions changing.
-  const totalQueries = WIKI_TOPICS.reduce((n, topic) => n + topic.queries.length, 0);
-  equal(calls, totalQueries - 1 + 10); // 29 queries: 28 first pages + capped webgpu's 10
-  includes(html, '<a href="/wiki/webgpu">1000+ features</a>'); // capped lower bound
-});
-
-Deno.test("two consecutive /wiki renders after a failed continuation share one retry window (chrome-status-lite-9nh)", async () => {
-  let calls = 0;
-  const handler = createHandler(fixtureClient({
-    getFeaturesByQuery: async (query: string, options: { num?: number; start?: number } = {}) => {
-      calls++;
-      if (query !== "javascript") return { total_count: 0, features: [] };
-      const start = options.start ?? 0;
-      if (start === 100) throw new Error("503 page 2"); // both attempts, every time
-      return {
-        total_count: 250,
-        features: Array.from({ length: start === 200 ? 50 : 100 }, (_, i) => ({ id: `js-${start + i}`, name: `JS feature ${start + i}` })),
-      };
-    },
-  }));
-  const first = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+      },
+    }),
+  });
+  const first = await (await handler(
+    new Request("https://chromestatuslite.com/wiki"),
+  )).text();
   const afterFirst = calls;
-  includes(first, '<a href="/wiki/javascript">150+ features</a>'); // partial, marked
-  // Before 9nh this second anonymous render re-ran the whole fan-out
-  // (including the failing continuation). The partial assembly now stays
-  // cached for the retry window: zero additional upstream calls.
-  const second = await (await handler(new Request("https://chromestatuslite.com/wiki"))).text();
+  includes(first, '<a href="/wiki/javascript">150+ features</a>');
+  const second = await (await handler(
+    new Request("https://chromestatuslite.com/wiki"),
+  )).text();
   equal(calls, afterFirst);
   includes(second, '<a href="/wiki/javascript">150+ features</a>');
+});
+
+test("D1WikiTopicStore + refreshStaleWikiTopics pre-warm topics in bounded batches and serve /wiki with zero upstream calls", async () => {
+  const wikiStore = new D1WikiTopicStore(env.DB);
+  let t = Date.now() - 10_000;
+  const seedClient = fixtureClient({
+    getFeaturesByQuery: async (query: string) => ({
+      total_count: 1,
+      features: [{ ...gpuFeature, id: query, name: `Feature for ${query}` }],
+    }),
+  });
+
+  // Refresh in batches of 3 (stays well within Free plan 50 subrequest limit).
+  const firstBatch = await refreshStaleWikiTopics(seedClient, wikiStore, {
+    batchSize: 3,
+    now: () => (t += 100),
+  });
+  equal(firstBatch.refreshed.length, 3);
+  equal(firstBatch.failed.length, 0);
+
+  // Refresh the remaining topics across subsequent ticks.
+  for (let tick = 0; tick < 4; tick++) {
+    await refreshStaleWikiTopics(seedClient, wikiStore, {
+      batchSize: 3,
+      now: () => (t += 100),
+    });
+  }
+  const allStored = await wikiStore.getAll();
+  equal(allStored.size, WIKI_TOPICS.length);
+
+  // Now /wiki and /wiki/webgpu must serve entirely from D1 with ZERO upstream calls!
+  let upstreamCalls = 0;
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async () => {
+        upstreamCalls++;
+        throw new Error("must not call upstream when D1 cache is warm");
+      },
+    }),
+    wikiStore,
+  });
+
+  const dirHtml = await (await handler(
+    new Request("https://chromestatuslite.com/wiki"),
+  )).text();
+  includes(dirHtml, '<a href="/wiki/webgpu">1 feature</a>');
+  const topicHtml = await (await handler(
+    new Request("https://chromestatuslite.com/wiki/webgpu"),
+  )).text();
+  includes(topicHtml, "Feature for webgpu");
+  equal(upstreamCalls, 0);
+});
+
+test("cold /wiki with an empty D1 store bounds fallback upstream fetches instead of fanning out across all 15 topics", async () => {
+  const wikiStore = new D1WikiTopicStore(env.DB);
+  let upstreamCalls = 0;
+  const handler = createHandler({
+    client: fixtureClient({
+      getFeaturesByQuery: async () => {
+        upstreamCalls++;
+        return { total_count: 1, features: [gpuFeature] };
+      },
+    }),
+    wikiStore,
+  });
+
+  const res = await handler(new Request("https://chromestatuslite.com/wiki"));
+  equal(res.status, 200);
+  const html = await res.text();
+  includes(html, '<a href="/wiki/webgpu">1 feature</a>');
+  // Only the first 2 cold topics fall back on demand (webgpu=1 query, css-anchor-positioning=1 query -> 2 calls),
+  // staying strictly below Cloudflare Free tier's 50 subrequests limit.
+  equal(upstreamCalls <= 4, true);
 });

@@ -1,0 +1,41 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "chromestatuslite",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-06-17",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  // Serve static assets through the Worker so every asset and 404 passes
+  // through the shared SECURITY_HEADERS gate (CSP, nosniff, referrer, XFO).
+  "assets": {
+    "directory": "./static",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none"
+  },
+  // Flip to "true" (or disable workers_dev) after chromestatuslite.com is
+  // pointed at this Worker so *.workers.dev 301-redirects to the canonical domain.
+  "vars": {
+    "REDIRECT_WORKERS_DEV": "false"
+  },
+  // D1 serverless SQLite database for feature snapshot history and pre-warmed
+  // wiki topic cache. Create once with:
+  //   npx wrangler d1 create chromestatuslite-db
+  // then replace database_id below and run `npm run db:migrate:remote`.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "chromestatuslite-db",
+      "database_id": "8925f750-6761-447a-a176-ec60af2fa19d",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Pre-warm a rotating slice of /wiki topics into D1 every 15 minutes so
+  // each invocation stays well inside the Workers Free plan 50 external
+  // subrequest cap and /wiki renders in a single D1 query.
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  }
+}

@@ -1,8 +1,13 @@
-import { ChromeStatusAPI, UpstreamFetchBudgetError } from "../src/lib/utils.ts";
+import { test } from "vitest";
+import {
+  ChromeStatusAPI,
+  formatStableDate,
+  UpstreamFetchBudgetError,
+} from "../src/lib/utils.ts";
 import { StripStream } from "../src/stream-utils.ts";
 import { equal } from "./fixture.ts";
 
-Deno.test("isolated API client caches responses until the fixture clock expires", async () => {
+test("isolated API client caches responses until the fixture clock expires", async () => {
   let now = 1000;
   let calls = 0;
   const entries = new Map<string, { value: unknown; expires: number }>();
@@ -21,7 +26,9 @@ Deno.test("isolated API client caches responses until the fixture clock expires"
     fetcher: async (input) => {
       equal(String(input), "https://chromestatus.com/api/v0/features/123");
       calls++;
-      return new Response(`)]}'\n${JSON.stringify({ id: 123, name: `fixture-${calls}` })}`);
+      return new Response(
+        `)]}'\n${JSON.stringify({ id: 123, name: `fixture-${calls}` })}`,
+      );
     },
   });
   equal((await client.getFeature(123)).name, "fixture-1");
@@ -33,14 +40,13 @@ Deno.test("isolated API client caches responses until the fixture clock expires"
   equal(calls, 2);
 });
 
-Deno.test("fetchJson throws on non-2xx HTTP responses", async () => {
+test("fetchJson throws on non-2xx HTTP responses", async () => {
   const client = new ChromeStatusAPI({
-    fetcher: async () => {
-      return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+    fetcher: async () =>
+      new Response(JSON.stringify({ error: "Internal Server Error" }), {
         status: 500,
         headers: { "content-type": "application/json" },
-      });
-    },
+      }),
   });
 
   let caught = false;
@@ -53,10 +59,7 @@ Deno.test("fetchJson throws on non-2xx HTTP responses", async () => {
   equal(caught, true);
 });
 
-Deno.test("retryable upstream failures are negative-cached: N requests make one upstream call", async () => {
-  // A 5xx during an upstream outage used to be re-issued by every incoming
-  // request, amplifying traffic 1:1 onto chromestatus.com. Inside the
-  // negative-cache window the remembered error must be rethrown instead.
+test("retryable upstream failures are negative-cached: N requests make one upstream call", async () => {
   let calls = 0;
   const client = new ChromeStatusAPI({
     negativeCacheMaxAge: 60_000,
@@ -78,7 +81,7 @@ Deno.test("retryable upstream failures are negative-cached: N requests make one 
   equal(calls, 1);
 });
 
-Deno.test("fetch-throw (network/timeout) failures are negative-cached too", async () => {
+test("fetch-throw (network/timeout) failures are negative-cached too", async () => {
   let calls = 0;
   const client = new ChromeStatusAPI({
     negativeCacheMaxAge: 60_000,
@@ -100,9 +103,11 @@ Deno.test("fetch-throw (network/timeout) failures are negative-cached too", asyn
   equal(calls, 1);
 });
 
-Deno.test("a negative-cache entry expires and the path is re-fetched upstream", async () => {
+test("a negative-cache entry expires and the path is re-fetched upstream", async () => {
+  let now = 1000;
   let calls = 0;
   const client = new ChromeStatusAPI({
+    now: () => now,
     negativeCacheMaxAge: 30,
     fetcher: async () => {
       calls++;
@@ -117,7 +122,6 @@ Deno.test("a negative-cache entry expires and the path is re-fetched upstream", 
     caught = true;
   }
   equal(caught, true);
-  // Still inside the window: remembered error, no new upstream call.
   caught = false;
   try {
     await client.getFeature(123);
@@ -126,16 +130,12 @@ Deno.test("a negative-cache entry expires and the path is re-fetched upstream", 
   }
   equal(caught, true);
   equal(calls, 1);
-  // Past the TTL the entry must expire: the next request re-fetches and a
-  // recovered upstream is served.
-  await new Promise((resolve) => setTimeout(resolve, 60));
+  now += 60;
   equal((await client.getFeature(123)).id, 123);
   equal(calls, 2);
 });
 
-Deno.test("client errors (404) are not negative-cached", async () => {
-  // A 404 reflects the path, not upstream health: every request must reach
-  // upstream so a resource that appears later is picked up immediately.
+test("client errors (404) are not negative-cached", async () => {
   let calls = 0;
   const client = new ChromeStatusAPI({
     negativeCacheMaxAge: 60_000,
@@ -157,15 +157,12 @@ Deno.test("client errors (404) are not negative-cached", async () => {
   equal(calls, 3);
 });
 
-Deno.test("concurrent requests to one failing path share one upstream call (chrome-status-lite-9da)", async () => {
-  // Before coalescing, a burst overlapping the slow first attempt all missed
-  // the (negative) cache and each issued its own upstream call: 20
-  // concurrent requests during an outage made 20 upstream calls.
+test("concurrent requests to one failing path share one upstream call (chrome-status-lite-9da)", async () => {
   let calls = 0;
   const client = new ChromeStatusAPI({
     fetcher: async () => {
       calls++;
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 20));
       return new Response("down", { status: 503 });
     },
   });
@@ -174,8 +171,6 @@ Deno.test("concurrent requests to one failing path share one upstream call (chro
   );
   equal(calls, 1);
   for (const result of results) equal(result.status, "rejected");
-  // The shared rejection is also the negative-cached one: the next
-  // sequential request is served from the negative cache.
   let caught = false;
   try {
     await client.getFeature(123);
@@ -186,12 +181,12 @@ Deno.test("concurrent requests to one failing path share one upstream call (chro
   equal(calls, 1);
 });
 
-Deno.test("concurrent requests to one healthy path share one upstream call", async () => {
+test("concurrent requests to one healthy path share one upstream call", async () => {
   let calls = 0;
   const client = new ChromeStatusAPI({
     fetcher: async () => {
       calls++;
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 15));
       return new Response(`)]}'\n${JSON.stringify({ id: 123 })}`);
     },
   });
@@ -202,7 +197,7 @@ Deno.test("concurrent requests to one healthy path share one upstream call", asy
   for (const result of results) equal(result.id, 123);
 });
 
-Deno.test("getFeaturesForVersion sends the milestone as one encoded upstream parameter", async () => {
+test("getFeaturesForVersion sends the milestone as one encoded upstream parameter", async () => {
   const seen: string[] = [];
   const client = new ChromeStatusAPI({
     fetcher: async (input) => {
@@ -214,7 +209,7 @@ Deno.test("getFeaturesForVersion sends the milestone as one encoded upstream par
   equal(seen[0], "https://chromestatus.com/api/v0/features?milestone=120");
 });
 
-Deno.test("getFeaturesForVersion canonicalises the cache key per integer milestone", async () => {
+test("getFeaturesForVersion canonicalises the cache key per integer milestone", async () => {
   let calls = 0;
   const client = new ChromeStatusAPI({
     fetcher: async () => {
@@ -227,7 +222,7 @@ Deno.test("getFeaturesForVersion canonicalises the cache key per integer milesto
   equal(calls, 1);
 });
 
-Deno.test("getChannels sends the range as two encoded upstream parameters", async () => {
+test("getChannels sends the range as two encoded upstream parameters", async () => {
   const seen: string[] = [];
   const client = new ChromeStatusAPI({
     fetcher: async (input) => {
@@ -239,10 +234,7 @@ Deno.test("getChannels sends the range as two encoded upstream parameters", asyn
   equal(seen[0], "https://chromestatus.com/api/v0/channels?start=120&end=121");
 });
 
-Deno.test("getChannels canonicalises the cache key per integer range", async () => {
-  // Raw upstream-derived strings used to be interpolated into the shared LRU
-  // key, so "120&num=1" and 120 minted two entries and an unbounded number
-  // of distinct strings could flush the whole cache (chrome-status-lite-3tl).
+test("getChannels canonicalises the cache key per integer range", async () => {
   let calls = 0;
   const client = new ChromeStatusAPI({
     fetcher: async () => {
@@ -255,8 +247,10 @@ Deno.test("getChannels canonicalises the cache key per integer range", async () 
   equal(calls, 1);
 });
 
-Deno.test("getChannels rejects bounds that are not integers", async () => {
-  const client = new ChromeStatusAPI({ fetcher: async () => new Response("{}") });
+test("getChannels rejects bounds that are not integers", async () => {
+  const client = new ChromeStatusAPI({
+    fetcher: async () => new Response("{}"),
+  });
   let caught = false;
   try {
     await client.getChannels("<script>alert(1)</script>", "121");
@@ -267,7 +261,7 @@ Deno.test("getChannels rejects bounds that are not integers", async () => {
   equal(caught, true);
 });
 
-Deno.test("getChannels without both bounds keeps requesting the bare channels path", async () => {
+test("getChannels without both bounds keeps requesting the bare channels path", async () => {
   const urlFor = async (
     run: (client: ChromeStatusAPI) => Promise<unknown>,
   ): Promise<string> => {
@@ -275,14 +269,14 @@ Deno.test("getChannels without both bounds keeps requesting the bare channels pa
     const client = new ChromeStatusAPI({
       fetcher: async (input) => {
         seen.push(String(input));
-        return new Response(`)]}'\n${JSON.stringify({ dev: { version: "5" } })}`);
+        return new Response(
+          `)]}'\n${JSON.stringify({ dev: { version: "5" } })}`,
+        );
       },
     });
     await run(client);
     return seen[0];
   };
-  // Missing bounds (getVersions(), origin-trials' unbounded call) and a
-  // single bound must both keep the bare path, never a partial query.
   equal(
     await urlFor((client) => client.getChannels()),
     "https://chromestatus.com/api/v0/channels",
@@ -293,8 +287,10 @@ Deno.test("getChannels without both bounds keeps requesting the bare channels pa
   );
 });
 
-Deno.test("getFeaturesForVersion rejects milestones that are not integers", async () => {
-  const client = new ChromeStatusAPI({ fetcher: async () => new Response("{}") });
+test("getFeaturesForVersion rejects milestones that are not integers", async () => {
+  const client = new ChromeStatusAPI({
+    fetcher: async () => new Response("{}"),
+  });
   let caught = false;
   try {
     await client.getFeaturesForVersion("<script>alert(1)</script>");
@@ -305,7 +301,7 @@ Deno.test("getFeaturesForVersion rejects milestones that are not integers", asyn
   equal(caught, true);
 });
 
-Deno.test("fetchJson passes an AbortSignal to the fetcher", async () => {
+test("fetchJson passes an AbortSignal to the fetcher", async () => {
   let seenSignal: AbortSignal | undefined;
   const client = new ChromeStatusAPI({
     fetcher: async (_input, init) => {
@@ -317,10 +313,7 @@ Deno.test("fetchJson passes an AbortSignal to the fetcher", async () => {
   equal(seenSignal instanceof AbortSignal, true);
 });
 
-Deno.test("a stalled upstream times out and surfaces as a thrown error, not a hang", async () => {
-  // A fetcher that accepts the connection and then stalls forever, only
-  // settling when the passed signal aborts — the chromestatus.com failure
-  // mode that used to park route handlers indefinitely.
+test("a stalled upstream times out and surfaces as a thrown error, not a hang", async () => {
   const started = Date.now();
   const client = new ChromeStatusAPI({
     timeoutMs: 5,
@@ -340,12 +333,10 @@ Deno.test("a stalled upstream times out and surfaces as a thrown error, not a ha
   const elapsed = Date.now() - started;
   equal(caught instanceof Error, true);
   equal(caught!.message.includes("Upstream fetch failed"), true);
-  // Generous bound: must be far below the production default (15 s), proving
-  // the configured timeout fired rather than the test merely racing it.
   equal(elapsed < 5000, true);
 });
 
-Deno.test("an upstream body past the byte cap is rejected", async () => {
+test("an upstream body past the byte cap is rejected", async () => {
   const big = "x".repeat(1024);
   const client = new ChromeStatusAPI({
     maxBodyBytes: 64,
@@ -362,7 +353,7 @@ Deno.test("an upstream body past the byte cap is rejected", async () => {
   equal(caught!.message.includes("exceeded 64 bytes"), true);
 });
 
-Deno.test("an upstream response with no body throws instead of hanging", async () => {
+test("an upstream response with no body throws instead of hanging", async () => {
   const client = new ChromeStatusAPI({
     fetcher: async () => new Response(null),
   });
@@ -376,7 +367,7 @@ Deno.test("an upstream response with no body throws instead of hanging", async (
   equal(caught!.message.includes("no body"), true);
 });
 
-Deno.test("getVersions returns a bounded descending list for a well-formed channels payload", async () => {
+test("getVersions returns a bounded descending list for a well-formed channels payload", async () => {
   const client = new ChromeStatusAPI({
     fetcher: async (input) => {
       equal(String(input), "https://chromestatus.com/api/v0/channels");
@@ -393,9 +384,7 @@ Deno.test("getVersions returns a bounded descending list for a well-formed chann
   );
 });
 
-Deno.test("getVersions rejects malformed dev.version with a plain error, not a RangeError", async () => {
-  // Missing, non-numeric, negative and null-payload variants all used to hit
-  // an unguarded Array(NaN | -3) and throw an uncatchable-shaped RangeError.
+test("getVersions rejects malformed dev.version with a plain error, not a RangeError", async () => {
   const payloads = [
     {},
     { dev: {} },
@@ -405,8 +394,7 @@ Deno.test("getVersions rejects malformed dev.version with a plain error, not a R
   ];
   for (const payload of payloads) {
     const client = new ChromeStatusAPI({
-      fetcher: async () =>
-        new Response(`)]}'\n${JSON.stringify(payload)}`),
+      fetcher: async () => new Response(`)]}'\n${JSON.stringify(payload)}`),
     });
     let caught = false;
     try {
@@ -423,9 +411,7 @@ Deno.test("getVersions rejects malformed dev.version with a plain error, not a R
   }
 });
 
-Deno.test("getVersions rejects an implausibly large dev.version instead of materialising it", async () => {
-  // Array(1e9) used to be materialised (~8 GB) before .reverse() — an OOM the
-  // route-level try/catch can never run in.
+test("getVersions rejects an implausibly large dev.version instead of materialising it", async () => {
   const client = new ChromeStatusAPI({
     fetcher: async () =>
       new Response(`)]}'\n${JSON.stringify({ dev: { version: 1e9 } })}`),
@@ -440,11 +426,7 @@ Deno.test("getVersions rejects an implausibly large dev.version instead of mater
   equal(caught, true);
 });
 
-Deno.test("getVersions evicts a malformed cached channels body so the next request re-fetches", async () => {
-  // A malformed-but-parseable body used to stay cached for CACHE_MAX_AGE (1h),
-  // so every version route stayed in error notices long after upstream fixed
-  // itself. The invalid payload must be evicted: fetch #2 must actually happen
-  // and a recovered payload must be served.
+test("getVersions evicts a malformed cached channels body so the next request re-fetches", async () => {
   let fetches = 0;
   const client = new ChromeStatusAPI({
     fetcher: async () => {
@@ -467,10 +449,7 @@ Deno.test("getVersions evicts a malformed cached channels body so the next reque
   equal(versions.length, 120);
 });
 
-Deno.test("getVersions still rejects with a plain error on a cache without del", async () => {
-  // get/set-only doubles (older fixtures) must keep working: eviction is
-  // best-effort (the real LRU's delete-by-key is named `del`), the guard
-  // itself is not conditional on it.
+test("getVersions still rejects with a plain error on a cache without del", async () => {
   const client = new ChromeStatusAPI({
     cache: {
       get: () => undefined,
@@ -489,12 +468,7 @@ Deno.test("getVersions still rejects with a plain error on a cache without del",
   equal(caught, true);
 });
 
-Deno.test("uncached feature-detail fetches are budgeted, cached ones are free (chrome-status-lite-d9s)", async () => {
-  // Feature ids are shape-validated only (1-16 digits), so the accepted set
-  // is ~10^16 and every distinct uncached id would otherwise cost an
-  // upstream round trip: one client could drive chromestatus.com 1:1. The
-  // bucket caps that aggregate rate at `burst`, and only for work that
-  // really reaches upstream.
+test("uncached feature-detail fetches are budgeted, cached ones are free (chrome-status-lite-d9s)", async () => {
   let now = 0;
   let calls = 0;
   const client = new ChromeStatusAPI({
@@ -517,13 +491,8 @@ Deno.test("uncached feature-detail fetches are budgeted, cached ones are free (c
   }
   equal(caught instanceof UpstreamFetchBudgetError, true);
   equal((caught as UpstreamFetchBudgetError).retryAfterMs, 1000);
-  // The refusal is local: no upstream call, and it must not be cached as an
-  // error, so after the wait the same id is a clean fetch.
   equal(calls, 3);
 
-  // A cache hit (the first client_test case above proves hits do not refetch)
-  // must not be charged either: repeat an already-cached id while the bucket
-  // is empty and it still resolves.
   const cache = new Map<string, unknown>();
   const cachedClient = new ChromeStatusAPI({
     now: () => now,
@@ -538,11 +507,8 @@ Deno.test("uncached feature-detail fetches are budgeted, cached ones are free (c
     fetcher: async () => new Response(`)]}'\n${JSON.stringify({ id: 7 })}`),
   });
   await cachedClient.getFeature("7");
-  // Bucket now empty; the cached id resolves without a token.
   equal((await cachedClient.getFeature("7")).id, 7);
 
-  // Refill is time-based: one second later exactly one more uncached fetch
-  // is allowed, and the bucket is empty again immediately after.
   now += 1000;
   await client.getFeature("105");
   equal(calls, 4);
@@ -556,11 +522,7 @@ Deno.test("uncached feature-detail fetches are budgeted, cached ones are free (c
   equal(calls, 4);
 });
 
-Deno.test("a live negative cache entry does not consume the fetch budget (chrome-status-lite-d9s)", async () => {
-  // Only a genuine upstream round trip is charged: an id whose retryable
-  // failure is remembered is answered from the negative cache, so repeat
-  // requests inside the window must not burn tokens (they would otherwise
-  // turn an upstream outage into a self-inflicted 429).
+test("a live negative cache entry does not consume the fetch budget (chrome-status-lite-d9s)", async () => {
   let now = 0;
   let calls = 0;
   const client = new ChromeStatusAPI({
@@ -584,47 +546,121 @@ Deno.test("a live negative cache entry does not consume the fetch budget (chrome
   equal(calls, 1);
 });
 
-Deno.test("StripStream drops the XSSI prefix across chunk boundaries, and only at the body start (chrome-status-lite-95fa)", async () => {
-  // chromestatus.com guards its JSON with ")]}'\n". The decision used to be
-  // taken on chunk ONE alone, so a chunk boundary inside the prefix - legal, an
-  // HTTP/2 frame or a proxy may deliver one to four bytes first - left the
-  // prefix in the body, JSON.parse threw and fetchJson marked the whole read
-  // failed. The stream now waits for five bytes (or the end of a shorter body)
-  // before deciding.
+test("L2 edgeCache serves cached JSON without charging the feature budget or hitting upstream", async () => {
+  let upstreamCalls = 0;
+  const edgeStore = new Map<string, Response>();
+  const edgeCache = {
+    match: async (req: Request | string) => {
+      const key = typeof req === "string" ? req : req.url;
+      return edgeStore.get(key)?.clone();
+    },
+    put: async (req: Request | string, res: Response) => {
+      const key = typeof req === "string" ? req : req.url;
+      edgeStore.set(key, res.clone());
+    },
+  };
+  const pending: Promise<unknown>[] = [];
+  const firstClient = new ChromeStatusAPI({
+    edgeCache,
+    waitUntil: (p) => pending.push(p),
+    fetcher: async () => {
+      upstreamCalls++;
+      return new Response(`)]}'\n${JSON.stringify({ id: 42, name: "Edge" })}`);
+    },
+  });
+  equal((await firstClient.getFeature("42")).name, "Edge");
+  await Promise.all(pending);
+  equal(upstreamCalls, 1);
+
+  // Fresh isolate client (empty L1 cache, burst 0) must still serve from L2 edgeCache.
+  const secondClient = new ChromeStatusAPI({
+    edgeCache,
+    featureFetchBudget: { burst: 0, refillPerSecond: 0 },
+    fetcher: async () => {
+      upstreamCalls++;
+      throw new Error("must not call upstream on L2 hit");
+    },
+  });
+  equal((await secondClient.getFeature("42")).name, "Edge");
+  equal(upstreamCalls, 1);
+});
+
+test("getWebStatusFeature validates slugs, caches results, and fails open on errors", async () => {
+  let calls = 0;
+  const client = new ChromeStatusAPI({
+    fetcher: async (input) => {
+      calls++;
+      equal(
+        String(input),
+        "https://api.webstatus.dev/v1/features/anchor-positioning",
+      );
+      return new Response(
+        JSON.stringify({
+          feature_id: "anchor-positioning",
+          baseline: { status: "newly", low_date: "2026-09-14" },
+        }),
+      );
+    },
+  });
+
+  // Invalid slugs are rejected without touching the network.
+  equal(await client.getWebStatusFeature("../etc/passwd"), null);
+  equal(await client.getWebStatusFeature("Missing feature"), null);
+  equal(calls, 0);
+
+  const first = await client.getWebStatusFeature("anchor-positioning");
+  equal(first?.baseline?.status, "newly");
+  const second = await client.getWebStatusFeature("anchor-positioning");
+  equal(second?.baseline?.low_date, "2026-09-14");
+  equal(calls, 1);
+
+  // Network/HTTP failures fail open (return null).
+  const failing = new ChromeStatusAPI({
+    fetcher: async () => new Response("err", { status: 503 }),
+  });
+  equal(await failing.getWebStatusFeature("anchor-positioning"), null);
+});
+
+test("formatStableDate always formats in UTC regardless of timezone", () => {
+  equal(formatStableDate("2024-01-01T00:00:00Z"), "2024-01-01");
+  equal(formatStableDate("2024-03-15T23:59:59Z"), "2024-03-15");
+  equal(formatStableDate("unknown"), null);
+  equal(formatStableDate(""), null);
+  equal(formatStableDate(null), null);
+});
+
+test("StripStream drops the XSSI prefix across chunk boundaries, and only at the body start (chrome-status-lite-95fa)", async () => {
   const encoder = new TextEncoder();
   const strip = async (chunks: (string | Uint8Array)[]): Promise<string> => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         for (const chunk of chunks) {
-          controller.enqueue(typeof chunk === "string" ? encoder.encode(chunk) : chunk);
+          controller.enqueue(
+            typeof chunk === "string" ? encoder.encode(chunk) : chunk,
+          );
         }
         controller.close();
       },
     });
-    return new TextDecoder().decode(await new Response(stream.pipeThrough(new StripStream())).bytes());
+    const bytes = await new Response(
+      stream.pipeThrough(new StripStream()),
+    ).arrayBuffer();
+    return new TextDecoder().decode(bytes);
   };
 
-  // Stripped, and the rest of the body survives byte for byte (UTF-8 included,
-  // so the slice is by bytes and not by characters).
-  equal(await strip([`)]}'\n${'{"name":"Chrome ✓"}'}`]), '{"name":"Chrome ✓"}');
-  // ... and every way the prefix can be split across chunks.
+  equal(
+    await strip([`)]}'\n${'{"name":"Chrome ✓"}'}`]),
+    '{"name":"Chrome ✓"}',
+  );
   equal(await strip([")", "]}'\n{\"a\":1}"]), '{"a":1}');
   equal(await strip([")]", "}'\n{\"a\":1}"]), '{"a":1}');
   equal(await strip([")]}'", "\n{\"a\":1}"]), '{"a":1}');
   equal(await strip([")", "]", "}", "'", "\n{\"a\":1}"]), '{"a":1}');
-
-  // No prefix: the body passes through untouched, including one shorter than
-  // the prefix and one whose first chunk is a single byte.
   equal(await strip(['{"a":1}']), '{"a":1}');
   equal(await strip(["{}"]), "{}");
   equal(await strip(["{", '"a":1}']), '{"a":1}');
-  // Only the body start is inspected, so a prefix-looking run later is data.
   equal(await strip(['{"a":1}', ")]}'\n"]), `{"a":1})]}'\n`);
-
-  // A prefix with no body, and no body at all.
   equal(await strip([")]}'\n"]), "");
   equal(await strip([]), "");
-
-  // After the decision every later chunk is forwarded untouched.
   equal(await strip([")]}'\n", '{"a":', "1}"]), '{"a":1}');
 });

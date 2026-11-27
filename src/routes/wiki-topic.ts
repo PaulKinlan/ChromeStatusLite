@@ -1,7 +1,6 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
-
-import nav from "../ui-components/nav.ts";
+import linkify from "../lib/linkify.ts";
 import {
   consensus,
   getTopic,
@@ -9,64 +8,55 @@ import {
   tagFeature,
   timeline,
 } from "../lib/wiki.ts";
-import { fetchQueryFeatures, getTopicData } from "../lib/wiki-data.ts";
+import {
+  fetchQueryFeatures,
+  getTopicData,
+  type WikiTopicStore,
+} from "../lib/wiki-data.ts";
+import {
+  htmlResponse,
+  NO_STORE_CACHE_CONTROL,
+} from "../ui-components/layout.ts";
 
-// Re-exported so existing imports of the paginated query fetcher keep
-// working; its home is the shared wiki-data module.
+// Re-exported so existing imports of the paginated query fetcher keep working.
 export { fetchQueryFeatures };
 
 const renderNotFound = (slug: string, canonical: string, path: string) =>
-  template`
-  <!doctype html>
-<html lang="en">
-
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Topic not found</title>
-  <link rel="canonical" href="${canonical}">
-  <link rel="stylesheet" href="/styles/index.css">
-</head>
-
-<body>
-  ${nav(path)}
-  <main id="main">
-  <h1>Topic not found</h1>
+  htmlResponse({
+    status: 404,
+    cacheControl: NO_STORE_CACHE_CONTROL,
+    title: "Topic not found",
+    canonical,
+    currentPath: path,
+    body: template`<h1>Topic not found</h1>
   <p>No wiki topic <code>${slug}</code> exists. Browse the
-     <a href="/wiki">topic directory</a>.</p>
-  </main>
-</body>
+     <a href="/wiki">topic directory</a>.</p>`,
+  });
 
-</html>`.then(
-    (data) =>
-      new Response(data, {
-        status: 404,
-        headers: { "content-type": "text/html" },
-      })
-  );
-
-const renderFeature = (feature, crossTags: string[]) => {
+const renderFeature = (feature: any, crossTags: string[]) => {
   const id = encodeURIComponent(String(feature.id));
   const name = feature.name || "Unnamed feature";
-  const summary = feature.summary || "";
+  const summary = feature.summary ? linkify(feature.summary) : template``;
   return template`
     <article class="wiki-feature">
       <h3><a href="/feature/${id}">${name}</a></h3>
       <p>${summary}</p>
-      ${crossTags.length > 0
-        ? template`<p><small>Also tagged: ${crossTags.map((slug) =>
-            template`<a href="/wiki/${slug}">${
-              getTopic(slug)?.title || slug
-            }</a> `
-          )}</small></p>`
-        : template``}
+      ${
+    crossTags.length > 0
+      ? template`<p><small>Also tagged: ${
+        crossTags.map((slug) =>
+          template`<a href="/wiki/${slug}">${
+            getTopic(slug)?.title || slug
+          }</a> `
+        )
+      }</small></p>`
+      : template``
+  }
     </article>`;
 };
 
-const renderConsensus = (features) => {
+const renderConsensus = (features: any[]) => {
   const tally = consensus(features);
-  // consensus() always returns the same three browser keys, so the guard
-  // must be on whether any row actually has counts, not on rows.length.
   const rows = Object.entries(tally)
     .map(([label, counts]) => ({
       label,
@@ -76,39 +66,61 @@ const renderConsensus = (features) => {
   if (rows.length === 0) return template``;
   return template`
   <h2>Cross-browser consensus</h2>
-  <ul class="wiki-consensus">${rows.map(({ label, entries }) =>
-    template`<li><strong>${label}:</strong> ${entries.map(([text, count], index) =>
-      template`${index > 0 ? ", " : ""}${text} (${count})`
-    )}</li>`
-  )}</ul>`;
+  <ul class="wiki-consensus">${
+    rows.map(({ label, entries }) =>
+      template`<li><strong>${label}:</strong> ${
+        entries.map(([text, count], index) =>
+          template`${index > 0 ? ", " : ""}${text} (${count})`
+        )
+      }</li>`
+    )
+  }</ul>`;
 };
 
-const renderStages = (features, tagsById: Map<string, string[]>, topicSlug: string) => {
+const renderStages = (
+  features: any[],
+  tagsById: Map<string, string[]>,
+  topicSlug: string,
+) => {
   const groups = stageGroups(features);
   if (groups.length === 0) return template``;
   return template`
   <h2>Features by stage</h2>
-  ${groups.map(({ stage, features: groupFeatures }) => template`
+  ${
+    groups.map(({ stage, features: groupFeatures }) =>
+      template`
     <section class="wiki-stage">
       <h3>${stage} (${groupFeatures.length})</h3>
-      ${groupFeatures.map((feature) =>
-        renderFeature(
-          feature,
-          (tagsById.get(String(feature.id)) || []).filter((slug) => slug !== topicSlug),
+      ${
+        groupFeatures.map((feature) =>
+          renderFeature(
+            feature,
+            (tagsById.get(String(feature.id)) || []).filter((slug) =>
+              slug !== topicSlug
+            ),
+          )
         )
-      )}
-    </section>`)}`;
+      }
+    </section>`
+    )
+  }`;
 };
 
-const renderTimeline = (features) => {
+const renderTimeline = (features: any[]) => {
   const entries = timeline(features);
   if (entries.length === 0) return template``;
   return template`
   <h2>Timeline</h2>
   <ul class="wiki-timeline">
-    ${entries.map(({ milestone, feature }) => template`
+    ${
+    entries.map(({ milestone, feature }) =>
+      template`
       <li>Chrome <a href="/?version=${milestone}">${milestone}</a> —
-        <a href="/feature/${encodeURIComponent(String(feature.id))}">${feature.name || "Unnamed feature"}</a></li>`)}
+        <a href="/feature/${encodeURIComponent(String(feature.id))}">${
+        feature.name || "Unnamed feature"
+      }</a></li>`
+    )
+  }
   </ul>`;
 };
 
@@ -116,6 +128,8 @@ export default async function render(
   request: Request,
   match: URLPatternResult,
   chromeStatusAPI: StatusClient,
+  wikiStore: WikiTopicStore | null = null,
+  waitUntil?: (promise: Promise<unknown>) => void,
 ): Promise<Response> {
   const url = new URL(request.url);
   const canonical = `https://chromestatuslite.com${url.pathname + url.search}`;
@@ -123,20 +137,23 @@ export default async function render(
   const topic = getTopic(slug);
   if (!topic) return renderNotFound(slug, canonical, url.pathname);
 
-  const data = await getTopicData(topic, chromeStatusAPI);
+  const data = await getTopicData(
+    topic,
+    chromeStatusAPI,
+    Date.now,
+    wikiStore,
+    waitUntil,
+  );
 
-  let contentBody;
+  let contentBody: unknown;
   if (data.failed) {
-    contentBody = template`<p class="error-notice">Unable to load topic data from chromestatus.com. Please try again later.</p>`;
+    contentBody =
+      template`<p class="error-notice">Unable to load topic data from chromestatus.com. Please try again later.</p>`;
   } else {
-    // A query that failed outright, a failed continuation page, or a capped
-    // result means what follows is partial: say so rather than presenting
-    // the rendered subset as the complete topic inventory. The notice applies
-    // to the empty branch too: "no features tagged" is only truthful when
-    // every query actually succeeded.
     const incomplete = !data.complete;
     const features = data.features;
-    const incompleteNotice = template`<p class="error-notice">Some features could not be loaded from chromestatus.com; the list below is incomplete.</p>`;
+    const incompleteNotice =
+      template`<p class="error-notice">Some features could not be loaded from chromestatus.com; the list below is incomplete.</p>`;
     if (features.length === 0) {
       contentBody = incomplete
         ? template`${incompleteNotice}<p>No features were returned by the queries that did load.</p>`
@@ -147,42 +164,28 @@ export default async function render(
       );
       contentBody = template`
       ${incomplete ? incompleteNotice : template``}
-      <p>${features.length} feature${features.length === 1 ? "" : "s"} tagged with this topic.</p>
+      <p>${features.length} feature${
+        features.length === 1 ? "" : "s"
+      } tagged with this topic.</p>
       ${renderConsensus(features)}
       ${renderStages(features, tagsById, topic.slug)}
       ${renderTimeline(features)}`;
     }
   }
 
-  return template`
-  <!doctype html>
-<html lang="en">
-
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${topic.title} — Web Platform Topic Wiki</title>
-  <link rel="canonical" href="${canonical}">
-  <link rel="stylesheet" href="/styles/index.css">
-</head>
-
-<body>
-  ${nav(url.pathname)}
-  <main id="main">
-  <p><a href="/wiki">&larr; Topic directory</a></p>
+  return htmlResponse({
+    title: `${topic.title} — Web Platform Topic Wiki`,
+    canonical,
+    description: topic.description,
+    currentPath: url.pathname,
+    cacheControl: data.failed || !data.complete
+      ? NO_STORE_CACHE_CONTROL
+      : undefined,
+    body: template`<p><a href="/wiki">&larr; Topic directory</a></p>
   <h1>${topic.title}</h1>
   <p>${topic.description}</p>
   <div id="output">
     ${contentBody}
-  </div>
-  </main>
-</body>
-
-</html>`.then(
-    (data) =>
-      new Response(data, {
-        status: 200,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      })
-  );
+  </div>`,
+  });
 }

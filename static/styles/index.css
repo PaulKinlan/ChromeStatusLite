@@ -256,6 +256,13 @@ a,dd,li,p,blockquote{overflow-wrap:break-word;word-break:break-word}
 .badge.ot.upcoming { background: light-dark(#e3f2fd, #16283a); color: light-dark(#1565c0, #8dc2ff); border: 1px solid light-dark(#bbdefb, #274a6b); }
 .badge.ot.past { background: light-dark(#f5f5f5, #262626); color: light-dark(#616161, #b5b5b5); border: 1px solid light-dark(#e0e0e0, #3a3a3a); }
 .badge.impact { background: light-dark(#ede7f6, #291f3a); color: light-dark(#4527a0, #c3b0ff); border: 1px solid light-dark(#d1c4e9, #443463); }
+.badge.baseline-widely { background: light-dark(#e6f4ea, #14301c); color: light-dark(#137333, #81c995); border: 1px solid light-dark(#ceead6, #285233); }
+.badge.baseline-newly { background: light-dark(#e8f0fe, #172a45); color: light-dark(#1967d2, #8ab4f8); border: 1px solid light-dark(#d2e3fc, #2c4a75); }
+.badge.baseline-limited { background: light-dark(#fef7e0, #3a2f14); color: light-dark(#b06000, #fdd663); border: 1px solid light-dark(#feefc3, #66501e); }
+/* Defer rendering of below-the-fold repeated sections (modern-web-guidance:
+   defer-rendering-heavy-content). Always paired with contain-intrinsic-size so
+   off-screen sections keep an estimated height and never jump the scrollbar. */
+.milestone-timeline, .milestone-trials, .wiki-stage { content-visibility: auto; contain-intrinsic-size: auto none auto 220px; }
 .milestone-timeline, .milestone-trials { margin-bottom: 2.5em; padding-bottom: 1.5em; border-bottom: 1px solid var(--border); }
 .milestone-date { font-weight: normal; color: var(--subtle); font-size: 0.85em; margin-left: 0.3em; }
 .breaking-item, .origin-trial-item { margin: 1em 0 1.5em; padding-left: 0.5em; }

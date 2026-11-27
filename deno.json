@@ -1,6 +1,0 @@
-{
-  "tasks": {
-    "test:fast": "bash tools/fast-gate.sh",
-    "test:full": "bash tools/full-gate.sh"
-  }
-}

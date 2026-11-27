@@ -1,83 +1,56 @@
 import { StripStream } from "../stream-utils.ts";
-import LRU from "https://deno.land/x/lru_cache@6.0.0-deno.4/mod.ts";
-import { format as formatDateTime } from "https://deno.land/std@0.152.0/datetime/mod.ts";
+import { type CacheLike, TTLCache } from "./lru.ts";
 
 // Parses an upstream stable_date, or null when the value is absent or
-// unparseable. Callers must validate before formatting: std datetime's
-// format renders an Invalid Date as "NaN-NaN-NaN" and Date.toUTCString()
-// renders it as "Invalid Date" rather than throwing.
+// unparseable. Callers must validate before formatting: Date.toUTCString()
+// renders an Invalid Date as "Invalid Date" rather than throwing.
 export function parseStableDate(value: unknown): Date | null {
   if (typeof value !== "string" || value === "") return null;
   const date = new Date(value);
-  return isNaN(date.getTime()) ? null : date;
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-// Renders an upstream stable_date as "yyyy-MM-dd", or null when the value is
-// absent or unparseable.
+// Renders an upstream stable_date as UTC "yyyy-MM-dd", or null when the value
+// is absent or unparseable. Always uses UTC so rendered dates never drift by
+// a day across developer or edge timezones.
 export function formatStableDate(value: unknown): string | null {
   const date = parseStableDate(value);
-  return date ? formatDateTime(date, "yyyy-MM-dd") : null;
+  return date ? date.toISOString().slice(0, 10) : null;
 }
 
 const CHROMESTATUS_API_ENDPOINT = "https://chromestatus.com";
+const WEBSTATUS_API_ENDPOINT = "https://api.webstatus.dev";
 // Single-sourced because it is also the cache key getVersions() must evict
 // when it finds the cached body malformed (chrome-status-lite-8uv).
 const CHANNELS_PATH = "/api/v0/channels";
 const CACHE_MAX_ITEMS = 100;
 const CACHE_MAX_AGE = 1000 * 60 * 60; // 1 hour.
+const EDGE_CACHE_TTL_SECONDS = 3600; // 1 hour in Cloudflare Cache API.
+const WEBSTATUS_CACHE_MAX_AGE = 1000 * 60 * 60 * 6; // 6 hours.
+const WEBSTATUS_EDGE_TTL_SECONDS = 6 * 3600;
+const WEBSTATUS_TIMEOUT_MS = 5_000;
+const WEBSTATUS_MAX_BODY_BYTES = 512 * 1024; // 512 KB.
 // Upstream bounds: chromestatus.com has accepted connections and then stalled
-// in the past, and Deno's fetch has no default timeout, so without these a
-// single hung upstream parks every awaiting route handler (and its buffered
-// memory) forever. Errors from either bound are rethrown as plain Errors so
-// the existing error-notice / .catch(() => ({})) fallbacks engage.
+// in the past, so without these a single hung upstream parks every awaiting
+// route handler forever.
 const FETCH_TIMEOUT_MS = 15_000;
 const FETCH_MAX_BODY_BYTES = 16 * 1024 * 1024; // 16 MB.
 // How long a retryable upstream failure (timeout, 5xx, 429, unreadable or
-// unparseable body) is remembered before the path is retried upstream. Far
-// below CACHE_MAX_AGE: it exists to stop an outage amplifying incoming
-// traffic 1:1 onto chromestatus.com, not to serve stale errors for an hour.
-// Client errors (404 and other 4xx) are never negative-cached: they reflect
-// the path, not upstream health.
+// unparseable body) is remembered before the path is retried upstream.
 const NEGATIVE_CACHE_MAX_AGE = 10_000; // 10 s.
-// Sanity bound for the dev-channel version: real Chrome milestones are two
-// digits, so anything past this is malformed upstream data. Allocating the
-// version list before validating would throw Array(NaN) RangeErrors or
-// materialise an Array(1e9) (~8 GB) that OOMs the whole process — one bad
-// /api/v0/channels payload must not do that, it must fail like any other
-// malformed upstream body: a thrown error the routes render as an error notice.
+// Sanity bound for the dev-channel version: real Chrome milestones are three
+// digits, so anything past this is malformed upstream data.
 const MAX_PLAUSIBLE_VERSION = 2000;
 
-// Route-seam bounds for client-supplied numeric path parameters
-// (chrome-status-lite-s9w). fetchJson() keys the shared LRU on the upstream
-// path, so every distinct accepted value mints a cache entry and costs an
-// upstream call: an unbounded id or milestone lets one unauthenticated
-// client flush the whole cache. Real chromestatus feature ids are at most
-// 16 decimal digits (e.g. 5082469066604544) and real milestones sit far
-// below MAX_PLAUSIBLE_VERSION, so anything outside these bounds cannot be
-// real and is rejected at the route seam — before any upstream call or
-// cache write.
 export const MAX_FEATURE_ID_DIGITS = 16;
 const FEATURE_ID_RE = new RegExp(`^\\d{1,${MAX_FEATURE_ID_DIGITS}}$`);
 
-// Aggregate bound on the one upstream surface whose cardinality cannot be
-// narrowed (chrome-status-lite-d9s). A feature id is shape-validated only
-// (1-16 digits): real ids are both 7-digit modern ids and 16-digit legacy
-// datastore keys, so the accepted set stays ~10^16 — far more than any
-// caller could need, and every *distinct* id that is not already cached
-// costs an upstream round trip to chromestatus.com. One unauthenticated
-// client can therefore drive the API 1:1 through /feature/:id. A token
-// bucket bounds the aggregate rate without rejecting any real id shape:
-// FEATURE_FETCH_BURST fresh feature pages at once, refilling one per
-// second (60/min sustained). That ceiling sits far above any honest
-// pattern — the shared LRU retains 100 entries for an hour, so a caller
-// legitimately needing more than 60 *new* feature pages a minute could not
-// have the results kept anyway — while a flood stops at the same ceiling
-// instead of scaling with the attacker's request rate.
 const FEATURE_FETCH_BURST = 30;
 const FEATURE_FETCH_REFILL_PER_SECOND = 1;
 const MILESTONE_PARAM_RE = new RegExp(
   `^\\d{1,${String(MAX_PLAUSIBLE_VERSION).length}}$`,
 );
+const WEB_FEATURE_ID_RE = /^[a-z0-9][a-z0-9-]{0,127}$/;
 
 // A client-supplied feature id is valid only when it is a digit string no
 // longer than a real chromestatus id. Longer values (and anything
@@ -85,6 +58,11 @@ const MILESTONE_PARAM_RE = new RegExp(
 // upstream path and LRU/store key.
 export function isValidFeatureId(id: unknown): id is string {
   return typeof id === "string" && FEATURE_ID_RE.test(id);
+}
+
+// A web-features / webstatus.dev identifier slug (e.g. "anchor-positioning").
+export function isValidWebFeatureId(id: unknown): id is string {
+  return typeof id === "string" && WEB_FEATURE_ID_RE.test(id);
 }
 
 // A client-supplied milestone is parsed only when it is a plausible integer
@@ -98,9 +76,31 @@ export function parseMilestoneParam(raw: string): number | null {
   return milestone;
 }
 
+export interface WebStatusFeature {
+  feature_id?: string;
+  name?: string;
+  baseline?: {
+    status?: "widely" | "newly" | "limited" | string;
+    low_date?: string;
+    high_date?: string;
+  };
+  browser_implementations?: Record<
+    string,
+    { status?: string; version?: string; date?: string }
+  >;
+}
+
+export interface EdgeCacheLike {
+  match(request: Request | string): Promise<Response | undefined>;
+  put(request: Request | string, response: Response): Promise<void>;
+  delete?(request: Request | string): Promise<boolean>;
+}
+
 // Fails the stream once more than `limit` bytes have flowed through it, so a
 // never-ending upstream body cannot grow the buffered text without bound.
-function byteLimitStream(limit: number): TransformStream<Uint8Array, Uint8Array> {
+function byteLimitStream(
+  limit: number,
+): TransformStream<Uint8Array, Uint8Array> {
   let seen = 0;
   return new TransformStream({
     transform(chunk, controller) {
@@ -118,9 +118,7 @@ function byteLimitStream(limit: number): TransformStream<Uint8Array, Uint8Array>
 
 // A remembered retryable upstream failure. JSON.parse can never produce a
 // class instance, so a cached value of this type is unambiguously a negative
-// entry, never an upstream body. Stored in the same shared LRU (whose 1h
-// maxAge still bounds memory); the shorter expiresAt is checked on read and
-// stale entries are evicted on the next access.
+// entry, never an upstream body.
 class NegativeCacheEntry {
   constructor(
     readonly error: Error,
@@ -130,8 +128,7 @@ class NegativeCacheEntry {
 
 // Raised when the aggregate feature-detail fetch budget is exhausted
 // (chrome-status-lite-d9s). Carries the wait so the route can answer 429
-// with an honest Retry-After rather than reporting an upstream outage —
-// nothing went wrong upstream, this process declined to amplify.
+// with an honest Retry-After rather than reporting an upstream outage.
 export class UpstreamFetchBudgetError extends Error {
   constructor(readonly retryAfterMs: number) {
     super(
@@ -144,8 +141,6 @@ export class UpstreamFetchBudgetError extends Error {
 // A token bucket over *uncached* feature-detail upstream fetches. Refill is
 // computed from the clock on demand, so an idle client holds no timer and a
 // burst is cheap: `take()` either spends a token or throws with the wait.
-// Cache hits, singleflighted in-flight hits and live negative entries never
-// reach take(), so only a genuine upstream round trip is charged.
 export class FeatureFetchBudget {
   private tokens: number;
   private last: number;
@@ -173,55 +168,71 @@ export class FeatureFetchBudget {
   }
 }
 
+// Isolate-level plain-data state shared across per-request Worker clients.
+// Holds ONLY plain parsed JSON objects and numbers — never Request/Response
+// streams or in-flight fetch() Promises — so Cloudflare Workers isolates can
+// safely reuse warm data across requests without triggering cross-request I/O
+// errors.
+const sharedJsonCache = new TTLCache<string, unknown>({
+  max: CACHE_MAX_ITEMS,
+  maxAge: CACHE_MAX_AGE,
+});
+const sharedFeatureBudget = new FeatureFetchBudget(
+  FEATURE_FETCH_BURST,
+  FEATURE_FETCH_REFILL_PER_SECOND / 1000,
+  Date.now,
+);
+
+export interface ChromeStatusAPIOptions {
+  fetcher?: typeof fetch;
+  cache?: CacheLike<string, unknown>;
+  edgeCache?: EdgeCacheLike | null;
+  waitUntil?: (promise: Promise<unknown>) => void;
+  timeoutMs?: number;
+  maxBodyBytes?: number;
+  negativeCacheMaxAge?: number;
+  featureBudget?: FeatureFetchBudget;
+  featureFetchBudget?: { burst?: number; refillPerSecond?: number };
+  now?: () => number;
+}
+
 export class ChromeStatusAPI {
   private static instance: null | ChromeStatusAPI = null;
 
-  // `del` is optional so get/set-only test doubles keep working; the real
-  // LRU implements it (that is its delete-by-key name), and only the
-  // malformed-channels eviction path needs it.
-  private cache: Pick<LRU<string, any>, "get" | "set"> & {
-    del?: (key: string) => void;
-  };
+  private cache: CacheLike<string, unknown>;
+  private edgeCache: EdgeCacheLike | null;
+  private waitUntil?: (promise: Promise<unknown>) => void;
   private fetcher: typeof fetch;
   private timeoutMs: number;
   private maxBodyBytes: number;
   private negativeCacheMaxAge: number;
   private now: () => number;
-  // Bounds the aggregate rate of uncached feature-detail upstream fetches
-  // (chrome-status-lite-d9s); see FEATURE_FETCH_BURST above.
   private featureBudget: FeatureFetchBudget;
-  // Concurrent cache misses for the same path share one upstream call
-  // (singleflight): without it, an outage burst overlapping the slow (up to
-  // 15s) first attempt amplifies 1:1 before the negative cache entry exists
-  // (chrome-status-lite-9da). The same coalescing applies to successes.
-  private inFlight: Map<string, Promise<any>> = new Map();
+  // Coalesces concurrent misses for the same path within this client instance.
+  // In Cloudflare Workers, `forRequest()` creates one lightweight client per
+  // incoming request so in-flight Promises are never shared across requests.
+  private inFlight: Map<string, Promise<unknown>> = new Map();
 
-  constructor(options: {
-    fetcher?: typeof fetch;
-    cache?: Pick<LRU<string, any>, "get" | "set"> & {
-      del?: (key: string) => void;
-    };
-    timeoutMs?: number;
-    maxBodyBytes?: number;
-    negativeCacheMaxAge?: number;
-    featureFetchBudget?: { burst?: number; refillPerSecond?: number };
-    now?: () => number;
-  } = {}) {
-    this.fetcher = options.fetcher ?? fetch;
+  constructor(options: ChromeStatusAPIOptions = {}) {
+    this.fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
+    this.edgeCache = options.edgeCache ?? null;
+    this.waitUntil = options.waitUntil;
     this.timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
     this.maxBodyBytes = options.maxBodyBytes ?? FETCH_MAX_BODY_BYTES;
     this.negativeCacheMaxAge = options.negativeCacheMaxAge ??
       NEGATIVE_CACHE_MAX_AGE;
     this.now = options.now ?? Date.now;
-    this.featureBudget = new FeatureFetchBudget(
-      options.featureFetchBudget?.burst ?? FEATURE_FETCH_BURST,
-      (options.featureFetchBudget?.refillPerSecond ??
-        FEATURE_FETCH_REFILL_PER_SECOND) / 1000,
-      this.now,
-    );
-    this.cache = options.cache ?? new LRU<string, any>({
+    this.featureBudget = options.featureBudget ??
+      new FeatureFetchBudget(
+        options.featureFetchBudget?.burst ?? FEATURE_FETCH_BURST,
+        (options.featureFetchBudget?.refillPerSecond ??
+          FEATURE_FETCH_REFILL_PER_SECOND) / 1000,
+        this.now,
+      );
+    this.cache = options.cache ?? new TTLCache<string, unknown>({
       max: CACHE_MAX_ITEMS,
       maxAge: CACHE_MAX_AGE,
+      now: this.now,
     });
   }
 
@@ -232,13 +243,26 @@ export class ChromeStatusAPI {
     return ChromeStatusAPI.instance;
   }
 
+  // Creates a Cloudflare Workers per-request client that shares the warm
+  // isolate's plain-JSON L1 cache and token bucket, wires Cloudflare's L2
+  // Cache API (`caches.default`), and keeps in-flight fetch promises strictly
+  // scoped to this single request.
+  public static forRequest(options: {
+    edgeCache?: EdgeCacheLike | null;
+    waitUntil?: (promise: Promise<unknown>) => void;
+    fetcher?: typeof fetch;
+  } = {}): ChromeStatusAPI {
+    return new ChromeStatusAPI({
+      cache: sharedJsonCache,
+      featureBudget: sharedFeatureBudget,
+      edgeCache: options.edgeCache ?? null,
+      waitUntil: options.waitUntil,
+      fetcher: options.fetcher,
+    });
+  }
+
   // Both bounds are coerced to canonical integers before they feed either
-  // the upstream query or the shared LRU key (chrome-status-lite-3tl): raw
-  // values are interpolated into the key, so a non-canonical upstream
-  // string ("120&num=1") could append upstream parameters and mint an
-  // unbounded number of distinct cache entries. Same hazard and fix as
-  // getFeaturesForVersion() below; callers pass upstream-derived strings
-  // (src/routes/deprecations.ts) as well as numbers.
+  // the upstream query or the shared LRU key (chrome-status-lite-3tl).
   public async getChannels(
     start?: number | string,
     end?: number | string,
@@ -260,38 +284,31 @@ export class ChromeStatusAPI {
 
   // Returns features for a milestone grouped by status, e.g.
   // { "Enabled by default": [...], "Origin trial": [...], ... }.
-  // The old `/features_v2.json` no longer carries a usable `milestone`
-  // field, so we use the milestone query on the v0 API which groups
-  // features by type server-side.
-  // Callers pass user-influenced strings as well as numbers, so the value is
-  // coerced to a canonical integer milestone before it feeds either the
-  // upstream query or the shared LRU key: a raw string could append upstream
-  // parameters ("120&num=1") or mint unbounded cache entries.
   public async getFeaturesForVersion(version: number | string): Promise<any> {
     const milestone = Number.parseInt(String(version), 10);
     if (!Number.isFinite(milestone)) {
       throw new Error(`Invalid milestone: ${version}`);
     }
     const params = new URLSearchParams({ milestone: String(milestone) });
-    const data = await this.fetchJson(`/api/v0/features?${params}`);
-    return (data as any).features_by_type || {};
+    const data = await this.fetchJson<any>(`/api/v0/features?${params}`);
+    return data?.features_by_type || {};
   }
 
-  public async getVersions(): Promise<any> {
+  public async getVersions(): Promise<number[]> {
     const versionData = await this.getChannels();
     const rawVersion = versionData?.dev?.version;
-    const lastVersion = Number.parseInt(rawVersion);
+    const lastVersion = Number.parseInt(String(rawVersion), 10);
     if (
       !Number.isFinite(lastVersion) || lastVersion <= 0 ||
       lastVersion > MAX_PLAUSIBLE_VERSION
     ) {
-      // fetchJson() has already cached the parsed body, so without this the
-      // same malformed payload would be re-served from cache — and re-thrown
-      // — for up to CACHE_MAX_AGE (1h). Every other malformed-upstream shape
-      // throws before the cache write and recovers on the next request; drop
-      // the poisoned entry (del: the LRU's delete-by-key) so this shape does
-      // too.
       this.cache.del?.(CHANNELS_PATH);
+      if (this.edgeCache?.delete) {
+        const del = this.edgeCache.delete(
+          new Request(CHROMESTATUS_API_ENDPOINT + CHANNELS_PATH),
+        ).catch(() => false);
+        this.waitUntil?.(del);
+      }
       throw new Error(
         `Upstream returned an implausible dev.version: ${
           JSON.stringify(rawVersion)
@@ -306,10 +323,7 @@ export class ChromeStatusAPI {
     return this.fetchJson(`/api/v0/features?q=feature_type=${type}`);
   }
 
-  // Full-text search over all features. Returns { total_count, features };
-  // each feature carries the full browsers/stages payload, which the wiki
-  // topic pages group and tag from. The upstream default page size is 100,
-  // so callers needing more than a page must paginate with num/start.
+  // Full-text search over all features. Returns { total_count, features }.
   public async getFeaturesByQuery(
     query: string,
     options: { num?: number; start?: number } = {},
@@ -320,15 +334,82 @@ export class ChromeStatusAPI {
     return this.fetchJson(`/api/v0/features?${params}`);
   }
 
-  // Fetches a single feature's full detail by id. The only call site whose
-  // parameter space is unbounded, so it is the only one charged against the
-  // fetch budget (chrome-status-lite-d9s); the charge is taken inside
-  // fetchJson, after the cache/singleflight checks, so a hit is free.
+  // Fetches a single feature's full detail by id. Charged against the feature
+  // fetch budget only on an L1 + L2 cache miss.
   public async getFeature(id: string | number): Promise<any> {
     return this.fetchJson(
       `/api/v0/features/${id}`,
       () => this.featureBudget.take(),
     );
+  }
+
+  // Lightweight Baseline status lookup via api.webstatus.dev. Always fails
+  // open (returns null) so an outage on webstatus.dev never breaks a feature
+  // page, and validates the slug strictly before building the URL.
+  public async getWebStatusFeature(
+    webFeatureId: string,
+  ): Promise<WebStatusFeature | null> {
+    if (!isValidWebFeatureId(webFeatureId)) return null;
+    const cacheKey = `webstatus:${webFeatureId}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached as WebStatusFeature | null;
+    }
+
+    const url = `${WEBSTATUS_API_ENDPOINT}/v1/features/${webFeatureId}`;
+    const edgeReq = new Request(url);
+    if (this.edgeCache) {
+      const hit = await this.edgeCache.match(edgeReq).catch(() => undefined);
+      if (hit && hit.ok) {
+        try {
+          const parsed = (await hit.json()) as WebStatusFeature;
+          this.cache.set(cacheKey, parsed, WEBSTATUS_CACHE_MAX_AGE);
+          return parsed;
+        } catch {
+          // fall through to origin fetch
+        }
+      }
+    }
+
+    try {
+      const response = await this.fetcher(url, {
+        signal: AbortSignal.timeout(WEBSTATUS_TIMEOUT_MS),
+      });
+      if (!response.ok || !response.body) {
+        if (response.status === 404) {
+          this.cache.set(cacheKey, null, WEBSTATUS_CACHE_MAX_AGE);
+        }
+        return null;
+      }
+      const limited = new Response(
+        response.body.pipeThrough(byteLimitStream(WEBSTATUS_MAX_BODY_BYTES)),
+      );
+      const text = await limited.text();
+      const parsed = JSON.parse(text) as WebStatusFeature;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return null;
+      }
+      this.cache.set(cacheKey, parsed, WEBSTATUS_CACHE_MAX_AGE);
+      this.putEdgeCache(edgeReq, text, WEBSTATUS_EDGE_TTL_SECONDS);
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private putEdgeCache(request: Request, jsonText: string, ttlSeconds: number): void {
+    if (!this.edgeCache) return;
+    const cachedResponse = new Response(jsonText, {
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": `public, max-age=${ttlSeconds}`,
+      },
+    });
+    const write = this.edgeCache.put(request, cachedResponse).catch(() => {});
+    if (this.waitUntil) {
+      this.waitUntil(write);
+    }
   }
 
   // Records a retryable failure in the negative cache (unless the TTL is
@@ -344,8 +425,7 @@ export class ChromeStatusAPI {
   }
 
   // `charge`, when supplied, is spent immediately before the upstream call
-  // and never on a cache hit, an in-flight hit or a live negative entry —
-  // so it can only throw for work that would really reach chromestatus.com.
+  // and never on an L1 hit, L2 edge hit, in-flight hit or live negative entry.
   private async fetchJson<T>(
     path: string,
     charge?: () => void,
@@ -356,45 +436,57 @@ export class ChromeStatusAPI {
       if (this.now() < json.expiresAt) {
         throw json.error;
       }
-      // Stale negative entry: evict and fall through to a real re-fetch.
       this.cache.del?.(path);
       json = undefined;
     }
 
-    if (json) return json;
+    if (json !== undefined) return json as T;
 
-    let pending = this.inFlight.get(path);
+    let pending = this.inFlight.get(path) as Promise<T> | undefined;
     if (!pending) {
-      // Charge before the call is registered: a refusal must not leave an
-      // in-flight entry (or a cached error) behind, so the next attempt
-      // after the wait is a clean upstream call.
-      charge?.();
-      pending = this.fetchUpstream(path);
+      if (!this.edgeCache) {
+        // Charge synchronously before registering in-flight when there is no
+        // async L2 lookup, so a budget refusal leaves no entry behind.
+        charge?.();
+        pending = this.fetchUpstream<T>(path);
+      } else {
+        pending = this.fetchWithEdgeCache<T>(path, charge);
+      }
       this.inFlight.set(path, pending);
-      // Bookkeeping on both branches so this derived promise never rejects;
-      // the shared promise itself still rejects for every awaiting caller.
       const clear = () => this.inFlight.delete(path);
       pending.then(clear, clear);
     }
     return pending;
   }
 
+  private async fetchWithEdgeCache<T>(
+    path: string,
+    charge?: () => void,
+  ): Promise<T> {
+    const edgeReq = new Request(CHROMESTATUS_API_ENDPOINT + path);
+    const hit = await this.edgeCache?.match(edgeReq).catch(() => undefined);
+    if (hit && hit.ok) {
+      try {
+        const parsed = (await hit.json()) as T;
+        this.cache.set(path, parsed);
+        return parsed;
+      } catch {
+        // Corrupt edge cache entry: fall through to fresh upstream fetch.
+      }
+    }
+    charge?.();
+    return this.fetchUpstream<T>(path);
+  }
+
   // One upstream round-trip for `path`, caching the parsed body on success
-  // and a NegativeCacheEntry on retryable failure. Never call directly from
-  // outside fetchJson: it must run at most once per path at a time.
+  // and a NegativeCacheEntry on retryable failure.
   private async fetchUpstream<T>(path: string): Promise<T> {
     const url = CHROMESTATUS_API_ENDPOINT + path;
-    // Bound the upstream wait: Deno's fetch has no default timeout and no
-    // cancellation reaches us from the incoming request, so an abandoned
-    // render keeps reading upstream until this timeout or the body byte
-    // cap below fires.
     const signal = AbortSignal.timeout(this.timeoutMs);
     let response: Response;
     try {
       response = await this.fetcher(url, { signal });
     } catch (err) {
-      // Network failure or timeout: retryable, so remember it briefly
-      // rather than letting every incoming request re-issue the call.
       this.fail(
         path,
         new Error(
@@ -403,9 +495,6 @@ export class ChromeStatusAPI {
       );
     }
     if (!response.ok) {
-      // 5xx and 429 are upstream/transient and negative-cached; other 4xx
-      // reflect the path itself and are not (a 404 must be re-asked, in
-      // case the resource appears upstream later).
       const status = response.status;
       const error = new Error(`Upstream HTTP ${status} from ${path}`);
       if (status >= 500 || status === 429) {
@@ -435,7 +524,7 @@ export class ChromeStatusAPI {
     }
     let json: T;
     try {
-      json = JSON.parse(text);
+      json = JSON.parse(text) as T;
     } catch (err) {
       this.fail(
         path,
@@ -445,6 +534,7 @@ export class ChromeStatusAPI {
       );
     }
     this.cache.set(path, json);
+    this.putEdgeCache(new Request(url), text, EDGE_CACHE_TTL_SECONDS);
     return json;
   }
 }

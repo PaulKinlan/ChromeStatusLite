@@ -1,56 +1,28 @@
 import template from "../flora.ts";
 import type { StatusClient } from "../handler.ts";
 import { formatStableDate } from "../lib/utils.ts";
+import {
+  htmlResponse,
+  NO_STORE_CACHE_CONTROL,
+} from "../ui-components/layout.ts";
 
-import nav from "../ui-components/nav.ts";
-
-export default async function render(request: Request, chromeStatusAPI: StatusClient): Response {
+export default async function render(
+  request: Request,
+  chromeStatusAPI: StatusClient,
+): Promise<Response> {
   const url = new URL(request.url);
-  return template`
-  <!doctype html>
-<html lang="en">
+  let upstreamError = false;
+  let tableContent: unknown;
 
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chrome Deprecation Calendar</title>
-  <link rel="canonical" href="https://chromestatuslite.com${url.pathname + url.search}">
-  <link rel="stylesheet" href="/styles/index.css">
-</head>
-
-<body>
-  ${nav(url.pathname)}
-  <main id="main">
-  <h1>Deprecation Calendar</h1>
-  <div id="output">
-    ${renderDeprecations(chromeStatusAPI)}
-  </div>
-  </main>
-</body>
-
-</html>`
-    .then(data => new Response(data, { status: 200, headers: { 'content-type': 'text/html' } }));
-}
-
-const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
   try {
-    const deprecationsSort = (a, b) => {
+    const deprecationsSort = (a: any, b: any) => {
       const aDesktop = a?.browsers?.chrome?.desktop;
       const bDesktop = b?.browsers?.chrome?.desktop;
 
-      // Move features without versions to end of list.
-      if (!aDesktop && !bDesktop) {
-        return 0;
-      }
-      if (!bDesktop) {
-        return -1;
-      }
-      if (!aDesktop) {
-        return 1;
-      }
-
-      // Sort by most recent feature.
-      return parseInt(bDesktop) - parseInt(aDesktop);
+      if (!aDesktop && !bDesktop) return 0;
+      if (!bDesktop) return -1;
+      if (!aDesktop) return 1;
+      return Number.parseInt(bDesktop, 10) - Number.parseInt(aDesktop, 10);
     };
 
     const res = await chromeStatusAPI.getFeaturesByType(3);
@@ -58,30 +30,26 @@ const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
       throw new Error("Malformed deprecations response");
     }
     const deprecations = res.features
-      .filter((f) => f && typeof f === "object" && f.id)
+      .filter((f: any) => f && typeof f === "object" && f.id)
       .sort(deprecationsSort);
 
-    // Map features to browser versions, removing features that don't have a
-    // version. A defined-but-unparseable milestone (desktop: "") must be
-    // excluded too: getChannels() strictly coerces its bounds
-    // (chrome-status-lite-3tl) and
-    // throws on a NaN bound, so letting such a value through poisons
-    // versions.at(0) and crashes the whole calendar into the error-notice
-    // instead of rendering its 'N/A' row (chrome-status-lite-b6s). The
-    // filter mirrors getChannels' own Number.parseInt acceptance exactly.
     const versions = deprecations
-        .map(f => f?.browsers?.chrome?.desktop)
-        .filter(f =>
-          f !== undefined && Number.isFinite(Number.parseInt(String(f), 10))
-        )
-        .sort((a, b) => parseInt(a) - parseInt(b));
+      .map((f: any) => f?.browsers?.chrome?.desktop)
+      .filter((f: unknown) =>
+        f !== undefined && Number.isFinite(Number.parseInt(String(f), 10))
+      )
+      .sort((a: unknown, b: unknown) =>
+        Number.parseInt(String(a), 10) - Number.parseInt(String(b), 10)
+      );
 
-    const rawChannels = await chromeStatusAPI.getChannels(versions.at(0), versions.at(-1));
+    const rawChannels = await chromeStatusAPI.getChannels(
+      versions.at(0),
+      versions.at(-1),
+    );
     if (!rawChannels || typeof rawChannels !== "object") {
       throw new Error("Malformed channels response");
     }
-    const channels = rawChannels;
-    return template`
+    tableContent = template`
           <table>
           <tr>
               <th>Date</th>
@@ -89,27 +57,45 @@ const renderDeprecations = async (chromeStatusAPI: StatusClient) => {
               <th>Intent Stage</th>
               <th>Chrome Version</th>
           </tr>
-          ${deprecations.map(deprecation => renderDeprecation(deprecation, channels))}
+          ${
+      deprecations.map((deprecation: any) =>
+        renderDeprecation(deprecation, rawChannels)
+      )
+    }
           </table>
       `;
   } catch {
-    return template`<p class="error-notice">Unable to load deprecation calendar from chromestatus.com. Please try again later.</p>`;
+    upstreamError = true;
+    tableContent =
+      template`<p class="error-notice">Unable to load deprecation calendar from chromestatus.com. Please try again later.</p>`;
   }
-};
 
-const renderDeprecation = (deprecation, channels) => {
+  return htmlResponse({
+    title: "Chrome Deprecation Calendar",
+    canonical: `https://chromestatuslite.com${url.pathname + url.search}`,
+    description:
+      "Calendar of Chrome web platform deprecations and removals sorted by Chrome milestone and estimated stable date.",
+    currentPath: url.pathname,
+    cacheControl: upstreamError ? NO_STORE_CACHE_CONTROL : undefined,
+    body: template`<h1>Deprecation Calendar</h1>
+  <div id="output">
+    ${tableContent}
+  </div>`,
+  });
+}
+
+const renderDeprecation = (deprecation: any, channels: Record<string, any>) => {
   const desktopVersion = deprecation?.browsers?.chrome?.desktop;
-  let channel = (channels && desktopVersion) ? channels[desktopVersion] : undefined;
-  let date = formatStableDate(channel?.stable_date) ?? 'N/A';
+  const channel = (channels && desktopVersion)
+    ? channels[desktopVersion]
+    : undefined;
+  const date = formatStableDate(channel?.stable_date) ?? "N/A";
 
-  let name = deprecation?.name || 'Unnamed feature';
-  let id = deprecation?.id ? encodeURIComponent(String(deprecation.id)) : '';
-  let intentStage = deprecation?.intent_stage || '';
-  let versionStr = desktopVersion || '';
-  // A feature with no desktop milestone has nothing to link to (the release
-  // summary defaults to latest), so the cell is plain text, not an empty
-  // dead anchor (chrome-status-lite-5i3). 'N/A' matches the date column.
-  let versionCell = versionStr
+  const name = deprecation?.name || "Unnamed feature";
+  const id = deprecation?.id ? encodeURIComponent(String(deprecation.id)) : "";
+  const intentStage = deprecation?.intent_stage || "";
+  const versionStr = desktopVersion || "";
+  const versionCell = versionStr
     ? template`<a href="/?version=${versionStr}">${versionStr}</a>`
     : template`N/A`;
   return template`
@@ -121,4 +107,3 @@ const renderDeprecation = (deprecation, channels) => {
         </tr>
     `;
 };
-

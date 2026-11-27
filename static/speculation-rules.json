@@ -1,0 +1,15 @@
+{
+  "prefetch": [
+    {
+      "where": {
+        "and": [
+          { "href_matches": "/*" },
+          { "not": { "href_matches": "/feature/*" } },
+          { "not": { "href_matches": "/api/*" } },
+          { "not": { "href_matches": "/feed.xml" } }
+        ]
+      },
+      "eagerness": "moderate"
+    }
+  ]
+}

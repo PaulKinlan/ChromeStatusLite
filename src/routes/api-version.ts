@@ -27,6 +27,7 @@ export default async function apiVersion(
         status: 400,
         headers: {
           "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
           ...corsHeaders,
         },
       },
@@ -34,10 +35,7 @@ export default async function apiVersion(
   }
 
   let milestone: number;
-  // The upstream version list, once fetched (null = not fetched yet). It is
-  // the whitelist every numeric milestone must pass before any
-  // per-milestone fetch.
-  let versions: any[] | null = null;
+  let versions: unknown[] | null = null;
   if (versionParam === "latest") {
     try {
       versions = await chromeStatusAPI.getVersions();
@@ -48,6 +46,7 @@ export default async function apiVersion(
             status: 404,
             headers: {
               "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store",
               ...corsHeaders,
             },
           },
@@ -61,17 +60,13 @@ export default async function apiVersion(
           status: 500,
           headers: {
             "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
             ...corsHeaders,
           },
         },
       );
     }
   } else {
-    // Bounded at the seam (chrome-status-lite-s9w): an out-of-range or
-    // overlong digit string is not a milestone and must not reach the
-    // upstream query, where every distinct value mints two LRU keys
-    // (features + channels) and two upstream calls before the route can
-    // 404 it.
     const parsed = parseMilestoneParam(versionParam);
     if (parsed === null) {
       return new Response(
@@ -83,6 +78,7 @@ export default async function apiVersion(
           status: 400,
           headers: {
             "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
             ...corsHeaders,
           },
         },
@@ -91,30 +87,20 @@ export default async function apiVersion(
     milestone = parsed;
   }
 
-  // Whitelist before any per-milestone fetch (chrome-status-lite-or9): an
-  // unknown milestone is answered 404 for the cost of one shared cached
-  // lookup (getVersions caches under the single channels key for 1h), not
-  // two cache-filling upstream calls per bogus value — otherwise a loop
-  // over in-range values 1..2000 still evicts the whole working set.
-  //
-  // The whitelist is an optimisation, not a hard dependency (review
-  // chrome-status-lite-j0p): when the version list itself is unavailable,
-  // fall through and fetch the milestone directly - the parent answered
-  // such requests from the features/channels endpoints alone, and the
-  // try/catch below reports a genuine outage of those. An empty or failed
-  // list must never 404 anything: that would state facts about features
-  // during an outage.
   if (versions === null) {
     versions = await chromeStatusAPI.getVersions().catch(() => []);
   }
-  if (Array.isArray(versions) && versions.length > 0 &&
-      !versions.includes(milestone)) {
+  if (
+    Array.isArray(versions) && versions.length > 0 &&
+    !versions.includes(milestone)
+  ) {
     return new Response(
       JSON.stringify({ error: `Chrome milestone ${milestone} not found` }),
       {
         status: 404,
         headers: {
           "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
           ...corsHeaders,
         },
       },
@@ -127,14 +113,15 @@ export default async function apiVersion(
       chromeStatusAPI.getChannels(milestone, milestone).catch(() => ({})),
     ]);
 
-    const channelData = channels?.[String(milestone)] ?? channels?.[milestone] ?? null;
+    const channelData = channels?.[String(milestone)] ?? channels?.[milestone] ??
+      null;
     const stableDate = channelData?.stable_date ?? null;
 
     const typeBuckets = (featuresByType && typeof featuresByType === "object")
       ? featuresByType
       : {};
 
-    const features: any[] = [];
+    const features: unknown[] = [];
     for (const [statusType, list] of Object.entries(typeBuckets)) {
       if (Array.isArray(list)) {
         for (const item of list) {
@@ -145,11 +132,6 @@ export default async function apiVersion(
         }
       }
     }
-
-    // Membership in the version list was verified before the fetches, so an
-    // empty result is upstream data drift for a real milestone and serves
-    // as a zero-feature response (chrome-status-lite-or9 removed the
-    // redundant second getVersions() call here).
 
     const body = {
       version: milestone,
@@ -163,7 +145,7 @@ export default async function apiVersion(
       status: 200,
       headers: {
         "content-type": "application/json; charset=utf-8",
-        "cache-control": "public, max-age=3600",
+        "cache-control": "public, max-age=3600, stale-while-revalidate=86400",
         ...corsHeaders,
       },
     });
@@ -176,6 +158,7 @@ export default async function apiVersion(
         status: 500,
         headers: {
           "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
           ...corsHeaders,
         },
       },

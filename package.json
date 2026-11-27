@@ -1,0 +1,26 @@
+{
+  "name": "chromestatuslite",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:smoke": "vitest run --config vitest.node.config.ts tests/http_smoke_test.ts",
+    "test:gate": "vitest run --config vitest.node.config.ts tests/gate_test.ts",
+    "test:fast": "bash tools/fast-gate.sh",
+    "test:full": "bash tools/full-gate.sh",
+    "db:migrate:local": "wrangler d1 migrations apply chromestatuslite-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply chromestatuslite-db --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.47",
+    "@cloudflare/workers-types": "^4.20250702.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.23.0"
+  }
+}

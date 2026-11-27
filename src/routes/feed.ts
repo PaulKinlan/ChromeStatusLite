@@ -2,12 +2,6 @@ import type { StatusClient } from "../handler.ts";
 import { hasValidBuckets } from "../lib/buckets.ts";
 import { parseStableDate } from "../lib/utils.ts";
 
-// XML 1.0 forbids most C0 controls, U+FFFE/U+FFFF and lone surrogates —
-// even inside CDATA. Upstream chromestatus.com JSON can legally carry those
-// codepoints (they survive JSON.parse), and a single one anywhere in the
-// document makes the entire feed unparseable for every reader, so strip them
-// before any markup escaping. Valid surrogate pairs (astral chars) are kept;
-// only unpaired halves match the surrogate alternatives.
 const XML_ILLEGAL_CHARS =
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
@@ -25,7 +19,9 @@ function escapeXml(unsafe: string): string {
 }
 
 function cdata(content: string): string {
-  return `<![CDATA[${stripIllegalXmlChars(content).replaceAll("]]>", "]]]]><![CDATA[>")}]]>`;
+  return `<![CDATA[${
+    stripIllegalXmlChars(content).replaceAll("]]>", "]]]]><![CDATA[>")
+  }]]>`;
 }
 
 export default async function feed(
@@ -34,14 +30,19 @@ export default async function feed(
 ): Promise<Response> {
   const url = new URL(request.url);
   const limitParam = Number.parseInt(url.searchParams.get("limit") || "10", 10);
-  const limit = Math.min(Math.max(Number.isFinite(limitParam) ? limitParam : 10, 1), 25);
+  const limit = Math.min(
+    Math.max(Number.isFinite(limitParam) ? limitParam : 10, 1),
+    25,
+  );
 
   let versions: number[] = [];
   let upstreamError = false;
   try {
     const rawVersions = await chromeStatusAPI.getVersions();
     if (Array.isArray(rawVersions)) {
-      versions = rawVersions.map((v) => Number(v)).filter((v) => Number.isFinite(v));
+      versions = rawVersions.map((v) => Number(v)).filter((v) =>
+        Number.isFinite(v)
+      );
       if (versions.length === 0) {
         upstreamError = true;
       }
@@ -66,7 +67,11 @@ export default async function feed(
       <link>https://chromestatuslite.com/</link>
       <guid isPermaLink="false">https://chromestatuslite.com/notice/upstream-error</guid>
       <pubDate>${new Date().toUTCString()}</pubDate>
-      <description>${cdata("<p>Unable to load release data from chromestatus.com. Please try again later.</p>")}</description>
+      <description>${
+      cdata(
+        "<p>Unable to load release data from chromestatus.com. Please try again later.</p>",
+      )
+    }</description>
     </item>
   </channel>
 </rss>`;
@@ -74,19 +79,19 @@ export default async function feed(
       status: 200,
       headers: {
         "content-type": "application/rss+xml; charset=utf-8",
+        "cache-control": "no-store",
       },
     });
   }
 
   const selectedVersions = versions.slice(0, limit);
-  const minMilestone = selectedVersions.length > 0 ? Math.min(...selectedVersions) : undefined;
-  const maxMilestone = selectedVersions.length > 0 ? Math.max(...selectedVersions) : undefined;
+  const minMilestone = selectedVersions.length > 0
+    ? Math.min(...selectedVersions)
+    : undefined;
+  const maxMilestone = selectedVersions.length > 0
+    ? Math.max(...selectedVersions)
+    : undefined;
 
-  // A failed fetch or a malformed payload for a milestone is an upstream
-  // outage, not data: it must never render as an authoritative "Chrome N
-  // includes 0 feature changes". Validity is decided by the same shared
-  // validator the / release page uses, so both routes agree on what real
-  // data looks like (a genuinely empty milestone stays valid).
   const [channels, ...milestones] = await Promise.all([
     (minMilestone !== undefined && maxMilestone !== undefined)
       ? chromeStatusAPI.getChannels(minMilestone, maxMilestone).catch(() => ({}))
@@ -109,17 +114,21 @@ export default async function feed(
         const summary = item.summary ? escapeXml(String(item.summary)) : "";
         const safeId = encodeURIComponent(String(item.id));
         const link = `https://chromestatuslite.com/feature/${safeId}`;
-        return `<li><a href="${escapeXml(link)}">${name}</a>${summary ? `: ${summary}` : ""}</li>`;
+        return `<li><a href="${escapeXml(link)}">${name}</a>${
+          summary ? `: ${summary}` : ""
+        }</li>`;
       })
       .join("");
     return `<h3>${escapeXml(title)} (${list.length})</h3><ul>${items}</ul>`;
   };
 
   const itemsXml: string[] = [];
+  let anyMilestoneFailed = false;
 
   for (let i = 0; i < selectedVersions.length; i++) {
     const version = selectedVersions[i];
     const milestone = milestones[i];
+    if (!milestone.ok) anyMilestoneFailed = true;
     const featuresByType = milestone.ok ? milestone.buckets : null;
 
     const typeBuckets = (featuresByType && typeof featuresByType === "object")
@@ -135,7 +144,8 @@ export default async function feed(
       }
     }
 
-    const channelData = channels?.[String(version)] ?? channels?.[version];
+    const channelData = (channels as Record<string, any>)?.[String(version)] ??
+      (channels as Record<string, any>)?.[version];
     const stableDate = parseStableDate(channelData?.stable_date);
     const pubDateTag = stableDate
       ? `      <pubDate>${stableDate.toUTCString()}</pubDate>\n`
@@ -178,7 +188,9 @@ ${itemsXml.join("\n")}
     status: 200,
     headers: {
       "content-type": "application/rss+xml; charset=utf-8",
-      "cache-control": "public, max-age=3600",
+      "cache-control": anyMilestoneFailed
+        ? "no-store"
+        : "public, max-age=3600, stale-while-revalidate=86400",
     },
   });
 }

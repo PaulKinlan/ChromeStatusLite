@@ -1,35 +1,59 @@
+import { test } from "vitest";
 import { createHandler } from "../src/handler.ts";
 import breaking from "../src/routes/breaking.ts";
 import originTrials from "../src/routes/origin-trials.ts";
 import { equal, fixtureClient, includes } from "./fixture.ts";
 
-Deno.test("breaking view renders breaking changes timeline and badges", async () => {
+test("breaking view renders breaking changes timeline, badges, and linkified prose", async () => {
   const client = fixtureClient({
     getVersions: async () => [120, 119],
     getFeaturesForVersion: async (v) => {
       if (v === 120) {
         return {
-          "Deprecated": [{ id: 101, name: "Deprecated API", summary: "Old API", intent_stage: "Deprecated", enterprise_impact: 4 }],
-          "Removed": [{ id: 102, name: "Removed API", summary: "Gone API" }],
+          Deprecated: [
+            {
+              id: 101,
+              name: "Deprecated API",
+              summary: "Old API, see https://example.com/migrate.",
+              motivation: "Tracked at crbug.com/555.",
+              intent_stage: "Deprecated",
+              enterprise_impact: 4,
+            },
+          ],
+          Removed: [{ id: 102, name: "Removed API", summary: "Gone API" }],
         };
       }
       return {};
     },
     getFeaturesByType: async () => ({
       features: [
-        { id: 201, name: "Type 3 Deprecation", browsers: { chrome: { desktop: "119" } } },
+        {
+          id: 201,
+          name: "Type 3 Deprecation",
+          browsers: { chrome: { desktop: "119" } },
+        },
       ],
     }),
   });
 
-  const handler = createHandler(client);
-  const res = await handler(new Request("https://chromestatuslite.com/breaking"));
+  const handler = createHandler({ client });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/breaking"),
+  );
   equal(res.status, 200);
   includes(res.headers.get("content-type") || "", "text/html");
   const html = await res.text();
   includes(html, "Breaking Changes &amp; Deprecations Timeline");
   includes(html, "Chrome 120");
   includes(html, "Deprecated API");
+  includes(
+    html,
+    '<a href="https://example.com/migrate" rel="noopener noreferrer">https://example.com/migrate</a>.',
+  );
+  includes(
+    html,
+    '<a href="https://crbug.com/555" rel="noopener noreferrer">crbug.com/555</a>.',
+  );
   includes(html, "Removed API");
   includes(html, "Chrome 119");
   includes(html, "Type 3 Deprecation");
@@ -39,7 +63,7 @@ Deno.test("breaking view renders breaking changes timeline and badges", async ()
   includes(html, 'href="/origin-trials"');
 });
 
-Deno.test("breaking and origin-trials render sections without a date for unparseable stable_date", async () => {
+test("breaking and origin-trials render sections without a date for unparseable stable_date", async () => {
   const client = fixtureClient({
     getVersions: async () => [120],
     getChannels: async () => ({
@@ -48,14 +72,16 @@ Deno.test("breaking and origin-trials render sections without a date for unparse
       "120": { stable_date: "unknown" },
     }),
     getFeaturesForVersion: async () => ({
-      "Deprecated": [{ id: 101, name: "Deprecated API" }],
+      Deprecated: [{ id: 101, name: "Deprecated API" }],
       "Origin trial": [{ id: 301, name: "Trial API" }],
     }),
     getFeaturesByType: async () => ({ features: [] }),
   });
-  const handler = createHandler(client);
+  const handler = createHandler({ client });
 
-  const breakingRes = await handler(new Request("https://chromestatuslite.com/breaking"));
+  const breakingRes = await handler(
+    new Request("https://chromestatuslite.com/breaking"),
+  );
   equal(breakingRes.status, 200);
   const breakingHtml = await breakingRes.text();
   includes(breakingHtml, "Chrome 120");
@@ -63,7 +89,9 @@ Deno.test("breaking and origin-trials render sections without a date for unparse
   equal(breakingHtml.includes("milestone-date"), false);
   equal(breakingHtml.includes("NaN-NaN-NaN"), false);
 
-  const otRes = await handler(new Request("https://chromestatuslite.com/origin-trials"));
+  const otRes = await handler(
+    new Request("https://chromestatuslite.com/origin-trials"),
+  );
   equal(otRes.status, 200);
   const otHtml = await otRes.text();
   includes(otHtml, "Chrome 120");
@@ -72,7 +100,7 @@ Deno.test("breaking and origin-trials render sections without a date for unparse
   equal(otHtml.includes("NaN-NaN-NaN"), false);
 });
 
-Deno.test("origin-trials view renders active trials tracker", async () => {
+test("origin-trials view renders active trials tracker with linkified summaries", async () => {
   const client = fixtureClient({
     getVersions: async () => [120, 119],
     getChannels: async () => ({
@@ -83,7 +111,12 @@ Deno.test("origin-trials view renders active trials tracker", async () => {
       if (v === 120) {
         return {
           "Origin trial": [
-            { id: 301, name: "Compute Pressure API", summary: "Testing compute pressure", intent_stage: "Origin trial" },
+            {
+              id: 301,
+              name: "Compute Pressure API",
+              summary: "Testing compute pressure at https://example.com/ot",
+              intent_stage: "Origin trial",
+            },
           ],
         };
       }
@@ -91,19 +124,25 @@ Deno.test("origin-trials view renders active trials tracker", async () => {
     },
   });
 
-  const handler = createHandler(client);
-  const res = await handler(new Request("https://chromestatuslite.com/origin-trials"));
+  const handler = createHandler({ client });
+  const res = await handler(
+    new Request("https://chromestatuslite.com/origin-trials"),
+  );
   equal(res.status, 200);
   includes(res.headers.get("content-type") || "", "text/html");
   const html = await res.text();
   includes(html, "Origin Trials Tracker");
   includes(html, "Compute Pressure API");
+  includes(
+    html,
+    '<a href="https://example.com/ot" rel="noopener noreferrer">https://example.com/ot</a>',
+  );
   includes(html, "Chrome 120");
   includes(html, "1 active origin trial");
   includes(html, "/feature/301");
 });
 
-Deno.test("origin-trials sanitizes spec link and refuses non-http(s) or hostile attribute payloads", async () => {
+test("origin-trials sanitizes spec link and refuses non-http(s) or hostile attribute payloads", async () => {
   const client = fixtureClient({
     getVersions: async () => [120],
     getFeaturesForVersion: async () => ({
@@ -122,12 +161,14 @@ Deno.test("origin-trials sanitizes spec link and refuses non-http(s) or hostile 
     }),
   });
 
-  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/origin-trials"))).text();
+  const html = await (await createHandler({ client })(
+    new Request("https://chromestatuslite.com/origin-trials"),
+  )).text();
   equal(html.includes("<img src=x"), false);
   equal(html.includes("javascript:alert(1)"), false);
 });
 
-Deno.test("origin-trials distinguishes active/upcoming trials from historical ended trials", async () => {
+test("origin-trials distinguishes active/upcoming trials from historical ended trials", async () => {
   const client = fixtureClient({
     getVersions: async () => [122, 120, 118],
     getChannels: async () => ({
@@ -135,56 +176,88 @@ Deno.test("origin-trials distinguishes active/upcoming trials from historical en
       dev: { version: "121" },
     }),
     getFeaturesForVersion: async (v) => {
-      if (v === 122) return { "Origin trial": [{ id: 501, name: "Upcoming Trial" }] };
-      if (v === 120) return { "Origin trial": [{ id: 502, name: "Active Trial" }] };
-      if (v === 118) return { "Origin trial": [{ id: 503, name: "Past Trial" }] };
+      if (v === 122) {
+        return { "Origin trial": [{ id: 501, name: "Upcoming Trial" }] };
+      }
+      if (v === 120) {
+        return { "Origin trial": [{ id: 502, name: "Active Trial" }] };
+      }
+      if (v === 118) {
+        return { "Origin trial": [{ id: 503, name: "Past Trial" }] };
+      }
       return {};
     },
   });
 
-  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/origin-trials"))).text();
+  const html = await (await createHandler({ client })(
+    new Request("https://chromestatuslite.com/origin-trials"),
+  )).text();
   includes(html, "Upcoming in 122");
   includes(html, "Active in 120");
   includes(html, "Ended (Chrome 118)");
 });
 
-Deno.test("breaking and origin-trials render error notices on upstream failure", async () => {
+test("breaking and origin-trials render error notices on upstream failure", async () => {
   const failingClient = fixtureClient({
-    getVersions: async () => { throw new Error("upstream down"); },
+    getVersions: async () => {
+      throw new Error("upstream down");
+    },
   });
 
-  const breakingHtml = await (await createHandler(failingClient)(new Request("https://chromestatuslite.com/breaking"))).text();
+  const breakingRes = await createHandler({ client: failingClient })(
+    new Request("https://chromestatuslite.com/breaking"),
+  );
+  equal(breakingRes.headers.get("cache-control"), "no-store");
+  const breakingHtml = await breakingRes.text();
   includes(breakingHtml, "error-notice");
   includes(breakingHtml, "Unable to load breaking change data");
 
-  const otHtml = await (await createHandler(failingClient)(new Request("https://chromestatuslite.com/origin-trials"))).text();
+  const otRes = await createHandler({ client: failingClient })(
+    new Request("https://chromestatuslite.com/origin-trials"),
+  );
+  equal(otRes.headers.get("cache-control"), "no-store");
+  const otHtml = await otRes.text();
   includes(otHtml, "error-notice");
   includes(otHtml, "Unable to load origin trial data");
 });
 
-Deno.test("breaking and origin-trials render error notices when feature endpoints reject even if versions/channels succeed", async () => {
+test("breaking and origin-trials render error notices when feature endpoints reject even if versions/channels succeed", async () => {
   const partialFailingClient = fixtureClient({
     getVersions: async () => [120, 119],
     getChannels: async () => ({
       stable: { version: "119" },
       dev: { version: "120" },
     }),
-    getFeaturesForVersion: async () => { throw new Error("features 500"); },
-    getFeaturesByType: async () => { throw new Error("type3 500"); },
+    getFeaturesForVersion: async () => {
+      throw new Error("features 500");
+    },
+    getFeaturesByType: async () => {
+      throw new Error("type3 500");
+    },
   });
 
-  const breakingHtml = await (await createHandler(partialFailingClient)(new Request("https://chromestatuslite.com/breaking"))).text();
+  const breakingHtml = await (await createHandler({
+    client: partialFailingClient,
+  })(new Request("https://chromestatuslite.com/breaking"))).text();
   includes(breakingHtml, "error-notice");
   includes(breakingHtml, "Unable to load breaking change data");
-  equal(breakingHtml.includes("No breaking changes found in recent milestones"), false);
+  equal(
+    breakingHtml.includes("No breaking changes found in recent milestones"),
+    false,
+  );
 
-  const otHtml = await (await createHandler(partialFailingClient)(new Request("https://chromestatuslite.com/origin-trials"))).text();
+  const otHtml = await (await createHandler({ client: partialFailingClient })(
+    new Request("https://chromestatuslite.com/origin-trials"),
+  )).text();
   includes(otHtml, "error-notice");
   includes(otHtml, "Unable to load origin trial data");
-  equal(otHtml.includes("No active origin trials found in recent milestones"), false);
+  equal(
+    otHtml.includes("No active origin trials found in recent milestones"),
+    false,
+  );
 });
 
-Deno.test("origin-trials pluralizes historical trials cleanly without (ended)s", async () => {
+test("origin-trials pluralizes historical trials cleanly without (ended)s", async () => {
   const client = fixtureClient({
     getVersions: async () => [118],
     getChannels: async () => ({
@@ -199,19 +272,26 @@ Deno.test("origin-trials pluralizes historical trials cleanly without (ended)s",
     }),
   });
 
-  const html = await (await createHandler(client)(new Request("https://chromestatuslite.com/origin-trials"))).text();
+  const html = await (await createHandler({ client })(
+    new Request("https://chromestatuslite.com/origin-trials"),
+  )).text();
   includes(html, "2 historical trials (ended) in this milestone");
   equal(html.includes("(ended)s"), false);
 });
 
-Deno.test("breaking and originTrials route modules execute directly with injected client", async () => {
+test("breaking and originTrials route modules execute directly with injected client", async () => {
   const client = fixtureClient();
-  const breakingRes = await breaking(new Request("https://chromestatuslite.com/breaking"), client);
+  const breakingRes = await breaking(
+    new Request("https://chromestatuslite.com/breaking"),
+    client,
+  );
   equal(breakingRes.status, 200);
   includes(await breakingRes.text(), "Breaking Changes");
 
-  const otRes = await originTrials(new Request("https://chromestatuslite.com/origin-trials"), client);
+  const otRes = await originTrials(
+    new Request("https://chromestatuslite.com/origin-trials"),
+    client,
+  );
   equal(otRes.status, 200);
   includes(await otRes.text(), "Origin Trials Tracker");
 });
-

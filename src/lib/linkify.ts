@@ -34,7 +34,7 @@ const TRAILING_PUNCTUATION = ".,;:!?)\u005d";
 // scheme-less reference is displayed as written and linked with an explicit
 // https scheme.
 export default function linkify(text: string) {
-  const nodes = [];
+  const nodes: unknown[] = [];
   let last = 0;
   if (text && typeof text === "string") {
     for (const match of text.matchAll(URL_RE)) {
