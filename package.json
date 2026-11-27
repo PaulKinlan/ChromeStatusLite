@@ -16,11 +16,11 @@
     "db:migrate:remote": "wrangler d1 migrations apply chromestatuslite-db --remote"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.8.47",
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
     "@cloudflare/workers-types": "^4.20250702.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4",
+    "vitest": "^5.1.2",
     "wrangler": "^4.23.0"
   }
 }
