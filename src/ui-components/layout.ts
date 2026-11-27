@@ -53,6 +53,19 @@ export function renderPage({
   <main id="main">
   ${body}
   </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p><strong>ChromeStatusLite</strong> — fast, zero-JavaScript reader over <a href="https://chromestatus.com" rel="noopener noreferrer">chromestatus.com</a> &amp; <a href="https://webstatus.dev" rel="noopener noreferrer">webstatus.dev</a>.</p>
+      <ul class="footer-links">
+        <li><a href="/about">About</a></li>
+        <li><a href="/llms.txt">llms.txt</a></li>
+        <li><a href="/feed.xml">RSS</a></li>
+        <li><a href="/api/version/latest">JSON API</a></li>
+        <li><a href="https://github.com/PaulKinlan/ChromeStatusLite" rel="noopener noreferrer">GitHub</a></li>
+      </ul>
+      <p class="footer-note">Agent-friendly: send <code>Accept: text/markdown</code> to any page for Markdown.</p>
+    </div>
+  </footer>
 </body>
 
 </html>`;

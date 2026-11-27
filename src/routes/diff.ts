@@ -120,15 +120,19 @@ export default async function render(
     extraStylesheets: ["/styles/diff.css"],
     body: template`<h1>Compare Chrome milestones</h1>
     <p>Compare features recorded for two Chrome releases, grouped by their milestone status. These are release notes, not a complete inventory of browser support.</p>
-    <form method="get" action="/diff">
-      <label for="from">From milestone</label>
-      <select id="from" name="from" required>${
+    <form method="get" action="/diff" class="diff-form">
+      <div class="field">
+        <label for="from">From milestone</label>
+        <select id="from" name="from" required>${
       versions.map((version: string) => option(version, from))
     }</select>
-      <label for="to">To milestone</label>
-      <select id="to" name="to" required>${
+      </div>
+      <div class="field">
+        <label for="to">To milestone</label>
+        <select id="to" name="to" required>${
       versions.map((version: string) => option(version, to))
     }</select>
+      </div>
       <button type="submit">Compare milestones</button>
     </form>
     ${diffContent}`,

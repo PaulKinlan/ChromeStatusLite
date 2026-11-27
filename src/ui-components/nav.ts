@@ -36,16 +36,22 @@ export default function render(currentPath = "") {
   // collapsed layout top layer, light dismiss and Escape natively.
   // These are links, not a menu: no role="menu"/menubar, no arrow keys, and they
   // stay in the Tab order.
-  return template`<a class="skip" href="#main">Skip to content</a><nav>
-    <button class="menu-button" type="button" popovertarget="site-menu" aria-controls="site-menu">Menu</button>
-    <ul id="site-menu" class="site-menu" popover="auto">
-      ${
+  return template`<a class="skip" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="site-brand" href="/"><img src="/favicon.svg" alt="" width="22" height="22"><span>ChromeStatusLite</span></a>
+      <nav>
+        <button class="menu-button" type="button" popovertarget="site-menu" aria-controls="site-menu">Menu</button>
+        <ul id="site-menu" class="site-menu" popover="auto">
+          ${
     LINKS.map(([href, label]) =>
       template`<li><a href="${href}"${
         isCurrent(href, currentPath) ? template` class="current" aria-current="page"` : template``
       }>${label}</a></li>`
     )
   }
-    </ul>
-  </nav>`;
+        </ul>
+      </nav>
+    </div>
+  </header>`;
 }

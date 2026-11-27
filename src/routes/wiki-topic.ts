@@ -181,7 +181,7 @@ export default async function render(
     cacheControl: data.failed || !data.complete
       ? NO_STORE_CACHE_CONTROL
       : undefined,
-    body: template`<p><a href="/wiki">&larr; Topic directory</a></p>
+    body: template`<p class="back-link"><a href="/wiki">&larr; Topic directory</a></p>
   <h1>${topic.title}</h1>
   <p>${topic.description}</p>
   <div id="output">

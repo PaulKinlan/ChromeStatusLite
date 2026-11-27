@@ -16,19 +16,26 @@ export interface Env {
 // capture and recency touch still fire via ctx.waitUntil() (while its upstream
 // API payloads stay edge-cached in ChromeStatusAPI).
 function isEdgeCacheableGet(pathname: string): boolean {
+  if (pathname === "/llms.txt") return true;
+  const normalized = pathname === "/index.md"
+    ? "/"
+    : pathname.endsWith(".md")
+    ? pathname.slice(0, -3)
+    : pathname;
   if (
-    pathname === "/" ||
-    pathname === "/about" ||
-    pathname === "/deprecations" ||
-    pathname === "/diff" ||
-    pathname === "/breaking" ||
-    pathname === "/origin-trials" ||
-    pathname === "/feed.xml" ||
-    pathname === "/wiki"
+    normalized === "/" ||
+    normalized === "/about" ||
+    normalized === "/deprecations" ||
+    normalized === "/diff" ||
+    normalized === "/breaking" ||
+    normalized === "/origin-trials" ||
+    normalized === "/feed.xml" ||
+    normalized === "/wiki"
   ) {
     return true;
   }
-  return pathname.startsWith("/wiki/") || pathname.startsWith("/api/version/");
+  return normalized.startsWith("/wiki/") ||
+    (!pathname.endsWith(".md") && normalized.startsWith("/api/version/"));
 }
 
 // Cloudflare's caches.default does not partition entries by `Vary: Accept`, so
@@ -36,7 +43,7 @@ function isEdgeCacheableGet(pathname: string): boolean {
 // serving Markdown to browsers or HTML to Markdown-requesting agents.
 function edgeCacheKey(request: Request): Request {
   const url = new URL(request.url);
-  if (prefersMarkdown(request)) {
+  if (!url.pathname.endsWith(".md") && prefersMarkdown(request)) {
     url.searchParams.set("__csl_format", "markdown");
   }
   return new Request(url.toString(), { method: "GET" });

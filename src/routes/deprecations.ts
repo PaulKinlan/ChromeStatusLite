@@ -50,19 +50,25 @@ export default async function render(
       throw new Error("Malformed channels response");
     }
     tableContent = template`
-          <table>
+          <div class="table-wrap">
+          <table class="deprecations-table">
+          <thead>
           <tr>
               <th>Date</th>
               <th>Name</th>
               <th>Intent Stage</th>
               <th>Chrome Version</th>
           </tr>
+          </thead>
+          <tbody>
           ${
       deprecations.map((deprecation: any) =>
         renderDeprecation(deprecation, rawChannels)
       )
     }
+          </tbody>
           </table>
+          </div>
       `;
   } catch {
     upstreamError = true;

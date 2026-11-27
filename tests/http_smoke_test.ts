@@ -94,7 +94,7 @@ const styleProbePage =
 </main></body></html>`;
 
 const CHROME = resolveChromeBin();
-const FOCUS_RING = "outline=solid 2px rgb(0, 100, 193)";
+const FOCUS_RING = "outline=solid 2px rgb(9, 105, 218)";
 
 type CdpReply = { result?: any; error?: { message?: string } };
 type CdpPage = {
@@ -422,22 +422,22 @@ function probeLine(lines: string[], tag: string): string {
 }
 
 const LIGHT_THEME = {
-  PAGE: "bg=rgb(255, 255, 255)|color=rgb(0, 0, 0)",
-  SURFACE: "bg=rgb(255, 255, 255)|color=rgb(0, 0, 0)",
-  LINK: "color=rgb(0, 100, 193)",
+  PAGE: "bg=rgb(255, 255, 255)|color=rgb(17, 24, 39)",
+  SURFACE: "bg=rgb(255, 255, 255)|color=rgb(17, 24, 39)",
+  LINK: "color=rgb(9, 105, 218)",
   BADGE: "bg=rgb(255, 235, 238)|color=rgb(198, 40, 40)",
   ADD: "bg=rgb(230, 255, 236)|color=rgb(17, 99, 41)",
-  DATE: "color=rgb(102, 102, 102)",
+  DATE: "color=rgb(87, 96, 106)",
   WRAP: "heading=balance|date=pretty|canvas=wrap",
   ARROW: "fill=rgb(118, 118, 118)",
 };
 const DARK_THEME = {
-  PAGE: "bg=rgb(20, 22, 26)|color=rgb(236, 238, 241)",
-  SURFACE: "bg=rgb(20, 22, 26)|color=rgb(236, 238, 241)",
-  LINK: "color=rgb(108, 182, 255)",
+  PAGE: "bg=rgb(13, 17, 23)|color=rgb(230, 237, 243)",
+  SURFACE: "bg=rgb(13, 17, 23)|color=rgb(230, 237, 243)",
+  LINK: "color=rgb(88, 166, 255)",
   BADGE: "bg=rgb(59, 26, 30)|color=rgb(255, 154, 154)",
   ADD: "bg=rgb(18, 48, 28)|color=rgb(126, 226, 168)",
-  DATE: "color=rgb(194, 199, 207)",
+  DATE: "color=rgb(167, 176, 186)",
   WRAP: "heading=balance|date=pretty|canvas=wrap",
   ARROW: "fill=rgb(118, 118, 118)",
 };
@@ -517,7 +517,7 @@ function assertFocusRing(focus: string[], withoutCss: string[]): void {
   }
   includes(
     focusProbeLine(focus, "css-on", "chip"),
-    "border=1px rgb(240, 0, 0)",
+    "border=1px rgb(5, 80, 174)",
   );
 }
 
@@ -668,6 +668,11 @@ test("real HTTP and headless browser render a fixture page and load its styleshe
     equal(aboutMd.status, 200);
     includes(aboutMd.headers.get("content-type") || "", "text/markdown");
     includes(await aboutMd.text(), "# About ChromeStatusLite");
+
+    const featureDotMd = await fetch(`${root}/feature/123.md`);
+    equal(featureDotMd.status, 200);
+    includes(featureDotMd.headers.get("content-type") || "", "text/markdown");
+    includes(await featureDotMd.text(), "# Fixture feature");
 
     const favicon = await fetch(`${root}/favicon.svg`);
     equal(favicon.status, 200);

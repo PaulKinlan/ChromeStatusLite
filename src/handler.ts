@@ -15,6 +15,7 @@ import feed from "./routes/feed.ts";
 import apiVersion from "./routes/api-version.ts";
 import diff from "./routes/diff.ts";
 import breaking from "./routes/breaking.ts";
+import llms from "./routes/llms.ts";
 import originTrials from "./routes/origin-trials.ts";
 import wiki from "./routes/wiki.ts";
 import wikiTopic from "./routes/wiki-topic.ts";
@@ -66,7 +67,7 @@ const FEATURE_PATTERN = new URLPattern({ pathname: "/feature/:id" });
 
 // Explicit allowlist of static asset paths served from static/ via env.ASSETS.
 const STATIC_ASSET_RE =
-  /^\/(?:styles\/[\w.-]+|google1bf7ef037ae116eb\.html|robots\.txt|llms\.txt|favicon\.svg|speculation-rules\.json)$/;
+  /^\/(?:styles\/[\w.-]+|google1bf7ef037ae116eb\.html|robots\.txt|favicon\.svg|speculation-rules\.json)$/;
 
 // Baseline hardening applied to every outgoing response. The markup uses no
 // inline scripts or styles and loads assets only from this origin; the only
@@ -179,6 +180,7 @@ export function createHandler(
 
     if (url.pathname === "/") return index(request, client);
     if (url.pathname === "/about") return about(request);
+    if (url.pathname === "/llms.txt") return llms(request, client);
     if (url.pathname === "/deprecations") return deprecations(request, client);
     if (url.pathname === "/diff") return diff(request, client);
     if (url.pathname === "/breaking") return breaking(request, client);
@@ -243,8 +245,6 @@ export function createHandler(
           "content-type",
           "application/speculationrules+json; charset=utf-8",
         );
-      } else if (url.pathname === "/llms.txt") {
-        headers.set("content-type", "text/plain; charset=utf-8");
       }
       return new Response(assetRes.body, {
         status: assetRes.status,
@@ -261,19 +261,57 @@ export function createHandler(
 
   return async (request: Request): Promise<Response> => {
     let response: Response;
+    const reqUrl = new URL(request.url);
     const wantsMarkdown = prefersMarkdown(request);
+    let forceMarkdown = false;
+    let routeRequest = request;
+
+    if (
+      !shouldRedirectToCanonical(reqUrl.hostname, redirectWorkersDev) &&
+      (request.method === "GET" || request.method === "HEAD") &&
+      reqUrl.pathname.endsWith(".md")
+    ) {
+      const stripped = reqUrl.pathname === "/index.md"
+        ? "/"
+        : reqUrl.pathname.slice(0, -3);
+      if (
+        stripped === "/" ||
+        (stripped.startsWith("/") && !stripped.endsWith("/"))
+      ) {
+        const rewritten = new URL(reqUrl.href);
+        rewritten.pathname = stripped;
+        routeRequest = new Request(rewritten.href, request);
+        forceMarkdown = true;
+      }
+    }
+
     try {
-      response = await route(request);
+      response = await route(routeRequest);
       // Content negotiation: convert HTML pages (those carrying Vary: Accept)
-      // to clean Markdown when the caller explicitly prefers `text/markdown`.
+      // to clean Markdown when requested via `Accept: text/markdown` or a `.md`
+      // URL suffix (e.g. /index.md, /feature/:id.md, /about.md).
       // Static assets (incl. Google verification HTML), JSON API, RSS, and
-      // /llms.txt keep their native representation.
+      // /llms.txt keep their native representation (and 404 on .md suffixes).
       const contentType = response.headers.get("content-type")?.toLowerCase() ??
         "";
       const variesOnAccept = (response.headers.get("vary") ?? "")
         .toLowerCase()
         .includes("accept");
-      if (wantsMarkdown && variesOnAccept && contentType.startsWith("text/html")) {
+      if (forceMarkdown) {
+        if (variesOnAccept && contentType.startsWith("text/html")) {
+          response = await convertHtmlResponseToMarkdown(
+            response,
+            routeRequest.url,
+          );
+        } else {
+          response = new Response("Not found", {
+            status: 404,
+            headers: { "cache-control": NO_STORE_CACHE_CONTROL },
+          });
+        }
+      } else if (
+        wantsMarkdown && variesOnAccept && contentType.startsWith("text/html")
+      ) {
         response = await convertHtmlResponseToMarkdown(response, request.url);
       }
       // Draining a dynamic HEAD body can reject after the route has returned.
@@ -282,9 +320,7 @@ export function createHandler(
       }
     } catch (error) {
       console.error(
-        `Unhandled route error: ${request.method} ${
-          new URL(request.url).pathname
-        }`,
+        `Unhandled route error: ${request.method} ${reqUrl.pathname}`,
         error,
       );
       response = new Response("Internal Server Error", {

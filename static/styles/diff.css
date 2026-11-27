@@ -1,16 +1,94 @@
-/* Each column is a complete milestone; when the page is too narrow for two
-   readable panels they stack instead of shrinking release-note text to an
-   unreadable width. The breakpoint keys on the PAGE's own width (main is this
-   file's 80rem shell and an inline-size container), not the viewport's, so the
-   same available width always renders the same layout - and the grid keeps
-   working unchanged if it is ever rendered inside a narrower panel
-   (chrome-status-lite-1zoa, modern-web size-aware-styling; @container is
-   Baseline 2023-02-14). */
-body main{max-width:80rem;container-type:inline-size}
-.diff-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem;align-items:start;margin-top:1.5rem}
-.diff-columns>.diff-milestone{margin-top:0}
-.diff-milestone{min-width:0;padding:0 1rem 1rem;border:1px solid var(--border-panel);border-radius:4px}
-.diff-milestone h2,.diff-milestone h3{margin-top:1rem;text-wrap:balance}
-.diff-milestone li{margin-bottom:1rem;overflow-wrap:anywhere}
-.diff-milestone li p{margin:.2rem 0 0;text-wrap:pretty}
-@container (max-width:48rem){.diff-columns{grid-template-columns:1fr}}
+/* Compare Chrome milestones (/diff): wider container-aware two-column shell. */
+body main {
+  max-width: 76rem;
+  container-type: inline-size;
+}
+
+.diff-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.85rem 1rem;
+  margin: 1.25rem 0 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.diff-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 10rem;
+}
+
+.diff-form label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--subtle);
+}
+
+.diff-form button[type="submit"] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+  padding: 0 1.2rem;
+}
+
+.diff-form button[type="submit"]:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.diff-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 1.25rem;
+}
+
+.diff-columns > .diff-milestone {
+  margin-top: 0;
+}
+
+.diff-milestone {
+  min-width: 0;
+  padding: 1.15rem 1.35rem 1.35rem;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.diff-milestone h2 {
+  margin-top: 0;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--border);
+  text-wrap: balance;
+}
+
+.diff-milestone h3 {
+  margin-top: 1.35rem;
+  font-size: 1rem;
+  text-wrap: balance;
+}
+
+.diff-milestone li {
+  margin-bottom: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.diff-milestone li p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  text-wrap: pretty;
+}
+
+@container (max-width: 48rem) {
+  .diff-columns {
+    grid-template-columns: 1fr;
+  }
+}

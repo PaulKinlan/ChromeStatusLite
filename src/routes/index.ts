@@ -34,23 +34,25 @@ const renderData = async (version: string, featuresByType: any) => {
     : NaN;
   const showcaseLink =
     Number.isFinite(numericVersion) && numericVersion >= SHOWCASE_MIN_MILESTONE
-      ? template` | <a href="https://chrome-platform-showcase.com/v${numericVersion}/" rel="noopener noreferrer">Interactive demos</a>`
+      ? template`<a class="showcase-pill" href="https://chrome-platform-showcase.com/v${numericVersion}/" rel="noopener noreferrer">Interactive demos &#8599;</a>`
       : template``;
 
   return template`
   <h1>Chrome ${version}</h1>
-  <p>
-    <a href="#enabled">Enabled (${enabled.length})</a> |
-    <a href="#origin-trial">Origin Trial (${originTrials.length})</a> |
-    <a href="#flagged">Behind a flag (${flaggedFeatures.length})</a> |
-    <a href="#deprecated">Deprecated (${deprecated.length})</a> |
-    <a href="#removed">Removed (${removed.length})</a>${showcaseLink}
-  </p>
+  <div class="release-jump" aria-label="Release sections">
+    <a href="#enabled">Enabled <span class="jump-count">${enabled.length}</span></a>
+    <a href="#origin-trial">Origin Trial <span class="jump-count">${originTrials.length}</span></a>
+    <a href="#flagged">Behind a flag <span class="jump-count">${flaggedFeatures.length}</span></a>
+    <a href="#deprecated">Deprecated <span class="jump-count">${deprecated.length}</span></a>
+    <a href="#removed">Removed <span class="jump-count">${removed.length}</span></a>
+    ${showcaseLink}
+  </div>
   ${renderEnabled(enabled, version)}
   ${renderOriginTrials(originTrials, version)}
   ${renderFlaggedFeatures(flaggedFeatures, version)}
-  <h2>Deprecations and Removals</h2>
-  <h3 id="deprecation-policy">Deprecation policy</h3>
+  <h2 class="release-section-heading">Deprecations and Removals</h2>
+  <div class="policy-note">
+    <h3 id="deprecation-policy">Deprecation policy</h3>
     <p>To keep the platform healthy, we sometimes remove APIs from the Web Platform which have run their course. There
         can be many reasons why we would remove an API, such as:</p>
     <ul>
@@ -74,6 +76,7 @@ const renderData = async (version: string, featuresByType: any) => {
             href="https://www.chromestatus.com/features#deprecated">deprecated filter</a> and removed features by
         applying the <a href="https://www.chromestatus.com/features#removed">removed filter</a>. We will also try to
         summarize some of the changes, reasoning, and migration paths in these posts.</p>
+  </div>
   ${renderDeprecatedFeatures(deprecated, version)}
   ${renderRemovedFeatures(removed, version)}
   `;
@@ -130,7 +133,8 @@ const renderFeature = (item: any, tag: "h3" | "h4" = "h3") => {
   const id = item.id !== undefined ? encodeURIComponent(String(item.id)) : "";
   const name = item.name || "Unnamed feature";
   const summary = linkify(item.summary || "");
-  return template`<${tag}><a href="/feature/${id}">${name}</a></${tag}>
+  return template`<article class="feature-card">
+      <${tag}><a href="/feature/${id}">${name}</a></${tag}>
       <p>${summary}${
     bug ? template` <a href="${bug}">#</a>` : template``
   }</p>
@@ -149,37 +153,38 @@ const renderFeature = (item: any, tag: "h3" | "h4" = "h3") => {
       : template``
   }
       ${renderFeatureMetadata(item)}
-      ${renderResources(item.resources, tag === "h3" ? "h4" : "h5")}`;
+      ${renderResources(item.resources, tag === "h3" ? "h4" : "h5")}
+    </article>`;
 };
 
 const renderEnabled = (enabled: any[], version: string) =>
   template`
-    <h2 id="enabled">Enabled by default in ${version}</h2>
-    <p>This release of Chrome had ${enabled.length} new features.</p>
+    <h2 id="enabled" class="release-section-heading">Enabled by default in ${version}</h2>
+    <p class="section-lead">This release of Chrome had ${enabled.length} new features.</p>
     ${enabled.map((item) => renderFeature(item, "h3"))}`;
 
 const renderOriginTrials = (ot: any[], version: string) =>
   template`
-    <h2 id="origin-trial">Origin Trials in-progress in ${version}</h2>
-    <p>This release of Chrome had ${ot.length} new origin trials.</p>
+    <h2 id="origin-trial" class="release-section-heading">Origin Trials in-progress in ${version}</h2>
+    <p class="section-lead">This release of Chrome had ${ot.length} new origin trials.</p>
     ${ot.map((item) => renderFeature(item, "h3"))}`;
 
 const renderFlaggedFeatures = (flagged: any[], version: string) =>
   template`
-    <h2 id="flagged">Flagged features in ${version}</h2>
-    <p>This release of Chrome had ${flagged.length} features available behind a flag.</p>
+    <h2 id="flagged" class="release-section-heading">Flagged features in ${version}</h2>
+    <p class="section-lead">This release of Chrome had ${flagged.length} features available behind a flag.</p>
     ${flagged.map((item) => renderFeature(item, "h3"))}`;
 
 const renderDeprecatedFeatures = (deprecated: any[], version: string) =>
   template`
     <h3 id="deprecated">Deprecated features in ${version}</h3>
-    <p>This release of Chrome had ${deprecated.length} features deprecated.</p>
+    <p class="section-lead">This release of Chrome had ${deprecated.length} features deprecated.</p>
     ${deprecated.map((item) => renderFeature(item, "h4"))}`;
 
 const renderRemovedFeatures = (removed: any[], version: string) =>
   template`
     <h3 id="removed">Removed features in ${version}</h3>
-    <p>This release of Chrome had ${removed.length} features removed.</p>
+    <p class="section-lead">This release of Chrome had ${removed.length} features removed.</p>
     ${removed.map((item) => renderFeature(item, "h4"))}`;
 
 export default async function render(
@@ -253,7 +258,7 @@ export default async function render(
     currentPath: url.pathname,
     cacheControl: upstreamError ? NO_STORE_CACHE_CONTROL : undefined,
     body: template`<p class="page-kicker">Chrome Release Summary</p>
-  <div class="versions">Chrome version:
+  <div class="versions"><span class="versions-label">Chrome version:</span>
     <span class="version-list">${chips(recent)}</span>
     ${
       rest.length

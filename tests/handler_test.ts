@@ -471,7 +471,7 @@ test("Cloudflare Worker entrypoint serves static assets with security headers an
   await waitOnExecutionContext(ctx2);
   equal(css.status, 200);
   equal(css.headers.get("x-content-type-options"), "nosniff");
-  includes(await css.text(), "awsm.css");
+  includes(await css.text(), "ChromeStatusLite");
 });
 
 test("release dates resolve via milestone range queries and do not leak internal errors", async () => {
@@ -783,6 +783,8 @@ test("/about renders Paul Kinlan's background and why ChromeStatusLite exists in
   includes(html, "chromestatus.com");
   includes(html, "can't run JavaScript");
   includes(html, 'href="/llms.txt"');
+  includes(html, "Accept: text/markdown");
+  includes(html, "/feature/{id}.md");
 
   const mdRes = await handler(
     new Request("https://chromestatuslite.com/about", {
@@ -797,6 +799,7 @@ test("/about renders Paul Kinlan's background and why ChromeStatusLite exists in
   includes(md, "<https://paul.kinlan.me/>");
   includes(md, "<https://github.com/PaulKinlan/ChromeStatusLite>");
   includes(md, "[/llms.txt](https://chromestatuslite.com/llms.txt)");
+  includes(md, "Accept: text/markdown");
 
   // Entity-decoded angle brackets and autolinks must not be stripped or double-decoded.
   const tricky = htmlToMarkdown(
@@ -808,8 +811,8 @@ test("/about renders Paul Kinlan's background and why ChromeStatusLite exists in
   includes(tricky, "<https://example.com/>");
 });
 
-test("/llms.txt serves agent index with security headers and lists every wiki topic", async () => {
-  const handler = createHandler({ client: fixtureClient(), assets: env.ASSETS });
+test("/llms.txt lists routes, every wiki topic, and latest release features (with offline fallback)", async () => {
+  const handler = createHandler({ client: fixtureClient() });
   const res = await handler(
     new Request("https://chromestatuslite.com/llms.txt"),
   );
@@ -817,13 +820,97 @@ test("/llms.txt serves agent index with security headers and lists every wiki to
   equal(res.headers.get("content-type"), "text/plain; charset=utf-8");
   equal(res.headers.get("x-frame-options"), "DENY");
   equal(res.headers.get("x-content-type-options"), "nosniff");
+  equal((res.headers.get("cache-control") || "").includes("no-store"), false);
   const body = await res.text();
   includes(body, "# ChromeStatusLite");
   includes(body, "Accept: text/markdown");
-  includes(body, "https://chromestatuslite.com/about");
+  includes(body, "https://chromestatuslite.com/about.md");
   includes(body, "https://chromestatuslite.com/api/version/latest");
+  includes(body, "## Latest Release Features (Chrome 120)");
+  includes(
+    body,
+    "[Fixture feature](https://chromestatuslite.com/feature/123.md)",
+  );
   for (const topic of WIKI_TOPICS) {
-    includes(body, `https://chromestatuslite.com/wiki/${topic.slug}`);
+    includes(body, `https://chromestatuslite.com/wiki/${topic.slug}.md`);
+  }
+
+  // Upstream outage degrades gracefully to static directory with no-store.
+  const deadHandler = createHandler({
+    client: fixtureClient({
+      getVersions: async () => {
+        throw new Error("upstream down");
+      },
+    }),
+  });
+  const fallbackRes = await deadHandler(
+    new Request("https://chromestatuslite.com/llms.txt"),
+  );
+  equal(fallbackRes.status, 200);
+  equal(fallbackRes.headers.get("cache-control"), "no-store");
+  const fallbackBody = await fallbackRes.text();
+  includes(fallbackBody, "# ChromeStatusLite");
+  equal(fallbackBody.includes("## Latest Release Features"), false);
+});
+
+test(".md URLs serve Markdown for every HTML page (including features) and 404 for non-HTML routes", async () => {
+  const store = new MemorySnapshotStore();
+  const handler = createHandler({
+    client: fixtureClient(),
+    assets: env.ASSETS,
+    store,
+  });
+
+  const indexMd = await handler(
+    new Request("https://chromestatuslite.com/index.md?version=120"),
+  );
+  equal(indexMd.status, 200);
+  equal(indexMd.headers.get("content-type"), "text/markdown; charset=utf-8");
+  includes(await indexMd.text(), "# Chrome 120");
+
+  const featMdRes = await handler(
+    new Request("https://chromestatuslite.com/feature/123.md"),
+  );
+  equal(featMdRes.status, 200);
+  equal(featMdRes.headers.get("content-type"), "text/markdown; charset=utf-8");
+  const featMd = await featMdRes.text();
+  includes(featMd, "# Fixture feature");
+  includes(featMd, "Source: https://chromestatuslite.com/feature/123");
+
+  // HEAD on .md measures Markdown byte length without mutating snapshots
+  const headStore = new MemorySnapshotStore();
+  const headHandler = createHandler({ client: fixtureClient(), store: headStore });
+  const headRes = await headHandler(
+    new Request("https://chromestatuslite.com/feature/123.md", {
+      method: "HEAD",
+    }),
+  );
+  equal(headRes.status, 200);
+  equal(headRes.headers.get("content-type"), "text/markdown; charset=utf-8");
+  equal(await headRes.text(), "");
+  equal(
+    headRes.headers.get("content-length"),
+    String(new TextEncoder().encode(featMd).length),
+  );
+  equal((await headStore.list("123")).length, 0);
+
+  const aboutMd = await handler(
+    new Request("https://chromestatuslite.com/about.md"),
+  );
+  equal(aboutMd.status, 200);
+  includes(await aboutMd.text(), "# About ChromeStatusLite");
+
+  // Non-HTML routes & verification HTML do not expose .md mirrors
+  for (
+    const p of [
+      "/api/version/120.md",
+      "/feed.xml.md",
+      "/llms.txt.md",
+      "/google1bf7ef037ae116eb.html.md",
+    ]
+  ) {
+    const res = await handler(new Request(`https://chromestatuslite.com${p}`));
+    equal(res.status, 404, `${p} must 404`);
   }
 });
 

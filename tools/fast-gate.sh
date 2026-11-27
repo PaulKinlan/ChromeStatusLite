@@ -55,6 +55,8 @@ for path in "${paths[@]+"${paths[@]}"}"; do
       add tests/handler_test.ts; add tests/shell_test.ts ;;
     src/routes/about.ts)
       add tests/handler_test.ts; add tests/shell_test.ts ;;
+    src/routes/llms.ts)
+      add tests/handler_test.ts ;;
     src/lib/markdown.ts)
       add_app ;;
     src/routes/index.ts|static/scripts/index.js)

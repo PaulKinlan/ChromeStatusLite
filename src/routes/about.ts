@@ -9,7 +9,7 @@ export default async function render(request: Request): Promise<Response> {
     title: "About — ChromeStatusLite",
     canonical,
     description:
-      "Why Paul Kinlan created ChromeStatusLite: quick, zero-JavaScript access to chromestatus.com for both humans and AI agents.",
+      "Why Paul Kinlan created ChromeStatusLite: quick, zero-JavaScript access to chromestatus.com with /llms.txt and text/markdown for humans and AI agents.",
     currentPath: url.pathname,
     body: template`
   <h1>About ChromeStatusLite</h1>
@@ -30,10 +30,23 @@ export default async function render(request: Request): Promise<Response> {
   <h2>Built for humans and agents</h2>
   <ul>
     <li><strong>Zero JavaScript:</strong> Every route renders complete semantic HTML directly on the server.</li>
-    <li><strong>Markdown content negotiation:</strong> Send <code>Accept: text/markdown</code> to any page to receive clean, token-efficient Markdown with absolute links and tables.</li>
-    <li><strong>Agent index:</strong> Read <a href="/llms.txt">/llms.txt</a> for a concise directory of all routes, topic slugs, and machine-readable endpoints.</li>
+    <li><strong><code>Accept: text/markdown</code> on every page:</strong> Request any page — including the release summary, deprecation calendar, topic wiki, and every individual <code>/feature/:id</code> page, history, and diff — with <code>Accept: text/markdown</code> to receive clean, token-efficient Markdown with absolute links and GFM tables.</li>
+    <li><strong>Direct <code>.md</code> URLs:</strong> If your agent or tool cannot send custom HTTP headers, append <code>.md</code> to any route (for example <a href="/index.md">/index.md</a>, <code>/feature/{id}.md</code>, <a href="/deprecations.md">/deprecations.md</a>, <a href="/wiki/webgpu.md">/wiki/webgpu.md</a>, or <a href="/about.md">/about.md</a>).</li>
+    <li><strong>Live <code>/llms.txt</code> index:</strong> Read <a href="/llms.txt">/llms.txt</a> for an agent-ready directory of all routes, topic wiki slugs, machine-readable endpoints, and direct Markdown links to features in the latest Chrome release.</li>
     <li><strong>Structured feeds &amp; API:</strong> Subscribe via <a href="/feed.xml">RSS 2.0</a> or query milestone JSON at <a href="/api/version/latest">/api/version/latest</a>.</li>
   </ul>
+
+  <h3>Quick examples for agents &amp; CLI</h3>
+  <pre><code># Discover routes, topic slugs, and latest release features
+curl https://chromestatuslite.com/llms.txt
+
+# Fetch any page or feature as Markdown via Accept header
+curl -H "Accept: text/markdown" https://chromestatuslite.com/
+curl -H "Accept: text/markdown" https://chromestatuslite.com/feature/5160724576993280
+
+# Or append .md directly when custom headers aren't available
+curl https://chromestatuslite.com/feature/5160724576993280.md
+curl https://chromestatuslite.com/deprecations.md</code></pre>
 
   <h2>About Paul Kinlan &amp; related projects</h2>
   <ul>

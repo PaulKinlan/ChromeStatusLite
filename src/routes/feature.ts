@@ -232,7 +232,7 @@ const renderFeature = (
   const bug = sanitizeUrl(feature.bug_url || chrome.bug);
 
   return template`
-  <p><a href="/">&larr; Back to release summary</a></p>
+  <p class="back-link"><a href="/">&larr; Back to release summary</a></p>
   <h1>${feature.name}</h1>
   ${
     showHistory

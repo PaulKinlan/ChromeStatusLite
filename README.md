@@ -73,17 +73,22 @@ renderer.
 - **`/about`** — Background on Paul Kinlan, why ChromeStatusLite was built, and links to related
   projects.
 
-- **`/llms.txt`** — Concise `llmstxt.org`-style agent index documenting every page, all topic wiki
-  slugs, `Accept: text/markdown`, and machine-readable endpoints.
+- **`/llms.txt`** — Live `llmstxt.org`-style agent index documenting every page, all topic wiki
+  slugs, direct Markdown links to features in the latest Chrome release, `Accept: text/markdown`,
+  `.md` URLs, and machine-readable endpoints.
 
-### Agent & Markdown support (`Accept: text/markdown`)
+### Agent & Markdown support (`Accept: text/markdown` & `.md` URLs)
 
-Every HTML page supports RFC-compliant `Accept: text/markdown` content negotiation:
+Every HTML page — including every individual `/feature/:id` page, snapshot history, and diff —
+supports RFC-compliant `Accept: text/markdown` content negotiation as well as direct `.md` URLs
+for tools that cannot set custom headers:
 
 ```sh
+curl https://chromestatuslite.com/llms.txt
 curl -H "Accept: text/markdown" https://chromestatuslite.com/
-curl -H "Accept: text/markdown" https://chromestatuslite.com/deprecations
-curl -H "Accept: text/markdown" https://chromestatuslite.com/about
+curl -H "Accept: text/markdown" https://chromestatuslite.com/feature/5160724576993280
+curl https://chromestatuslite.com/feature/5160724576993280.md
+curl https://chromestatuslite.com/deprecations.md
 ```
 
 Markdown responses return `Content-Type: text/markdown; charset=utf-8`, `Vary: Accept`, and
@@ -123,7 +128,7 @@ Both durable features share a single Cloudflare D1 database (`migrations/0001_in
 - **`src/handler.ts`** — Runtime-agnostic request router, explicit static asset allowlist,
   RFC 9110 streaming `HEAD` handler, and total security-header gate.
 - **`src/routes/`** — One module per page (`index`, `deprecations`, `diff`, `breaking`,
-  `origin-trials`, `feature`, `feature-history`, `wiki`, `wiki-topic`, `about`, `feed`,
+  `origin-trials`, `feature`, `feature-history`, `wiki`, `wiki-topic`, `about`, `llms`, `feed`,
   `api-version`).
 - **`src/lib/markdown.ts`** — Zero-dependency `Accept: text/markdown` negotiation and single-pass
   HTML-to-Markdown converter.
